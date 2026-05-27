@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hamdong_postgres
+    environment:
+      POSTGRES_USER: hamdong_user
+      POSTGRES_PASSWORD: hamdong_pass
+      POSTGRES_DB: hamdong_iam
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hamdong_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hamdong_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  iam-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hamdong_iam_service
+    environment:
+      DATABASE_URL: postgresql://hamdong_user:hamdong_pass@postgres:5432/hamdong_iam
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: change-this-secret-key-in-production
+      OTP_SECRET_KEY: change-this-otp-secret-key-in-production
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
+  redis_data:
