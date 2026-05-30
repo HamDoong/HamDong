@@ -1,0 +1,17 @@
+Django>=5.1,<5.2
+djangorestframework
+psycopg[binary]
+django-environ
+drf-spectacular
+django-cors-headers
+gunicorn
+celery
+redis
+pika
+httpx
+pybreaker
+ruff
+black
+pytest
+pytest-django
+debugpy

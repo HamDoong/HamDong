@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+db.sqlite3
+media/
+staticfiles/
+.idea/
+.vscode/.ropeproject/
+.vscode/.cache/
+.DS_Store
+*.log
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
