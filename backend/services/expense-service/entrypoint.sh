@@ -21,10 +21,14 @@ while True:
         time.sleep(1)
 PY
 
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+
 python manage.py migrate --noinput
 
 if [ "$APP_ENV" = "production" ]; then
-    gunicorn config.wsgi:application --bind 0.0.0.0:8000
+    exec gunicorn config.wsgi:application --bind 0.0.0.0:8000
 else
-    python manage.py runserver 0.0.0.0:8000
+    exec python manage.py runserver 0.0.0.0:8000
 fi

@@ -11,8 +11,10 @@ up:
 down:
 	docker compose down
 
+LOGS_TAIL ?= 200
+
 logs:
-	docker compose logs -f
+	docker compose logs --tail=$(LOGS_TAIL)
 
 ps:
 	docker compose ps
