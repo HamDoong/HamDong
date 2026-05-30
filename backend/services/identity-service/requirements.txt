@@ -15,3 +15,6 @@ black
 pytest
 pytest-django
 debugpy
+PyJWT>=2.8.1
+cryptography>=41.0.0
+phonenumbers>=8.13.0

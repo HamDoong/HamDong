@@ -95,3 +95,46 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Use the custom user model defined in apps.identity.domain.models.User
+AUTH_USER_MODEL = "identity.User"
+
+# JWT Configuration
+JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
+JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
+JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
+JWT_ACCESS_TOKEN_LIFETIME_SECONDS = env(
+    "JWT_ACCESS_TOKEN_LIFETIME_SECONDS", default=900, cast=int
+)
+JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env(
+    "JWT_REFRESH_TOKEN_LIFETIME_SECONDS", default=604800, cast=int
+)
+JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", default="/app/keys/private.pem")
+JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH", default="/app/keys/public.pem")
+
+# OTP Configuration
+OTP_LENGTH = env("OTP_LENGTH", default=6, cast=int)
+OTP_TTL_SECONDS = env("OTP_TTL_SECONDS", default=120, cast=int)
+OTP_RESEND_COOLDOWN_SECONDS = env("OTP_RESEND_COOLDOWN_SECONDS", default=60, cast=int)
+OTP_MAX_VERIFY_ATTEMPTS = env("OTP_MAX_VERIFY_ATTEMPTS", default=5, cast=int)
+OTP_MAX_REQUESTS_PER_WINDOW = env("OTP_MAX_REQUESTS_PER_WINDOW", default=3, cast=int)
+OTP_RATE_LIMIT_WINDOW_SECONDS = env(
+    "OTP_RATE_LIMIT_WINDOW_SECONDS", default=600, cast=int
+)
+OTP_DEBUG_RETURN_CODE = env.bool("OTP_DEBUG_RETURN_CODE", default=True)
+
+# RabbitMQ Configuration
+IDENTITY_RABBITMQ_EXCHANGE = env(
+    "IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity"
+)
+
+# Redis Configuration
+REDIS_HOST = env("REDIS_HOST", default="localhost")
+REDIS_PORT = env("REDIS_PORT", default=6379, cast=int)
+REDIS_DB = env("REDIS_DB", default=0, cast=int)
+
+# RabbitMQ Configuration
+RABBITMQ_HOST = env("RABBITMQ_HOST", default="localhost")
+RABBITMQ_PORT = env("RABBITMQ_PORT", default=5672, cast=int)
+RABBITMQ_DEFAULT_USER = env("RABBITMQ_DEFAULT_USER", default="guest")
+RABBITMQ_DEFAULT_PASS = env("RABBITMQ_DEFAULT_PASS", default="guest")

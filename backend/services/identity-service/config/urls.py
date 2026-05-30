@@ -1,7 +1,7 @@
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from apps.identity.api.views import HealthView
+from apps.identity.api.views import HealthView, GetCurrentUserView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
@@ -12,5 +12,5 @@ urlpatterns = [
         name="docs",
     ),
     path("api/v1/auth/", include("apps.identity.api.urls")),
-    path("api/v1/users/", include("apps.identity.api.urls")),
+    path("api/v1/users/me/", GetCurrentUserView.as_view(), name="get_current_user"),
 ]
