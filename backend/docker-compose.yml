@@ -106,45 +106,6 @@ services:
       identity-service:
         condition: service_started
 
-  expense-service:
-    build: ./services/expense-service
-    env_file: .env
-    environment:
-      APP_ENV: ${APP_ENV}
-      DEBUG: ${DEBUG}
-      SECRET_KEY: ${SECRET_KEY}
-      POSTGRES_HOST: ${POSTGRES_HOST}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${EXPENSE_DB_NAME}
-      EXPENSE_DB_NAME: ${EXPENSE_DB_NAME}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB}
-      RABBITMQ_HOST: ${RABBITMQ_HOST}
-      RABBITMQ_PORT: ${RABBITMQ_PORT}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-      EXPENSE_RABBITMQ_EXCHANGE: ${EXPENSE_RABBITMQ_EXCHANGE}
-      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE}
-      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE}
-      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL}
-      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH}
-      JWT_ISSUER: ${JWT_ISSUER}
-      JWT_AUDIENCE: ${JWT_AUDIENCE}
-      JWT_ALGORITHM: ${JWT_ALGORITHM}
-    ports:
-      - "8003:8000"
-    volumes:
-      - ./services/expense-service:/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
-      rabbitmq:
-        condition: service_started
 
   settlement-service:
     build: ./services/settlement-service
