@@ -1,82 +1,10 @@
-"""Adapter for Melipayamak SMS provider."""
+"""Melipayamak SMS provider adapter."""
 
 from __future__ import annotations
 
-import httpx
-import time
-from typing import Any, Dict
-
-from django.conf import settings
-
-from apps.notifications.infrastructure.providers.base import (
-    SmsProvider,
-    SmsSendResult,
-    SmsProviderError,
-)
-
-
-class MelipayamakSmsProvider(SmsProvider):
-    provider_name = "melipayamak"
-
-    def __init__(self) -> None:
-        self.username = getattr(settings, "MELIPAYAMAK_USERNAME", None)
-        self.password = getattr(settings, "MELIPAYAMAK_PASSWORD", None)
-        self.base_url = getattr(
-            settings, "MELIPAYAMAK_API_URL", "https://api.payamak-panel.com/post/"
-        )
-        if not (self.username and self.password):
-            raise SmsProviderError("MISSING_CREDENTIALS", "Melipayamak credentials not configured")
-
-    def send_sms(self, phone_number: str, message: str) -> SmsSendResult:
-        url = self.base_url
-        payload = {
-            "username": self.username,
-            "password": self.password,
-            "to": phone_number,
-            "from": getattr(settings, "MELIPAYAMAK_FROM", "30005000"),
-            "text": message,
-        }
-        started = time.perf_counter()
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.post(url, data=payload)
-            duration_ms = int((time.perf_counter() - started) * 1000)
-            raw = None
-            try:
-                raw = resp.json()
-            except Exception:
-                raw = {"text": resp.text}
-
-            if resp.status_code in (200, 201):
-                provider_message_id = None
-                # melipayamak may return an integer id or dict
-                try:
-                    if isinstance(raw, dict) and raw.get("messageid"):
-                        provider_message_id = str(raw.get("messageid"))
-                except Exception:
-                    provider_message_id = None
-
-                return SmsSendResult(
-                    provider=self.provider_name,
-                    provider_message_id=provider_message_id,
-                    success=True,
-                    raw_response={"status_code": resp.status_code, "body": raw, "duration_ms": duration_ms},
-                )
-
-            return SmsSendResult(
-                provider=self.provider_name,
-                provider_message_id=None,
-                success=False,
-                error_code=str(resp.status_code),
-                error_message=str(raw),
-                raw_response={"status_code": resp.status_code, "body": raw, "duration_ms": duration_ms},
-            )
-        except Exception as exc:
-            raise SmsProviderError("HTTP_ERROR", str(exc))
-"""Melipayamak SMS provider adapter."""
-
 import logging
 import uuid
+from typing import Any, Dict
 
 import httpx
 from django.conf import settings
@@ -118,16 +46,15 @@ class MelipayamakSmsProvider(SmsProvider):
                 )
 
             raw_response = response.json() if response.content else {}
-            if response.is_success:
+            success = getattr(response, "is_success", None)
+            if success is None:
+                success = 200 <= response.status_code < 300
+
+            if success:
                 provider_message_id = str(
-                    raw_response.get("RetStr")
-                    or raw_response.get("Value")
-                    or uuid.uuid4()
+                    raw_response.get("RetStr") or raw_response.get("Value") or uuid.uuid4()
                 )
-                logger.info(
-                    "Melipayamak SMS sent to phone_number=%s",
-                    masked_phone,
-                )
+                logger.info("Melipayamak SMS sent to phone_number=%s", masked_phone)
                 return SmsSendResult(
                     success=True,
                     provider=self.provider_name,
