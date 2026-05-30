@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 
@@ -40,6 +40,30 @@ class UserOtpRequested(DomainEvent):
             occurred_at=datetime.utcnow(),
             version=1,
             data={"phone_number": phone_number, "purpose": purpose},
+        )
+
+
+class SendOtpSmsRequested(DomainEvent):
+    """Command event published for notification-service to send OTP SMS."""
+
+    def __init__(
+        self,
+        phone_number: str,
+        code: str,
+        purpose: str = "login",
+        expires_in: int = 120,
+    ):
+        super().__init__(
+            event_id=str(uuid.uuid4()),
+            event_type="SendOtpSmsRequested",
+            occurred_at=datetime.now(timezone.utc),
+            version=1,
+            data={
+                "phone_number": phone_number,
+                "code": code,
+                "purpose": purpose,
+                "expires_in": expires_in,
+            },
         )
 
 

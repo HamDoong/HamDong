@@ -7,8 +7,9 @@ from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
 from apps.identity.domain.models import User
+from apps.identity.domain.rules import PhoneNumberRule
 from apps.identity.domain.events import (
-    UserOtpRequested,
+    SendOtpSmsRequested,
     UserCreated,
     UserLoggedIn,
     UserUpdated,
@@ -36,13 +37,23 @@ class RequestOtpUseCase:
             Tuple of (success, error_code, debug_otp, resend_after)
         """
         # Request OTP
-        success, error_code, debug_otp = self.otp_service.request_otp(phone_number)
+        request_result = self.otp_service.request_otp(phone_number)
+        if len(request_result) == 3:
+            success, error_code, debug_otp = request_result
+            otp_code = debug_otp
+        else:
+            success, error_code, otp_code, debug_otp = request_result
 
         if not success:
             return False, error_code, None, None
 
-        # Publish event
-        event = UserOtpRequested(phone_number=phone_number, purpose="login")
+        # Publish the SMS command for notification-service.
+        event = SendOtpSmsRequested(
+            phone_number=phone_number,
+            code=otp_code,
+            purpose="login",
+            expires_in=self.otp_service.otp_ttl,
+        )
         self.publisher.publish(event.to_dict(), "identity.otp.requested")
 
         resend_after = self.otp_service.resend_cooldown
@@ -177,7 +188,10 @@ class LogoutUseCase:
             return False, "INVALID_TOKEN"
 
         token_repo.revoke(db_token)
-        logger.info(f"User logged out: {db_token.user.phone_number}")
+        logger.info(
+            "User logged out: %s",
+            PhoneNumberRule.mask(db_token.user.phone_number),
+        )
 
         return True, None
 

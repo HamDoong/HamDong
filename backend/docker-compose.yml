@@ -176,6 +176,7 @@ services:
   notification-service:
     build: ./services/notification-service
     env_file: .env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -186,6 +187,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${NOTIFICATION_DB_NAME}
       NOTIFICATION_DB_NAME: ${NOTIFICATION_DB_NAME}
+      NOTIFICATION_RABBITMQ_EXCHANGE: ${NOTIFICATION_RABBITMQ_EXCHANGE}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE}
+      IDENTITY_OTP_QUEUE: ${IDENTITY_OTP_QUEUE}
+      IDENTITY_OTP_DLX: ${IDENTITY_OTP_DLX}
+      IDENTITY_OTP_DLQ: ${IDENTITY_OTP_DLQ}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_DB: ${REDIS_DB}
@@ -193,6 +199,14 @@ services:
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      SMS_PROVIDER: ${SMS_PROVIDER}
+      SMS_API_KEY: ${SMS_API_KEY}
+      SMS_SENDER: ${SMS_SENDER}
+      SMS_TEMPLATE_OTP_LOGIN: ${SMS_TEMPLATE_OTP_LOGIN}
+      SMS_CIRCUIT_FAIL_MAX: ${SMS_CIRCUIT_FAIL_MAX}
+      SMS_CIRCUIT_RESET_TIMEOUT_SECONDS: ${SMS_CIRCUIT_RESET_TIMEOUT_SECONDS}
+      SMS_OTP_MAX_RETRIES: ${SMS_OTP_MAX_RETRIES}
+      SMS_OTP_RETRY_DELAYS_SECONDS: ${SMS_OTP_RETRY_DELAYS_SECONDS}
     ports:
       - "8006:8000"
     volumes:
@@ -203,6 +217,48 @@ services:
       redis:
         condition: service_started
       rabbitmq:
+        condition: service_started
+
+  notification-consumer:
+    build: ./services/notification-service
+    env_file: .env
+    command: ["python", "manage.py", "consume_identity_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+      NOTIFICATION_DB_NAME: ${NOTIFICATION_DB_NAME}
+      NOTIFICATION_RABBITMQ_EXCHANGE: ${NOTIFICATION_RABBITMQ_EXCHANGE}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE}
+      IDENTITY_OTP_QUEUE: ${IDENTITY_OTP_QUEUE}
+      IDENTITY_OTP_DLX: ${IDENTITY_OTP_DLX}
+      IDENTITY_OTP_DLQ: ${IDENTITY_OTP_DLQ}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      SMS_PROVIDER: ${SMS_PROVIDER}
+      SMS_API_KEY: ${SMS_API_KEY}
+      SMS_SENDER: ${SMS_SENDER}
+      SMS_TEMPLATE_OTP_LOGIN: ${SMS_TEMPLATE_OTP_LOGIN}
+      SMS_CIRCUIT_FAIL_MAX: ${SMS_CIRCUIT_FAIL_MAX}
+      SMS_CIRCUIT_RESET_TIMEOUT_SECONDS: ${SMS_CIRCUIT_RESET_TIMEOUT_SECONDS}
+      SMS_OTP_MAX_RETRIES: ${SMS_OTP_MAX_RETRIES}
+      SMS_OTP_RETRY_DELAYS_SECONDS: ${SMS_OTP_RETRY_DELAYS_SECONDS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      redis:
         condition: service_started
 
   postgres:

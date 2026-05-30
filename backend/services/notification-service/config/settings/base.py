@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 import environ
 
@@ -8,11 +8,18 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 
+APP_ENV = env("APP_ENV", default="local")
+
 POSTGRES_DB = os.environ["POSTGRES_DB"]
 POSTGRES_USER = os.environ["POSTGRES_USER"]
 POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+
+RABBITMQ_HOST = env("RABBITMQ_HOST", default="rabbitmq")
+RABBITMQ_PORT = env("RABBITMQ_PORT", default=5672, cast=int)
+RABBITMQ_DEFAULT_USER = env("RABBITMQ_DEFAULT_USER", default="guest")
+RABBITMQ_DEFAULT_PASS = env("RABBITMQ_DEFAULT_PASS", default="guest")
 
 SERVICE_NAME = "notification-service"
 SERVICE_VERSION = "0.1.0"
@@ -93,5 +100,34 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "notification-service API",
     "VERSION": SERVICE_VERSION,
 }
+
+IDENTITY_RABBITMQ_EXCHANGE = env(
+    "IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity"
+)
+NOTIFICATION_RABBITMQ_EXCHANGE = env(
+    "NOTIFICATION_RABBITMQ_EXCHANGE", default="hamdong.notification"
+)
+IDENTITY_OTP_QUEUE = env(
+    "IDENTITY_OTP_QUEUE", default="notification.identity.otp.requested"
+)
+IDENTITY_OTP_DLX = env(
+    "IDENTITY_OTP_DLX", default="notification.identity.otp.requested.dlx"
+)
+IDENTITY_OTP_DLQ = env(
+    "IDENTITY_OTP_DLQ", default="notification.identity.otp.requested.dlq"
+)
+
+SMS_PROVIDER = env("SMS_PROVIDER", default="fake")
+SMS_API_KEY = env("SMS_API_KEY", default="")
+SMS_SENDER = env("SMS_SENDER", default="")
+SMS_TEMPLATE_OTP_LOGIN = env("SMS_TEMPLATE_OTP_LOGIN", default="OTP_LOGIN")
+
+SMS_CIRCUIT_FAIL_MAX = env("SMS_CIRCUIT_FAIL_MAX", default=5, cast=int)
+SMS_CIRCUIT_RESET_TIMEOUT_SECONDS = env(
+    "SMS_CIRCUIT_RESET_TIMEOUT_SECONDS", default=60, cast=int
+)
+
+SMS_OTP_MAX_RETRIES = env("SMS_OTP_MAX_RETRIES", default=2, cast=int)
+SMS_OTP_RETRY_DELAYS_SECONDS = env("SMS_OTP_RETRY_DELAYS_SECONDS", default="10,30")
 
 CORS_ALLOW_ALL_ORIGINS = True

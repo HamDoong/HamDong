@@ -22,6 +22,7 @@ while True:
 PY
 
 if [ "$#" -gt 0 ]; then
+    python manage.py migrate --noinput
     exec "$@"
 fi
 

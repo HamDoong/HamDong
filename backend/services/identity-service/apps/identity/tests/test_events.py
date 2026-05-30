@@ -28,7 +28,7 @@ class IdentityEventPublishingTestCase(TestCase):
     )
     @patch(
         "apps.identity.application.use_cases.OtpService.request_otp",
-        return_value=(True, None, "123456"),
+        return_value=(True, None, "123456", "123456"),
     )
     def test_user_otp_requested_event_published(self, request_otp_mock, publish_mock):
         use_case = RequestOtpUseCase()
@@ -45,8 +45,10 @@ class IdentityEventPublishingTestCase(TestCase):
 
         event_data, routing_key = publish_mock.call_args.args
         self.assertEqual(routing_key, "identity.otp.requested")
-        self.assertEqual(event_data["event_type"], "UserOtpRequested")
+        self.assertEqual(event_data["event_type"], "SendOtpSmsRequested")
         self.assertEqual(event_data["data"]["phone_number"], self.phone_number)
+        self.assertEqual(event_data["data"]["code"], "123456")
+        self.assertEqual(event_data["data"]["expires_in"], use_case.otp_service.otp_ttl)
 
     @patch(
         "apps.identity.application.use_cases.RabbitMqPublisher.publish",

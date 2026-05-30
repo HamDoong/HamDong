@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from django.utils import timezone
+from apps.identity.domain.rules import PhoneNumberRule
 from apps.identity.domain.models import User
 from apps.identity.infrastructure.repositories import UserRepository
 
@@ -30,7 +31,10 @@ class UserService:
             phone_number=phone_number,
             role=User.RoleChoices.USER,
         )
-        logger.info(f"New user created: {phone_number}")
+        logger.info(
+            "New user created: %s",
+            PhoneNumberRule.mask(phone_number),
+        )
         return user, True
 
     @staticmethod
