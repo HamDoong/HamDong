@@ -48,6 +48,7 @@ services:
   group-service:
     build: ./services/group-service
     env_file: .env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -75,6 +76,34 @@ services:
       redis:
         condition: service_started
       rabbitmq:
+        condition: service_started
+
+  group-consumer:
+    build: ./services/group-service
+    env_file: .env
+    command: ["python", "manage.py", "consume_identity_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${GROUP_DB_NAME}
+      GROUP_DB_NAME: ${GROUP_DB_NAME}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE}
+      GROUP_IDENTITY_QUEUE: ${GROUP_IDENTITY_QUEUE}
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      identity-service:
         condition: service_started
 
   expense-service:
