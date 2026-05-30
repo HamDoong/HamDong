@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import environ
 
@@ -6,6 +7,12 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
+
+POSTGRES_DB = os.environ["POSTGRES_DB"]
+POSTGRES_USER = os.environ["POSTGRES_USER"]
+POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
 SERVICE_NAME = "notification-service"
 SERVICE_VERSION = "0.1.0"
@@ -61,11 +68,12 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("NOTIFICATION_DB_NAME", default="notification_db"),
-        "USER": env("POSTGRES_USER", default="hamdong"),
-        "PASSWORD": env("POSTGRES_PASSWORD", default="hamdong_password"),
-        "HOST": env("POSTGRES_HOST", default="postgres"),
-        "PORT": env("POSTGRES_PORT", default="5432"),
+        "NAME": POSTGRES_DB,
+        "USER": POSTGRES_USER,
+        "PASSWORD": POSTGRES_PASSWORD,
+        "HOST": POSTGRES_HOST,
+        "PORT": POSTGRES_PORT,
+        "TEST": {"NAME": f"test_{POSTGRES_DB}"},
     }
 }
 
