@@ -66,15 +66,21 @@ class OtpService:
         # Set cooldown
         self.otp_store.set_cooldown(phone_number, self.resend_cooldown)
 
-        logger.info(f"OTP requested for phone: {phone_number}")
+        logger.info(
+            "OTP requested for phone_number=%s",
+            PhoneNumberRule.mask(phone_number),
+        )
 
         # Return OTP code only if debug mode is enabled
         debug_otp = None
         if settings.DEBUG and settings.OTP_DEBUG_RETURN_CODE:
             debug_otp = otp_code
-            logger.debug(f"Debug OTP for {phone_number}: {otp_code}")
+            logger.debug(
+                "Debug OTP generated for phone_number=%s",
+                PhoneNumberRule.mask(phone_number),
+            )
 
-        return True, None, debug_otp
+        return True, None, otp_code, debug_otp
 
     def verify_otp(
         self, phone_number: str, otp_code: str

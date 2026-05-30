@@ -24,6 +24,14 @@ class PhoneNumberRule:
         cleaned = phone_number.replace("+98", "0").replace("0098", "0").strip()
         return cleaned if re.match(r"^09\d{9}$", cleaned) else None
 
+    @staticmethod
+    def mask(phone_number: str) -> str:
+        """Mask phone number for safe logging."""
+        normalized = PhoneNumberRule.normalize(phone_number) or ""
+        if len(normalized) >= 8:
+            return f"{normalized[:4]}***{normalized[-4:]}"
+        return "***"
+
 
 class OtpRule:
     """Rules for OTP generation and verification."""
