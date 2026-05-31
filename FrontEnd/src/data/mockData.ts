@@ -1,16 +1,27 @@
 import {
+  BedDouble,
   Building2,
   CheckCircle2,
   Home,
   LogOut,
   Settings,
+  Soup,
   TrendingUp,
   User,
   Users,
   UtensilsCrossed,
   Wallet,
+  BriefcaseBusiness,
 } from 'lucide-react';
-import type { Activity, Group, Member, NavItem, SummaryItem } from '../types';
+import type {
+  Activity,
+  Contact,
+  Group,
+  GroupTypeOptionItem,
+  Member,
+  NavItem,
+  SummaryItem,
+} from '../types';
 
 export const primaryNavItems: NavItem[] = [
   { id: 'dashboard', label: 'داشبورد', icon: Home },
@@ -129,5 +140,112 @@ export const recentActivities: Activity[] = [
     icon: Building2,
     iconBoxClassName: 'bg-sky-100',
     iconClassName: 'text-sky-600',
+  },
+];
+
+export const createGroupTypeOptions: GroupTypeOptionItem[] = [
+  { value: 'trip', label: 'سفر', icon: BriefcaseBusiness },
+  { value: 'food', label: 'غذا و رستوران', icon: Soup },
+  { value: 'home', label: 'خانه و زندگی', icon: BedDouble },
+  { value: 'other', label: 'سایر', icon: Building2 },
+];
+
+export const createGroupContacts: Contact[] = [
+  {
+    id: 1,
+    name: 'علی احمدی',
+    phone: '0912 345 6781',
+    category: 'friends',
+    avatarInitial: 'ع',
+    avatarGradient: 'from-emerald-400 to-teal-600',
+    isSelf: true,
+  },
+  {
+    id: 2,
+    name: 'سارا محمدی',
+    phone: '0913 222 3344',
+    category: 'friends',
+    avatarInitial: 'س',
+    avatarGradient: 'from-rose-300 to-pink-500',
+  },
+  {
+    id: 3,
+    name: 'رضا کریمی',
+    phone: '0914 555 6677',
+    category: 'friends',
+    avatarInitial: 'ر',
+    avatarGradient: 'from-amber-300 to-orange-500',
+  },
+  {
+    id: 4,
+    name: 'مینا حسینی',
+    phone: '0915 888 9900',
+    category: 'friends',
+    avatarInitial: 'م',
+    avatarGradient: 'from-sky-300 to-cyan-500',
+  },
+  {
+    id: 5,
+    name: 'حامد نوروزی',
+    phone: '0916 111 2233',
+    category: 'friends',
+    avatarInitial: 'ح',
+    avatarGradient: 'from-slate-400 to-slate-600',
+  },
+  {
+    id: 6,
+    name: 'نگار عباسی',
+    phone: '0917 444 2201',
+    category: 'friends',
+    avatarInitial: 'ن',
+    avatarGradient: 'from-fuchsia-300 to-purple-500',
+  },
+  {
+    id: 7,
+    name: 'محمد طاهری',
+    phone: '0918 333 5402',
+    category: 'friends',
+    avatarInitial: 'م',
+    avatarGradient: 'from-cyan-400 to-blue-500',
+  },
+  {
+    id: 8,
+    name: 'زهرا قربانی',
+    phone: '0919 777 8931',
+    category: 'friends',
+    avatarInitial: 'ز',
+    avatarGradient: 'from-orange-300 to-rose-500',
+  },
+  {
+    id: 9,
+    name: 'آرمان عبدی',
+    phone: '0920 234 7733',
+    category: 'frequent',
+    avatarInitial: 'آ',
+    avatarGradient: 'from-violet-300 to-indigo-500',
+  },
+  {
+    id: 10,
+    name: 'مهسا راد',
+    phone: '0921 643 9100',
+    category: 'frequent',
+    avatarInitial: 'م',
+    avatarGradient: 'from-pink-300 to-rose-500',
+  },
+  {
+    id: 11,
+    name: 'امیر رضایی',
+    phone: '0922 451 6700',
+    category: 'frequent',
+    avatarInitial: 'ا',
+    avatarGradient: 'from-emerald-300 to-lime-500',
+  },
+  {
+    id: 12,
+    name: 'پریسا نجفی',
+    phone: '0923 990 1144',
+    category: 'frequent',
+    avatarInitial: 'پ',
+    avatarGradient: 'from-teal-300 to-cyan-500',
   },
 ];

@@ -2,6 +2,9 @@ import type { LucideIcon } from 'lucide-react';
 
 export type BalanceTone = 'positive' | 'negative';
 export type GroupIllustrationType = 'trip' | 'home' | 'cafe';
+export type GroupTypeOption = 'trip' | 'food' | 'home' | 'other';
+export type ContactCategory = 'friends' | 'frequent';
+export type CreateGroupStep = 1 | 2 | 3;
 
 export interface NavItem {
   id: string;
@@ -44,4 +47,29 @@ export interface Activity {
   icon: LucideIcon;
   iconBoxClassName: string;
   iconClassName: string;
+}
+
+export interface Contact {
+  id: number;
+  name: string;
+  phone: string;
+  category: ContactCategory;
+  avatarInitial: string;
+  avatarGradient: string;
+  isSelf?: boolean;
+}
+
+export interface GroupTypeOptionItem {
+  value: GroupTypeOption;
+  label: string;
+  icon: LucideIcon;
+}
+
+export interface CreateGroupDraft {
+  name: string;
+  type: GroupTypeOption | '';
+  description: string;
+  startDate: string;
+  currency: string;
+  selectedMemberIds: number[];
 }
