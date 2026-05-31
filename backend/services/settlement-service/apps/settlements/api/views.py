@@ -13,6 +13,11 @@ from apps.settlements.api.serializers import (
     ManualSettlementListResponseSerializer,
     MessageSerializer,
     MyBalanceResponseSerializer,
+    MessageWithManualSettlementSerializer,
+    SettlementPlanDetailSerializer,
+    SettlementPlanGenerateSerializer,
+    SettlementPlanRejectItemSerializer,
+    SettlementPlanReportPaidSerializer,
     SettlementRejectSerializer,
 )
 from apps.settlements.application.use_cases import (
@@ -25,7 +30,18 @@ from apps.settlements.application.use_cases import (
     ListGroupSettlementsUseCase,
     RejectSettlementUseCase,
 )
+from apps.settlements.application.settlement_plan_use_cases import (
+    ActivateSettlementPlanUseCase,
+    CancelSettlementPlanUseCase,
+    ConfirmPlanItemUseCase,
+    GenerateSettlementPlanUseCase,
+    GetLatestSettlementPlanUseCase,
+    RejectPlanItemUseCase,
+    ReportPlanItemPaidUseCase,
+)
 from apps.settlements.domain.rules import SettlementServiceError
+from apps.settlements.domain.plan_rules import SettlementPlanExpiredError
+from apps.settlements.application.settlement_plan_service import SettlementPlanService
 from apps.settlements.infrastructure.jwt_authentication import JWTAuthentication
 
 
@@ -227,3 +243,128 @@ class CancelSettlementView(APIView):
         except SettlementServiceError as exc:
             return _error_response(exc)
         return Response({"message": "Settlement cancelled successfully."})
+
+
+class GenerateSettlementPlanView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Settlements"],
+        request=SettlementPlanGenerateSerializer,
+        responses={201: SettlementPlanDetailSerializer},
+    )
+    def post(self, request, group_id, *args, **kwargs):
+        try:
+            plan, items = GenerateSettlementPlanUseCase().execute(
+                request.user, group_id
+            )
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        payload = SettlementPlanService()._plan_payload(plan, items)
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class LatestSettlementPlanView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Settlements"], responses={200: SettlementPlanDetailSerializer}
+    )
+    def get(self, request, group_id, *args, **kwargs):
+        try:
+            plan, items = GetLatestSettlementPlanUseCase().execute(
+                request.user, group_id
+            )
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response(SettlementPlanService()._plan_payload(plan, items))
+
+
+class ActivateSettlementPlanView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Settlements"], responses={200: MessageSerializer})
+    def post(self, request, plan_id, *args, **kwargs):
+        try:
+            plan = ActivateSettlementPlanUseCase().execute(request.user, plan_id)
+            if getattr(plan, "_expired", False):
+                return _error_response(SettlementPlanExpiredError())
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response({"message": "Settlement plan activated successfully."})
+
+
+class CancelSettlementPlanView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Settlements"], responses={200: MessageSerializer})
+    def post(self, request, plan_id, *args, **kwargs):
+        try:
+            CancelSettlementPlanUseCase().execute(request.user, plan_id)
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response({"message": "Settlement plan cancelled successfully."})
+
+
+class ReportPlanItemPaidView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Settlements"],
+        request=SettlementPlanReportPaidSerializer,
+        responses={200: MessageWithManualSettlementSerializer},
+    )
+    def post(self, request, item_id, *args, **kwargs):
+        serializer = SettlementPlanReportPaidSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            _, settlement = ReportPlanItemPaidUseCase().execute(
+                request.user, item_id, serializer.validated_data
+            )
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response(
+            {
+                "message": "Payment report submitted successfully.",
+                "manual_settlement_id": str(settlement.id),
+            }
+        )
+
+
+class ConfirmPlanItemView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Settlements"], responses={200: MessageSerializer})
+    def post(self, request, item_id, *args, **kwargs):
+        try:
+            ConfirmPlanItemUseCase().execute(request.user, item_id)
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response({"message": "Plan item confirmed successfully."})
+
+
+class RejectPlanItemView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Settlements"],
+        request=SettlementPlanRejectItemSerializer,
+        responses={200: MessageSerializer},
+    )
+    def post(self, request, item_id, *args, **kwargs):
+        serializer = SettlementPlanRejectItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            RejectPlanItemUseCase().execute(
+                request.user, item_id, serializer.validated_data
+            )
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response({"message": "Plan item rejected successfully."})

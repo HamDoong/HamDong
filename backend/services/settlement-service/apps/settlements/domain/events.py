@@ -155,3 +155,122 @@ class DebtLedgerUpdated(DomainEvent):
         if entry_ids is not None:
             data["entry_ids"] = [str(entry_id) for entry_id in entry_ids]
         super().__init__("DebtLedgerUpdated", data)
+
+
+class SettlementPlanGenerated(DomainEvent):
+    def __init__(
+        self, plan_id, group_id, currency, transaction_count, total_debt_minor
+    ):
+        super().__init__(
+            "SettlementPlanGenerated",
+            {
+                "plan_id": str(plan_id),
+                "group_id": str(group_id),
+                "currency": currency,
+                "transaction_count": transaction_count,
+                "total_debt_minor": total_debt_minor,
+            },
+        )
+
+
+class SettlementPlanActivated(DomainEvent):
+    def __init__(self, plan_id, group_id, activated_by_user_id):
+        super().__init__(
+            "SettlementPlanActivated",
+            {
+                "plan_id": str(plan_id),
+                "group_id": str(group_id),
+                "activated_by_user_id": str(activated_by_user_id),
+            },
+        )
+
+
+class SettlementPlanCancelled(DomainEvent):
+    def __init__(self, plan_id, group_id, cancelled_by_user_id):
+        super().__init__(
+            "SettlementPlanCancelled",
+            {
+                "plan_id": str(plan_id),
+                "group_id": str(group_id),
+                "cancelled_by_user_id": str(cancelled_by_user_id),
+            },
+        )
+
+
+class SettlementPlanExpired(DomainEvent):
+    def __init__(self, plan_id, group_id):
+        super().__init__(
+            "SettlementPlanExpired",
+            {"plan_id": str(plan_id), "group_id": str(group_id)},
+        )
+
+
+class SettlementPlanItemReported(DomainEvent):
+    def __init__(
+        self,
+        plan_id,
+        item_id,
+        group_id,
+        payer_user_id,
+        receiver_user_id,
+        amount_minor,
+        manual_settlement_id,
+    ):
+        super().__init__(
+            "SettlementPlanItemReported",
+            {
+                "plan_id": str(plan_id),
+                "item_id": str(item_id),
+                "group_id": str(group_id),
+                "payer_user_id": str(payer_user_id),
+                "receiver_user_id": str(receiver_user_id),
+                "amount_minor": amount_minor,
+                "manual_settlement_id": str(manual_settlement_id),
+            },
+        )
+
+
+class SettlementPlanItemConfirmed(DomainEvent):
+    def __init__(
+        self, plan_id, item_id, group_id, payer_user_id, receiver_user_id, amount_minor
+    ):
+        super().__init__(
+            "SettlementPlanItemConfirmed",
+            {
+                "plan_id": str(plan_id),
+                "item_id": str(item_id),
+                "group_id": str(group_id),
+                "payer_user_id": str(payer_user_id),
+                "receiver_user_id": str(receiver_user_id),
+                "amount_minor": amount_minor,
+            },
+        )
+
+
+class SettlementPlanItemRejected(DomainEvent):
+    def __init__(
+        self, plan_id, item_id, group_id, payer_user_id, receiver_user_id, amount_minor
+    ):
+        super().__init__(
+            "SettlementPlanItemRejected",
+            {
+                "plan_id": str(plan_id),
+                "item_id": str(item_id),
+                "group_id": str(group_id),
+                "payer_user_id": str(payer_user_id),
+                "receiver_user_id": str(receiver_user_id),
+                "amount_minor": amount_minor,
+            },
+        )
+
+
+class SettlementPlanCompleted(DomainEvent):
+    def __init__(self, plan_id, group_id, completed_at):
+        super().__init__(
+            "SettlementPlanCompleted",
+            {
+                "plan_id": str(plan_id),
+                "group_id": str(group_id),
+                "completed_at": completed_at.isoformat(),
+            },
+        )

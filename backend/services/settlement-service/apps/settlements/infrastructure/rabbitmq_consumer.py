@@ -118,7 +118,9 @@ class SettlementEventConsumer:
                 channel.queue_declare(queue=queue_name, durable=True)
                 for routing_key in routing_keys:
                     channel.queue_bind(
-                        queue=queue_name, exchange=exchange_name, routing_key=routing_key
+                        queue=queue_name,
+                        exchange=exchange_name,
+                        routing_key=routing_key,
                     )
                 channel.basic_qos(prefetch_count=10)
                 channel.basic_consume(

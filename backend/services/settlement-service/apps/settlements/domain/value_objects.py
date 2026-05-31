@@ -19,3 +19,17 @@ class SettlementRow:
     amount_minor: int
     currency: str
     status: str
+
+
+@dataclass(frozen=True)
+class SettlementBalanceRow:
+    user_id: str
+    net_balance_minor: int
+
+
+@dataclass(frozen=True)
+class SettlementPlanInstruction:
+    payer_user_id: str
+    receiver_user_id: str
+    amount_minor: int
+    order_index: int

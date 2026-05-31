@@ -2,13 +2,20 @@ from django.urls import path
 
 from apps.settlements.api.views import (
     CancelSettlementView,
+    ActivateSettlementPlanView,
+    CancelSettlementPlanView,
     ConfirmSettlementView,
+    ConfirmPlanItemView,
     GroupBalancesView,
     GroupDebtsView,
     GroupSettlementsView,
     HealthView,
     MyBalanceView,
+    GenerateSettlementPlanView,
+    LatestSettlementPlanView,
     RejectSettlementView,
+    RejectPlanItemView,
+    ReportPlanItemPaidView,
 )
 
 urlpatterns = [
@@ -28,6 +35,41 @@ urlpatterns = [
         "groups/<uuid:group_id>/settlements/",
         GroupSettlementsView.as_view(),
         name="group_settlements",
+    ),
+    path(
+        "groups/<uuid:group_id>/settlement-plan/generate/",
+        GenerateSettlementPlanView.as_view(),
+        name="generate_settlement_plan",
+    ),
+    path(
+        "groups/<uuid:group_id>/settlement-plan/",
+        LatestSettlementPlanView.as_view(),
+        name="latest_settlement_plan",
+    ),
+    path(
+        "settlement-plans/<uuid:plan_id>/activate/",
+        ActivateSettlementPlanView.as_view(),
+        name="activate_settlement_plan",
+    ),
+    path(
+        "settlement-plans/<uuid:plan_id>/cancel/",
+        CancelSettlementPlanView.as_view(),
+        name="cancel_settlement_plan",
+    ),
+    path(
+        "settlement-plan-items/<uuid:item_id>/report-paid/",
+        ReportPlanItemPaidView.as_view(),
+        name="report_settlement_plan_item_paid",
+    ),
+    path(
+        "settlement-plan-items/<uuid:item_id>/confirm/",
+        ConfirmPlanItemView.as_view(),
+        name="confirm_settlement_plan_item",
+    ),
+    path(
+        "settlement-plan-items/<uuid:item_id>/reject/",
+        RejectPlanItemView.as_view(),
+        name="reject_settlement_plan_item",
     ),
     path(
         "settlements/<uuid:settlement_id>/confirm/",

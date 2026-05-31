@@ -62,6 +62,34 @@ class ManualSettlementStatusChoices(models.TextChoices):
     CANCELLED = "CANCELLED", "Cancelled"
 
 
+class SettlementPlanStatusChoices(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
+    ACTIVE = "ACTIVE", "Active"
+    COMPLETED = "COMPLETED", "Completed"
+    CANCELLED = "CANCELLED", "Cancelled"
+    EXPIRED = "EXPIRED", "Expired"
+
+
+class SettlementPlanItemStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    REPORTED = "REPORTED", "Reported"
+    CONFIRMED = "CONFIRMED", "Confirmed"
+    REJECTED = "REJECTED", "Rejected"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class SettlementPlanEventTypeChoices(models.TextChoices):
+    PLAN_GENERATED = "PLAN_GENERATED", "Plan Generated"
+    PLAN_ACTIVATED = "PLAN_ACTIVATED", "Plan Activated"
+    PLAN_CANCELLED = "PLAN_CANCELLED", "Plan Cancelled"
+    PLAN_EXPIRED = "PLAN_EXPIRED", "Plan Expired"
+    ITEM_REPORTED = "ITEM_REPORTED", "Item Reported"
+    ITEM_CONFIRMED = "ITEM_CONFIRMED", "Item Confirmed"
+    ITEM_REJECTED = "ITEM_REJECTED", "Item Rejected"
+    ITEM_CANCELLED = "ITEM_CANCELLED", "Item Cancelled"
+    PLAN_COMPLETED = "PLAN_COMPLETED", "Plan Completed"
+
+
 class UserProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     identity_user_id = models.UUIDField(unique=True, db_index=True)
@@ -281,3 +309,89 @@ class ProcessedEvent(models.Model):
 
     class Meta:
         db_table = "settlement_processed_events"
+
+
+class SettlementPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=SettlementPlanStatusChoices.choices,
+        default=SettlementPlanStatusChoices.DRAFT,
+    )
+    generated_by_user_id = models.UUIDField()
+    activated_by_user_id = models.UUIDField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    source_balance_calculated_at = models.DateTimeField()
+    total_debt_minor = models.BigIntegerField(default=0)
+    transaction_count = models.PositiveIntegerField(default=0)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_settlement_plans"
+        indexes = [
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["status"]),
+        ]
+
+
+class SettlementPlanItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    settlement_plan_id = models.UUIDField(db_index=True)
+    group_id = models.UUIDField(db_index=True)
+    payer_user_id = models.UUIDField(db_index=True)
+    receiver_user_id = models.UUIDField(db_index=True)
+    amount_minor = models.BigIntegerField(default=0)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=SettlementPlanItemStatusChoices.choices,
+        default=SettlementPlanItemStatusChoices.PENDING,
+    )
+    manual_settlement_id = models.UUIDField(null=True, blank=True)
+    order_index = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    reported_at = models.DateTimeField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "settlement_settlement_plan_items"
+        indexes = [
+            models.Index(fields=["settlement_plan_id"]),
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["payer_user_id"]),
+            models.Index(fields=["receiver_user_id"]),
+            models.Index(fields=["status"]),
+        ]
+
+
+class SettlementPlanEventLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    settlement_plan_id = models.UUIDField(db_index=True)
+    settlement_plan_item_id = models.UUIDField(null=True, blank=True, db_index=True)
+    actor_user_id = models.UUIDField(db_index=True)
+    event_type = models.CharField(
+        max_length=30, choices=SettlementPlanEventTypeChoices.choices
+    )
+    metadata = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "settlement_settlement_plan_event_logs"
+        indexes = [
+            models.Index(fields=["settlement_plan_id"]),
+            models.Index(fields=["settlement_plan_item_id"]),
+            models.Index(fields=["actor_user_id"]),
+            models.Index(fields=["event_type"]),
+        ]
