@@ -94,11 +94,15 @@ class ReportPlanItemTests(TestCase):
                 content_type="application/json",
             )
             receiver_client.post(
-                reverse("confirm_settlement_plan_item", kwargs={"item_id": self.item.id})
+                reverse(
+                    "confirm_settlement_plan_item", kwargs={"item_id": self.item.id}
+                )
             )
 
         response = payer_client.post(
-            reverse("report_settlement_plan_item_paid", kwargs={"item_id": self.item.id}),
+            reverse(
+                "report_settlement_plan_item_paid", kwargs={"item_id": self.item.id}
+            ),
             data={"description": "again"},
             content_type="application/json",
         )
@@ -115,7 +119,9 @@ class ReportPlanItemTests(TestCase):
             self.service.cancel_plan(self.plan.id, self.owner.sub)
 
         response = payer_client.post(
-            reverse("report_settlement_plan_item_paid", kwargs={"item_id": self.item.id}),
+            reverse(
+                "report_settlement_plan_item_paid", kwargs={"item_id": self.item.id}
+            ),
             data={"description": "after cancel"},
             content_type="application/json",
         )
