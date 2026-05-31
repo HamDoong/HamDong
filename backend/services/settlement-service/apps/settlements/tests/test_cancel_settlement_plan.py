@@ -66,7 +66,9 @@ class CancelSettlementPlanTests(TestCase):
             "apps.settlements.infrastructure.rabbitmq_publisher.RabbitMQPublisher.publish",
             return_value=True,
         ):
-            plan, items = self.service.generate_plan(self.group.group_id, self.owner.sub)
+            plan, items = self.service.generate_plan(
+                self.group.group_id, self.owner.sub
+            )
             self.service.activate_plan(plan.id, self.owner.sub)
 
         payer_client = api_client(auth_user(self.debtor_one.user_id))
@@ -96,8 +98,14 @@ class CancelSettlementPlanTests(TestCase):
         items_by_id = {item.id: item for item in items}
         items_by_id[items[0].id].refresh_from_db()
         items_by_id[items[1].id].refresh_from_db()
-        self.assertEqual(items_by_id[items[0].id].status, SettlementPlanItemStatusChoices.CONFIRMED)
-        self.assertEqual(items_by_id[items[1].id].status, SettlementPlanItemStatusChoices.CANCELLED)
+        self.assertEqual(
+            items_by_id[items[0].id].status,
+            SettlementPlanItemStatusChoices.CONFIRMED,
+        )
+        self.assertEqual(
+            items_by_id[items[1].id].status,
+            SettlementPlanItemStatusChoices.CANCELLED,
+        )
 
     def test_completed_plan_cannot_be_cancelled_again(self):
         self.seed_balances()
@@ -105,7 +113,9 @@ class CancelSettlementPlanTests(TestCase):
             "apps.settlements.infrastructure.rabbitmq_publisher.RabbitMQPublisher.publish",
             return_value=True,
         ):
-            plan, items = self.service.generate_plan(self.group.group_id, self.owner.sub)
+            plan, items = self.service.generate_plan(
+                self.group.group_id, self.owner.sub
+            )
             self.service.activate_plan(plan.id, self.owner.sub)
 
         payer_one_client = api_client(auth_user(self.debtor_one.user_id))
