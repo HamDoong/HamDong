@@ -1,7 +1,7 @@
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from apps.media_app.api.views import HealthView
+from apps.media_files.api.views import HealthView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
@@ -11,5 +11,5 @@ urlpatterns = [
         SpectacularSwaggerView.as_view(url_name="schema"),
         name="docs",
     ),
-    path("api/v1/media/", include("apps.media_app.api.urls")),
+    path("api/v1/media/", include("apps.media_files.api.urls")),
 ]

@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "drf_spectacular",
-    "apps.media_app",
+    "apps.media_files.apps.MediaFilesConfig",
 ]
 
 MIDDLEWARE = [
@@ -92,6 +92,40 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "media-service API",
     "VERSION": SERVICE_VERSION,
+    "DESCRIPTION": "Secure receipt upload and media management for HamDong.",
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+MEDIA_ROOT = os.getenv("MEDIA_ROOT", "/media/uploads")
+MEDIA_URL = "/media/uploads/"
+
+MEDIA_STORAGE_PROVIDER = os.getenv("MEDIA_STORAGE_PROVIDER", "local")
+MEDIA_MAX_FILE_SIZE_BYTES = int(os.getenv("MEDIA_MAX_FILE_SIZE_BYTES", "5242880"))
+MEDIA_ALLOWED_EXTENSIONS = [
+    ext.strip().lower()
+    for ext in os.getenv("MEDIA_ALLOWED_EXTENSIONS", "jpg,jpeg,png,webp,pdf").split(",")
+    if ext.strip()
+]
+MEDIA_ALLOWED_CONTENT_TYPES = [
+    content_type.strip().lower()
+    for content_type in os.getenv(
+        "MEDIA_ALLOWED_CONTENT_TYPES",
+        "image/jpeg,image/png,image/webp,application/pdf",
+    ).split(",")
+    if content_type.strip()
+]
+MEDIA_SIGNED_URL_EXPIRES_SECONDS = int(os.getenv("MEDIA_SIGNED_URL_EXPIRES_SECONDS", "300"))
+
+EXPENSE_RABBITMQ_EXCHANGE = os.getenv("EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense")
+MEDIA_RABBITMQ_EXCHANGE = os.getenv("MEDIA_RABBITMQ_EXCHANGE", "hamdong.media")
+IDENTITY_RABBITMQ_EXCHANGE = os.getenv("IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity")
+GROUP_RABBITMQ_EXCHANGE = os.getenv("GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
+MEDIA_IDENTITY_QUEUE = os.getenv("MEDIA_IDENTITY_QUEUE", "media.identity.user_events")
+MEDIA_GROUP_QUEUE = os.getenv("MEDIA_GROUP_QUEUE", "media.group.events")
+
+IDENTITY_JWKS_URL = os.getenv("IDENTITY_JWKS_URL", "")
+IDENTITY_PUBLIC_KEY_PATH = os.getenv("IDENTITY_PUBLIC_KEY_PATH", "")
+JWT_ISSUER = os.getenv("JWT_ISSUER", "hamdong.identity-service")
+JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "hamdong.services")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "RS256")
