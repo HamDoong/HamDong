@@ -17,6 +17,11 @@ from apps.settlements.domain.models import (
     ManualSettlement,
     ManualSettlementStatusChoices,
     ProcessedEvent,
+    SettlementPlan,
+    SettlementPlanEventLog,
+    SettlementPlanItem,
+    SettlementPlanItemStatusChoices,
+    SettlementPlanStatusChoices,
     UserProjection,
 )
 
@@ -515,6 +520,175 @@ class ManualSettlementRepository:
             ]
         )
         return settlement
+
+
+class SettlementPlanRepository:
+    @staticmethod
+    def create(**data):
+        return SettlementPlan.objects.create(
+            group_id=normalize_uuid(data.get("group_id")),
+            currency=data.get("currency", CurrencyChoices.IRR),
+            status=data.get("status", SettlementPlanStatusChoices.DRAFT),
+            generated_by_user_id=normalize_uuid(data.get("generated_by_user_id")),
+            activated_by_user_id=normalize_uuid(data.get("activated_by_user_id")),
+            completed_at=data.get("completed_at"),
+            cancelled_at=data.get("cancelled_at"),
+            source_balance_calculated_at=data.get("source_balance_calculated_at"),
+            total_debt_minor=int(data.get("total_debt_minor", 0)),
+            transaction_count=int(data.get("transaction_count", 0)),
+            version=int(data.get("version", 1)),
+        )
+
+    @staticmethod
+    def get(plan_id):
+        return SettlementPlan.objects.filter(id=normalize_uuid(plan_id)).first()
+
+    @staticmethod
+    def get_latest_for_group(group_id):
+        return (
+            SettlementPlan.objects.filter(group_id=normalize_uuid(group_id))
+            .order_by("-created_at")
+            .first()
+        )
+
+    @staticmethod
+    def get_latest_active_for_group(group_id):
+        return (
+            SettlementPlan.objects.filter(
+                group_id=normalize_uuid(group_id),
+                status=SettlementPlanStatusChoices.ACTIVE,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+
+    @staticmethod
+    def has_active_for_group(group_id):
+        return SettlementPlan.objects.filter(
+            group_id=normalize_uuid(group_id), status=SettlementPlanStatusChoices.ACTIVE
+        ).exists()
+
+    @staticmethod
+    def list_by_group(group_id):
+        return SettlementPlan.objects.filter(
+            group_id=normalize_uuid(group_id)
+        ).order_by("-created_at")
+
+    @staticmethod
+    def mark_active(plan: SettlementPlan, activated_by_user_id):
+        plan.status = SettlementPlanStatusChoices.ACTIVE
+        plan.activated_by_user_id = normalize_uuid(activated_by_user_id)
+        plan.save(update_fields=["status", "activated_by_user_id", "updated_at"])
+        return plan
+
+    @staticmethod
+    def mark_cancelled(plan: SettlementPlan, cancelled_by_user_id):
+        plan.status = SettlementPlanStatusChoices.CANCELLED
+        plan.cancelled_at = timezone.now()
+        plan.save(update_fields=["status", "cancelled_at", "updated_at"])
+        return plan
+
+    @staticmethod
+    def mark_expired(plan: SettlementPlan):
+        plan.status = SettlementPlanStatusChoices.EXPIRED
+        plan.save(update_fields=["status", "updated_at"])
+        return plan
+
+    @staticmethod
+    def mark_completed(plan):
+        plan.status = SettlementPlanStatusChoices.COMPLETED
+        plan.completed_at = timezone.now()
+        plan.save(update_fields=["status", "completed_at", "updated_at"])
+        return plan
+
+
+class SettlementPlanItemRepository:
+    @staticmethod
+    def create(**data):
+        return SettlementPlanItem.objects.create(
+            settlement_plan_id=normalize_uuid(data.get("settlement_plan_id")),
+            group_id=normalize_uuid(data.get("group_id")),
+            payer_user_id=normalize_uuid(data.get("payer_user_id")),
+            receiver_user_id=normalize_uuid(data.get("receiver_user_id")),
+            amount_minor=int(data.get("amount_minor", 0)),
+            currency=data.get("currency", CurrencyChoices.IRR),
+            status=data.get("status", SettlementPlanItemStatusChoices.PENDING),
+            manual_settlement_id=normalize_uuid(data.get("manual_settlement_id")),
+            order_index=int(data.get("order_index", 0)),
+        )
+
+    @staticmethod
+    def bulk_create(items):
+        return SettlementPlanItem.objects.bulk_create(items)
+
+    @staticmethod
+    def get(item_id):
+        return SettlementPlanItem.objects.filter(id=normalize_uuid(item_id)).first()
+
+    @staticmethod
+    def list_by_plan(plan_id):
+        return SettlementPlanItem.objects.filter(
+            settlement_plan_id=normalize_uuid(plan_id)
+        ).order_by("order_index", "created_at")
+
+    @staticmethod
+    def list_by_group(group_id):
+        return SettlementPlanItem.objects.filter(
+            group_id=normalize_uuid(group_id)
+        ).order_by("-created_at")
+
+    @staticmethod
+    def save(item: SettlementPlanItem):
+        item.save()
+        return item
+
+    @staticmethod
+    def mark_reported(item: SettlementPlanItem, manual_settlement_id):
+        item.status = SettlementPlanItemStatusChoices.REPORTED
+        item.manual_settlement_id = normalize_uuid(manual_settlement_id)
+        item.reported_at = timezone.now()
+        item.save(
+            update_fields=[
+                "status",
+                "manual_settlement_id",
+                "reported_at",
+                "updated_at",
+            ]
+        )
+        return item
+
+    @staticmethod
+    def mark_confirmed(item: SettlementPlanItem):
+        item.status = SettlementPlanItemStatusChoices.CONFIRMED
+        item.confirmed_at = timezone.now()
+        item.save(update_fields=["status", "confirmed_at", "updated_at"])
+        return item
+
+    @staticmethod
+    def mark_rejected(item: SettlementPlanItem):
+        item.status = SettlementPlanItemStatusChoices.REJECTED
+        item.rejected_at = timezone.now()
+        item.save(update_fields=["status", "rejected_at", "updated_at"])
+        return item
+
+    @staticmethod
+    def mark_cancelled(item: SettlementPlanItem):
+        item.status = SettlementPlanItemStatusChoices.CANCELLED
+        item.cancelled_at = timezone.now()
+        item.save(update_fields=["status", "cancelled_at", "updated_at"])
+        return item
+
+
+class SettlementPlanEventLogRepository:
+    @staticmethod
+    def create(**data):
+        return SettlementPlanEventLog.objects.create(
+            settlement_plan_id=normalize_uuid(data.get("settlement_plan_id")),
+            settlement_plan_item_id=normalize_uuid(data.get("settlement_plan_item_id")),
+            actor_user_id=normalize_uuid(data.get("actor_user_id")),
+            event_type=data.get("event_type"),
+            metadata=data.get("metadata"),
+        )
 
 
 class ProcessedEventRepository:

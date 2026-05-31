@@ -91,3 +91,46 @@ class MessageSerializer(serializers.Serializer):
 
 class SettlementRejectSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class SettlementPlanItemSummarySerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    payer_user_id = serializers.UUIDField()
+    payer_display_name = serializers.CharField(allow_null=True, required=False)
+    receiver_user_id = serializers.UUIDField()
+    receiver_display_name = serializers.CharField(allow_null=True, required=False)
+    amount_minor = serializers.IntegerField()
+    status = serializers.CharField()
+    order_index = serializers.IntegerField()
+
+
+class SettlementPlanDetailSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    group_id = serializers.UUIDField()
+    currency = serializers.CharField()
+    status = serializers.CharField()
+    total_debt_minor = serializers.IntegerField()
+    transaction_count = serializers.IntegerField()
+    source_balance_calculated_at = serializers.DateTimeField(required=False)
+    created_at = serializers.DateTimeField(required=False)
+    updated_at = serializers.DateTimeField(required=False)
+    items = SettlementPlanItemSummarySerializer(many=True)
+
+
+class SettlementPlanGenerateSerializer(serializers.Serializer):
+    pass
+
+
+class SettlementPlanReportPaidSerializer(serializers.Serializer):
+    description = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+
+
+class SettlementPlanRejectItemSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class MessageWithManualSettlementSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    manual_settlement_id = serializers.UUIDField()
