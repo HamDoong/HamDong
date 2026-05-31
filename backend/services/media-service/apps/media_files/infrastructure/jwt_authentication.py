@@ -22,6 +22,9 @@ class JWKSAuthentication(BaseAuthentication):
         self.audience = os.getenv("JWT_AUDIENCE") or getattr(settings, "JWT_AUDIENCE", None)
         self.algorithms = [os.getenv("JWT_ALGORITHM") or getattr(settings, "JWT_ALGORITHM", "RS256")]
 
+    def authenticate_header(self, request):
+        return 'Bearer realm="api"'
+
     def authenticate(self, request):
         header = request.META.get("HTTP_AUTHORIZATION") or request.headers.get("Authorization")
         if not header:
