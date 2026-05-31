@@ -159,16 +159,79 @@ services:
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      MEDIA_RABBITMQ_EXCHANGE: ${MEDIA_RABBITMQ_EXCHANGE:-hamdong.media}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+      MEDIA_IDENTITY_QUEUE: ${MEDIA_IDENTITY_QUEUE:-media.identity.user_events}
+      MEDIA_GROUP_QUEUE: ${MEDIA_GROUP_QUEUE:-media.group.events}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
+      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-local}
+      MEDIA_ROOT: ${MEDIA_ROOT:-/media/uploads}
+      MEDIA_MAX_FILE_SIZE_BYTES: ${MEDIA_MAX_FILE_SIZE_BYTES:-5242880}
+      MEDIA_ALLOWED_EXTENSIONS: ${MEDIA_ALLOWED_EXTENSIONS:-jpg,jpeg,png,webp,pdf}
+      MEDIA_ALLOWED_CONTENT_TYPES: ${MEDIA_ALLOWED_CONTENT_TYPES:-image/jpeg,image/png,image/webp,application/pdf}
+      MEDIA_SIGNED_URL_EXPIRES_SECONDS: ${MEDIA_SIGNED_URL_EXPIRES_SECONDS:-300}
     ports:
       - "8005:8000"
     volumes:
       - ./services/media-service:/app
+      - media_uploads:/media/uploads
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
       rabbitmq:
+        condition: service_started
+
+  media-consumer:
+    build: ./services/media-service
+    env_file: .env
+    command: ["python", "manage.py", "consume_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${MEDIA_DB_NAME}
+      MEDIA_DB_NAME: ${MEDIA_DB_NAME}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      MEDIA_RABBITMQ_EXCHANGE: ${MEDIA_RABBITMQ_EXCHANGE:-hamdong.media}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+      MEDIA_IDENTITY_QUEUE: ${MEDIA_IDENTITY_QUEUE:-media.identity.user_events}
+      MEDIA_GROUP_QUEUE: ${MEDIA_GROUP_QUEUE:-media.group.events}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
+      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-local}
+      MEDIA_ROOT: ${MEDIA_ROOT:-/media/uploads}
+      MEDIA_MAX_FILE_SIZE_BYTES: ${MEDIA_MAX_FILE_SIZE_BYTES:-5242880}
+      MEDIA_ALLOWED_EXTENSIONS: ${MEDIA_ALLOWED_EXTENSIONS:-jpg,jpeg,png,webp,pdf}
+      MEDIA_ALLOWED_CONTENT_TYPES: ${MEDIA_ALLOWED_CONTENT_TYPES:-image/jpeg,image/png,image/webp,application/pdf}
+      MEDIA_SIGNED_URL_EXPIRES_SECONDS: ${MEDIA_SIGNED_URL_EXPIRES_SECONDS:-300}
+    volumes:
+      - media_uploads:/media/uploads
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      group-service:
         condition: service_started
 
   notification-service:
@@ -359,3 +422,4 @@ services:
 
 volumes:
   postgres_data:
+  media_uploads:
