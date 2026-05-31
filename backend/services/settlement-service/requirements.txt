@@ -15,3 +15,5 @@ black
 pytest
 pytest-django
 debugpy
+PyJWT>=2.8
+cryptography
