@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 class JWKSClient:
     def __init__(self, jwks_url=None, public_key_path=None):
         self.jwks_url = jwks_url or getattr(settings, "IDENTITY_JWKS_URL", "")
-        self.public_key_path = public_key_path or getattr(settings, "IDENTITY_PUBLIC_KEY_PATH", "")
+        self.public_key_path = public_key_path or getattr(
+            settings, "IDENTITY_PUBLIC_KEY_PATH", ""
+        )
 
     def _load_pem(self):
         if not self.public_key_path:

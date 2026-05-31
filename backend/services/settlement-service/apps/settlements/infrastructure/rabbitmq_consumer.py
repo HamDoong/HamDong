@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from threading import Thread
 
 import pika
@@ -19,17 +20,38 @@ logger = logging.getLogger(__name__)
 
 class SettlementEventConsumer:
     def __init__(self):
-        self.exchange_identity = getattr(settings, "IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity")
-        self.exchange_group = getattr(settings, "GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
-        self.exchange_expense = getattr(settings, "EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense")
-        self.queue_identity = getattr(settings, "SETTLEMENT_IDENTITY_QUEUE", "settlement.identity.user_events")
-        self.queue_group = getattr(settings, "SETTLEMENT_GROUP_QUEUE", "settlement.group.events")
-        self.queue_expense = getattr(settings, "SETTLEMENT_EXPENSE_QUEUE", "settlement.expense.events")
+        self.exchange_identity = getattr(
+            settings, "IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity"
+        )
+        self.exchange_group = getattr(
+            settings, "GROUP_RABBITMQ_EXCHANGE", "hamdong.group"
+        )
+        self.exchange_expense = getattr(
+            settings, "EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense"
+        )
+        self.queue_identity = getattr(
+            settings, "SETTLEMENT_IDENTITY_QUEUE", "settlement.identity.user_events"
+        )
+        self.queue_group = getattr(
+            settings, "SETTLEMENT_GROUP_QUEUE", "settlement.group.events"
+        )
+        self.queue_expense = getattr(
+            settings, "SETTLEMENT_EXPENSE_QUEUE", "settlement.expense.events"
+        )
+        self.retry_delay_seconds = getattr(
+            settings, "SETTLEMENT_CONSUMER_RETRY_DELAY_SECONDS", 2
+        )
         self.expense_events = ExpenseEventUseCase()
 
     def _connect(self):
-        credentials = pika.PlainCredentials(settings.RABBITMQ_DEFAULT_USER, settings.RABBITMQ_DEFAULT_PASS)
-        params = pika.ConnectionParameters(host=settings.RABBITMQ_HOST, port=settings.RABBITMQ_PORT, credentials=credentials)
+        credentials = pika.PlainCredentials(
+            settings.RABBITMQ_DEFAULT_USER, settings.RABBITMQ_DEFAULT_PASS
+        )
+        params = pika.ConnectionParameters(
+            host=settings.RABBITMQ_HOST,
+            port=settings.RABBITMQ_PORT,
+            credentials=credentials,
+        )
         connection = pika.BlockingConnection(params)
         return connection, connection.channel()
 
@@ -53,7 +75,9 @@ class SettlementEventConsumer:
             return False
         handler(event_type, data)
         if event_id:
-            ProcessedEventRepository.mark_processed(event_id, event_type, source_service)
+            ProcessedEventRepository.mark_processed(
+                event_id, event_type, source_service
+            )
         return True
 
     def process_identity_payload(self, payload):
@@ -68,7 +92,9 @@ class SettlementEventConsumer:
             if event_type in ("GroupCreated", "GroupUpdated"):
                 GroupProjectionRepository.upsert_from_event(**data)
             elif event_type == "GroupArchived":
-                GroupProjectionRepository.upsert_from_event(**{**data, "status": "ARCHIVED"})
+                GroupProjectionRepository.upsert_from_event(
+                    **{**data, "status": "ARCHIVED"}
+                )
             elif event_type == "GroupMemberJoined":
                 GroupMemberProjectionRepository.upsert_joined(**data)
             elif event_type == "GroupMemberRemoved":
@@ -82,18 +108,46 @@ class SettlementEventConsumer:
         return self._process("expense-service", payload, self.expense_events.handle)
 
     def _consume(self, queue_name, exchange_name, routing_keys, callback):
-        connection, channel = self._connect()
-        channel.exchange_declare(exchange=exchange_name, exchange_type="topic", durable=True)
-        channel.queue_declare(queue=queue_name, durable=True)
-        for routing_key in routing_keys:
-            channel.queue_bind(queue=queue_name, exchange=exchange_name, routing_key=routing_key)
-        channel.basic_qos(prefetch_count=10)
-        channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=False)
-        try:
-            channel.start_consuming()
-        finally:
-            if connection and not connection.is_closed:
-                connection.close()
+        while True:
+            connection = None
+            try:
+                connection, channel = self._connect()
+                channel.exchange_declare(
+                    exchange=exchange_name, exchange_type="topic", durable=True
+                )
+                channel.queue_declare(queue=queue_name, durable=True)
+                for routing_key in routing_keys:
+                    channel.queue_bind(
+                        queue=queue_name, exchange=exchange_name, routing_key=routing_key
+                    )
+                channel.basic_qos(prefetch_count=10)
+                channel.basic_consume(
+                    queue=queue_name, on_message_callback=callback, auto_ack=False
+                )
+                logger.info(
+                    "Started consumer queue=%s exchange=%s keys=%s",
+                    queue_name,
+                    exchange_name,
+                    routing_keys,
+                )
+                channel.start_consuming()
+            except pika.exceptions.AMQPConnectionError:
+                logger.warning(
+                    "RabbitMQ unavailable for queue=%s; retrying in %ss",
+                    queue_name,
+                    self.retry_delay_seconds,
+                )
+                time.sleep(self.retry_delay_seconds)
+            except Exception:
+                logger.exception(
+                    "Consumer crashed for queue=%s; retrying in %ss",
+                    queue_name,
+                    self.retry_delay_seconds,
+                )
+                time.sleep(self.retry_delay_seconds)
+            finally:
+                if connection and not connection.is_closed:
+                    connection.close()
 
     def _callback_identity(self, ch, method, properties, body):
         try:
@@ -120,7 +174,12 @@ class SettlementEventConsumer:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def start_identity_consumer(self):
-        self._consume(self.queue_identity, self.exchange_identity, ["identity.user.created", "identity.user.updated"], self._callback_identity)
+        self._consume(
+            self.queue_identity,
+            self.exchange_identity,
+            ["identity.user.created", "identity.user.updated"],
+            self._callback_identity,
+        )
 
     def start_group_consumer(self):
         self._consume(
@@ -141,7 +200,12 @@ class SettlementEventConsumer:
         self._consume(
             self.queue_expense,
             self.exchange_expense,
-            ["expense.created", "expense.updated", "expense.deleted", "expense.participants.changed"],
+            [
+                "expense.created",
+                "expense.updated",
+                "expense.deleted",
+                "expense.participants.changed",
+            ],
             self._callback_expense,
         )
 

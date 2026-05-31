@@ -13,24 +13,45 @@ POSTGRES_USER = os.environ["POSTGRES_USER"]
 POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
+RABBITMQ_DEFAULT_USER = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
+RABBITMQ_DEFAULT_PASS = os.getenv("RABBITMQ_DEFAULT_PASS", "guest")
 
 SERVICE_NAME = "settlement-service"
 SERVICE_VERSION = "0.1.0"
 
-IDENTITY_RABBITMQ_EXCHANGE = env("IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity")
+IDENTITY_RABBITMQ_EXCHANGE = env(
+    "IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity"
+)
 GROUP_RABBITMQ_EXCHANGE = env("GROUP_RABBITMQ_EXCHANGE", default="hamdong.group")
 EXPENSE_RABBITMQ_EXCHANGE = env("EXPENSE_RABBITMQ_EXCHANGE", default="hamdong.expense")
-SETTLEMENT_RABBITMQ_EXCHANGE = env("SETTLEMENT_RABBITMQ_EXCHANGE", default="hamdong.settlement")
-SETTLEMENT_IDENTITY_QUEUE = env("SETTLEMENT_IDENTITY_QUEUE", default="settlement.identity.user_events")
-SETTLEMENT_GROUP_QUEUE = env("SETTLEMENT_GROUP_QUEUE", default="settlement.group.events")
-SETTLEMENT_EXPENSE_QUEUE = env("SETTLEMENT_EXPENSE_QUEUE", default="settlement.expense.events")
-IDENTITY_JWKS_URL = env("IDENTITY_JWKS_URL", default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json")
-IDENTITY_PUBLIC_KEY_PATH = env("IDENTITY_PUBLIC_KEY_PATH", default="/app/keys/public.pem")
+SETTLEMENT_RABBITMQ_EXCHANGE = env(
+    "SETTLEMENT_RABBITMQ_EXCHANGE", default="hamdong.settlement"
+)
+SETTLEMENT_IDENTITY_QUEUE = env(
+    "SETTLEMENT_IDENTITY_QUEUE", default="settlement.identity.user_events"
+)
+SETTLEMENT_GROUP_QUEUE = env(
+    "SETTLEMENT_GROUP_QUEUE", default="settlement.group.events"
+)
+SETTLEMENT_EXPENSE_QUEUE = env(
+    "SETTLEMENT_EXPENSE_QUEUE", default="settlement.expense.events"
+)
+IDENTITY_JWKS_URL = env(
+    "IDENTITY_JWKS_URL",
+    default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json",
+)
+IDENTITY_PUBLIC_KEY_PATH = env(
+    "IDENTITY_PUBLIC_KEY_PATH", default="/app/keys/public.pem"
+)
 JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
 JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
 DEFAULT_CURRENCY = env("DEFAULT_CURRENCY", default="IRR")
-MAX_SETTLEMENT_AMOUNT_MINOR = env.int("MAX_SETTLEMENT_AMOUNT_MINOR", default=100000000000)
+MAX_SETTLEMENT_AMOUNT_MINOR = env.int(
+    "MAX_SETTLEMENT_AMOUNT_MINOR", default=100000000000
+)
 
 SECRET_KEY = env("SECRET_KEY", default="change-me")
 DEBUG = env.bool("DEBUG", default=False)

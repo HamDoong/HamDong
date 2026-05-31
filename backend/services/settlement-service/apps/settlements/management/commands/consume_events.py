@@ -4,7 +4,9 @@ from apps.settlements.infrastructure.rabbitmq_consumer import SettlementEventCon
 
 
 class Command(BaseCommand):
-    help = "Consume identity, group, and expense events for settlement-service projections"
+    help = (
+        "Consume identity, group, and expense events for settlement-service projections"
+    )
 
     def handle(self, *args, **options):
         SettlementEventConsumer().start_consumers()

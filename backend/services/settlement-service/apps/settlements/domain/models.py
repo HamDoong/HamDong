@@ -69,7 +69,9 @@ class UserProjection(models.Model):
     display_name = models.CharField(max_length=255, null=True, blank=True)
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
-    role = models.CharField(max_length=10, choices=UserRoleChoices.choices, default=UserRoleChoices.USER)
+    role = models.CharField(
+        max_length=10, choices=UserRoleChoices.choices, default=UserRoleChoices.USER
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -82,8 +84,16 @@ class GroupProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group_id = models.UUIDField(unique=True, db_index=True)
     title = models.CharField(max_length=255)
-    group_type = models.CharField(max_length=20, choices=GroupTypeChoices.choices, default=GroupTypeChoices.GENERAL)
-    status = models.CharField(max_length=10, choices=GroupStatusChoices.choices, default=GroupStatusChoices.ACTIVE)
+    group_type = models.CharField(
+        max_length=20,
+        choices=GroupTypeChoices.choices,
+        default=GroupTypeChoices.GENERAL,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=GroupStatusChoices.choices,
+        default=GroupStatusChoices.ACTIVE,
+    )
     created_by_user_id = models.UUIDField()
     member_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -99,8 +109,16 @@ class GroupMemberProjection(models.Model):
     user_id = models.UUIDField(db_index=True)
     phone_number = models.CharField(max_length=32)
     display_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
-    role = models.CharField(max_length=10, choices=GroupMemberRoleChoices.choices, default=GroupMemberRoleChoices.MEMBER)
-    status = models.CharField(max_length=10, choices=GroupMemberStatusChoices.choices, default=GroupMemberStatusChoices.ACTIVE)
+    role = models.CharField(
+        max_length=10,
+        choices=GroupMemberRoleChoices.choices,
+        default=GroupMemberRoleChoices.MEMBER,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=GroupMemberStatusChoices.choices,
+        default=GroupMemberStatusChoices.ACTIVE,
+    )
     joined_at = models.DateTimeField(null=True, blank=True)
     left_at = models.DateTimeField(null=True, blank=True)
     removed_at = models.DateTimeField(null=True, blank=True)
@@ -119,12 +137,18 @@ class ExpenseProjection(models.Model):
     group_id = models.UUIDField(db_index=True)
     created_by_user_id = models.UUIDField()
     payer_user_id = models.UUIDField(db_index=True)
-    currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
     base_amount_minor = models.BigIntegerField(default=0)
     tax_amount_minor = models.BigIntegerField(default=0)
     service_fee_amount_minor = models.BigIntegerField(default=0)
     total_amount_minor = models.BigIntegerField(default=0)
-    status = models.CharField(max_length=10, choices=ExpenseStatusChoices.choices, default=ExpenseStatusChoices.ACTIVE)
+    status = models.CharField(
+        max_length=10,
+        choices=ExpenseStatusChoices.choices,
+        default=ExpenseStatusChoices.ACTIVE,
+    )
     expense_version = models.PositiveIntegerField(default=1)
     expense_date = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -150,7 +174,11 @@ class ExpenseParticipantProjection(models.Model):
     class Meta:
         db_table = "settlement_expense_participant_projections"
         unique_together = (("expense_id", "user_id"),)
-        indexes = [models.Index(fields=["expense_id"]), models.Index(fields=["group_id"]), models.Index(fields=["user_id"])]
+        indexes = [
+            models.Index(fields=["expense_id"]),
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["user_id"]),
+        ]
 
 
 class DebtLedgerEntry(models.Model):
@@ -161,9 +189,17 @@ class DebtLedgerEntry(models.Model):
     debtor_user_id = models.UUIDField(db_index=True)
     creditor_user_id = models.UUIDField(db_index=True)
     amount_minor = models.BigIntegerField(default=0)
-    currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
-    entry_type = models.CharField(max_length=20, choices=DebtLedgerEntryTypeChoices.choices)
-    status = models.CharField(max_length=10, choices=DebtLedgerStatusChoices.choices, default=DebtLedgerStatusChoices.ACTIVE)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    entry_type = models.CharField(
+        max_length=20, choices=DebtLedgerEntryTypeChoices.choices
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=DebtLedgerStatusChoices.choices,
+        default=DebtLedgerStatusChoices.ACTIVE,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     reversed_at = models.DateTimeField(null=True, blank=True)
@@ -171,14 +207,21 @@ class DebtLedgerEntry(models.Model):
 
     class Meta:
         db_table = "settlement_debt_ledger_entries"
-        indexes = [models.Index(fields=["group_id"]), models.Index(fields=["source_expense_id"]), models.Index(fields=["debtor_user_id"]), models.Index(fields=["creditor_user_id"])]
+        indexes = [
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["source_expense_id"]),
+            models.Index(fields=["debtor_user_id"]),
+            models.Index(fields=["creditor_user_id"]),
+        ]
 
 
 class GroupBalanceSnapshot(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group_id = models.UUIDField(db_index=True)
     user_id = models.UUIDField(db_index=True)
-    currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
     total_paid_minor = models.BigIntegerField(default=0)
     total_share_minor = models.BigIntegerField(default=0)
     total_settled_paid_minor = models.BigIntegerField(default=0)
@@ -200,9 +243,15 @@ class ManualSettlement(models.Model):
     payer_user_id = models.UUIDField(db_index=True)
     receiver_user_id = models.UUIDField(db_index=True)
     amount_minor = models.BigIntegerField(default=0)
-    currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
     description = models.TextField(null=True, blank=True)
-    status = models.CharField(max_length=30, choices=ManualSettlementStatusChoices.choices, default=ManualSettlementStatusChoices.PENDING_CONFIRMATION)
+    status = models.CharField(
+        max_length=30,
+        choices=ManualSettlementStatusChoices.choices,
+        default=ManualSettlementStatusChoices.PENDING_CONFIRMATION,
+    )
     created_by_user_id = models.UUIDField()
     confirmed_by_user_id = models.UUIDField(null=True, blank=True)
     rejected_by_user_id = models.UUIDField(null=True, blank=True)
@@ -215,7 +264,11 @@ class ManualSettlement(models.Model):
 
     class Meta:
         db_table = "settlement_manual_settlements"
-        indexes = [models.Index(fields=["group_id"]), models.Index(fields=["payer_user_id"]), models.Index(fields=["receiver_user_id"])]
+        indexes = [
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["payer_user_id"]),
+            models.Index(fields=["receiver_user_id"]),
+        ]
 
 
 class ProcessedEvent(models.Model):

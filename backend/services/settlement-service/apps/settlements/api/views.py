@@ -6,8 +6,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.settlements.api.serializers import (
-    BalanceItemSerializer,
-    DebtItemSerializer,
     GroupBalancesResponseSerializer,
     GroupDebtsResponseSerializer,
     ManualSettlementCreateSerializer,
@@ -32,7 +30,9 @@ from apps.settlements.infrastructure.jwt_authentication import JWTAuthentication
 
 
 def _error_response(exc):
-    return Response({"error": {"code": exc.code, "message": exc.message}}, status=exc.status_code)
+    return Response(
+        {"error": {"code": exc.code, "message": exc.message}}, status=exc.status_code
+    )
 
 
 class HealthView(APIView):
@@ -40,14 +40,22 @@ class HealthView(APIView):
     permission_classes = []
 
     def get(self, request, *args, **kwargs):
-        return Response({"service": settings.SERVICE_NAME, "status": "ok", "version": settings.SERVICE_VERSION})
+        return Response(
+            {
+                "service": settings.SERVICE_NAME,
+                "status": "ok",
+                "version": settings.SERVICE_VERSION,
+            }
+        )
 
 
 class GroupBalancesView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=["Settlements"], responses={200: GroupBalancesResponseSerializer})
+    @extend_schema(
+        tags=["Settlements"], responses={200: GroupBalancesResponseSerializer}
+    )
     def get(self, request, group_id, *args, **kwargs):
         try:
             payload = GetGroupBalancesUseCase().execute(request.user, group_id)
@@ -91,9 +99,21 @@ class GroupSettlementsView(APIView):
     @extend_schema(
         tags=["Settlements"],
         parameters=[
-            OpenApiParameter(name="status", type=str, required=False, location=OpenApiParameter.QUERY),
-            OpenApiParameter(name="payer_user_id", type=str, required=False, location=OpenApiParameter.QUERY),
-            OpenApiParameter(name="receiver_user_id", type=str, required=False, location=OpenApiParameter.QUERY),
+            OpenApiParameter(
+                name="status", type=str, required=False, location=OpenApiParameter.QUERY
+            ),
+            OpenApiParameter(
+                name="payer_user_id",
+                type=str,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="receiver_user_id",
+                type=str,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
         ],
         responses={200: ManualSettlementListResponseSerializer},
     )
@@ -110,40 +130,54 @@ class GroupSettlementsView(APIView):
             )
         except SettlementServiceError as exc:
             return _error_response(exc)
-        return Response({"group_id": str(group_id), "settlements": [
+        return Response(
             {
-                "id": str(item.id),
-                "group_id": str(item.group_id),
-                "payer_user_id": str(item.payer_user_id),
-                "receiver_user_id": str(item.receiver_user_id),
-                "amount_minor": item.amount_minor,
-                "currency": item.currency,
-                "status": item.status,
-                "description": item.description,
-                "created_at": item.created_at.isoformat(),
+                "group_id": str(group_id),
+                "settlements": [
+                    {
+                        "id": str(item.id),
+                        "group_id": str(item.group_id),
+                        "payer_user_id": str(item.payer_user_id),
+                        "receiver_user_id": str(item.receiver_user_id),
+                        "amount_minor": item.amount_minor,
+                        "currency": item.currency,
+                        "status": item.status,
+                        "description": item.description,
+                        "created_at": item.created_at.isoformat(),
+                    }
+                    for item in settlements
+                ],
             }
-            for item in settlements
-        ]})
+        )
 
-    @extend_schema(tags=["Settlements"], request=ManualSettlementCreateSerializer, responses={201: ManualSettlementItemSerializer})
+    @extend_schema(
+        tags=["Settlements"],
+        request=ManualSettlementCreateSerializer,
+        responses={201: ManualSettlementItemSerializer},
+    )
     def post(self, request, group_id, *args, **kwargs):
         serializer = ManualSettlementCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            settlement = CreateManualSettlementUseCase().execute(request.user, group_id, serializer.validated_data)
+            settlement = CreateManualSettlementUseCase().execute(
+                request.user, group_id, serializer.validated_data
+            )
         except SettlementServiceError as exc:
             return _error_response(exc)
-        return Response({
-            "id": str(settlement.id),
-            "group_id": str(settlement.group_id),
-            "payer_user_id": str(settlement.payer_user_id),
-            "receiver_user_id": str(settlement.receiver_user_id),
-            "amount_minor": settlement.amount_minor,
-            "currency": settlement.currency,
-            "status": settlement.status,
-            "description": settlement.description,
-            "created_at": settlement.created_at.isoformat(),
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "id": str(settlement.id),
+                "group_id": str(settlement.group_id),
+                "payer_user_id": str(settlement.payer_user_id),
+                "receiver_user_id": str(settlement.receiver_user_id),
+                "amount_minor": settlement.amount_minor,
+                "currency": settlement.currency,
+                "status": settlement.status,
+                "description": settlement.description,
+                "created_at": settlement.created_at.isoformat(),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ConfirmSettlementView(APIView):
@@ -163,12 +197,20 @@ class RejectSettlementView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=["Settlements"], request=SettlementRejectSerializer, responses={200: MessageSerializer})
+    @extend_schema(
+        tags=["Settlements"],
+        request=SettlementRejectSerializer,
+        responses={200: MessageSerializer},
+    )
     def post(self, request, settlement_id, *args, **kwargs):
         serializer = SettlementRejectSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            RejectSettlementUseCase().execute(request.user, settlement_id, reason=serializer.validated_data.get("reason"))
+            RejectSettlementUseCase().execute(
+                request.user,
+                settlement_id,
+                reason=serializer.validated_data.get("reason"),
+            )
         except SettlementServiceError as exc:
             return _error_response(exc)
         return Response({"message": "Settlement rejected successfully."})
