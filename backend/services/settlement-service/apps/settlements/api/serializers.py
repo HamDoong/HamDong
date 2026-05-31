@@ -45,18 +45,26 @@ class ManualSettlementCreateSerializer(serializers.Serializer):
     receiver_user_id = serializers.UUIDField()
     amount_minor = serializers.IntegerField()
     currency = serializers.CharField(default="IRR")
-    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    description = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
 
     def validate_amount_minor(self, value):
         if value <= 0:
-            raise serializers.ValidationError("Settlement amount must be greater than zero.")
+            raise serializers.ValidationError(
+                "Settlement amount must be greater than zero."
+            )
         if value > getattr(settings, "MAX_SETTLEMENT_AMOUNT_MINOR", 100000000000):
-            raise serializers.ValidationError("Settlement amount exceeds the allowed maximum.")
+            raise serializers.ValidationError(
+                "Settlement amount exceeds the allowed maximum."
+            )
         return value
 
     def validate_currency(self, value):
         if value != "IRR":
-            raise serializers.ValidationError("Only IRR currency is supported in this phase.")
+            raise serializers.ValidationError(
+                "Only IRR currency is supported in this phase."
+            )
         return value
 
 

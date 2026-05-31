@@ -2,14 +2,18 @@ from collections import defaultdict
 
 from django.utils import timezone
 
-from apps.settlements.domain.models import CurrencyChoices, DebtLedgerEntryTypeChoices, DebtLedgerStatusChoices
-from apps.settlements.domain.rules import balance_status, ensure_active_member, ensure_group_active, mask_phone_number
+from apps.settlements.domain.models import CurrencyChoices, DebtLedgerEntryTypeChoices
+from apps.settlements.domain.rules import (
+    balance_status,
+    ensure_active_member,
+    ensure_group_active,
+    mask_phone_number,
+)
 from apps.settlements.infrastructure.repositories import (
     DebtLedgerRepository,
     GroupBalanceSnapshotRepository,
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
-    ManualSettlementRepository,
 )
 
 
@@ -18,21 +22,27 @@ class BalanceService:
         group = GroupProjectionRepository.get(group_id)
         if not group:
             return []
-        active_members = list(GroupMemberProjectionRepository.list_active_members(group_id))
+        active_members = list(
+            GroupMemberProjectionRepository.list_active_members(group_id)
+        )
         active_user_ids = {member.user_id for member in active_members}
         for entry in DebtLedgerRepository.all_by_group(group_id):
             active_user_ids.add(entry.debtor_user_id)
             active_user_ids.add(entry.creditor_user_id)
 
-        totals = defaultdict(lambda: {
-            "total_paid_minor": 0,
-            "total_share_minor": 0,
-            "total_settled_paid_minor": 0,
-            "total_settled_received_minor": 0,
-            "net_balance_minor": 0,
-        })
+        totals = defaultdict(
+            lambda: {
+                "total_paid_minor": 0,
+                "total_share_minor": 0,
+                "total_settled_paid_minor": 0,
+                "total_settled_received_minor": 0,
+                "net_balance_minor": 0,
+            }
+        )
 
-        for entry in DebtLedgerRepository.active_by_group(group_id).filter(currency=currency):
+        for entry in DebtLedgerRepository.active_by_group(group_id).filter(
+            currency=currency
+        ):
             debtor = totals[entry.debtor_user_id]
             creditor = totals[entry.creditor_user_id]
             if entry.entry_type == DebtLedgerEntryTypeChoices.MANUAL_SETTLEMENT:
@@ -52,14 +62,20 @@ class BalanceService:
                 - values["total_settled_received_minor"]
             )
             values["net_balance_minor"] = net_balance
-            snapshot = GroupBalanceSnapshotRepository.upsert_snapshot(group_id, user_id, currency, values)
+            snapshot = GroupBalanceSnapshotRepository.upsert_snapshot(
+                group_id, user_id, currency, values
+            )
             snapshots.append(snapshot)
 
-        GroupBalanceSnapshotRepository.delete_missing(group_id, active_user_ids, currency=currency)
+        GroupBalanceSnapshotRepository.delete_missing(
+            group_id, active_user_ids, currency=currency
+        )
         return snapshots
 
     def my_balance(self, group_id, user_id, currency=CurrencyChoices.IRR):
-        snapshot = GroupBalanceSnapshotRepository.get(group_id, user_id, currency=currency)
+        snapshot = GroupBalanceSnapshotRepository.get(
+            group_id, user_id, currency=currency
+        )
         if snapshot:
             return snapshot
         snapshots = self.recalculate_group(group_id, currency=currency)
@@ -81,14 +97,25 @@ class BalanceService:
             "status": balance_status(snapshot.net_balance_minor),
         }
 
-    def render_group_balances(self, group_id, requester_user_id=None, currency=CurrencyChoices.IRR):
+    def render_group_balances(
+        self, group_id, requester_user_id=None, currency=CurrencyChoices.IRR
+    ):
         ensure_group_active(GroupProjectionRepository.get(group_id))
         if requester_user_id is not None:
-            ensure_active_member(GroupMemberProjectionRepository.get_active_member(group_id, requester_user_id))
-        snapshots = self.recalculate_group(group_id, currency=currency)
-        members = {member.user_id: member for member in GroupMemberProjectionRepository.list_active_members(group_id)}
+            ensure_active_member(
+                GroupMemberProjectionRepository.get_active_member(
+                    group_id, requester_user_id
+                )
+            )
+        self.recalculate_group(group_id, currency=currency)
+        members = {
+            member.user_id: member
+            for member in GroupMemberProjectionRepository.list_active_members(group_id)
+        }
         results = []
-        for snapshot in GroupBalanceSnapshotRepository.list_by_group(group_id, currency=currency):
+        for snapshot in GroupBalanceSnapshotRepository.list_by_group(
+            group_id, currency=currency
+        ):
             member = members.get(snapshot.user_id)
             if member:
                 results.append(self.format_snapshot(snapshot, member))
@@ -102,7 +129,9 @@ class BalanceService:
 
     def render_my_balance(self, group_id, user_id, currency=CurrencyChoices.IRR):
         ensure_group_active(GroupProjectionRepository.get(group_id))
-        ensure_active_member(GroupMemberProjectionRepository.get_active_member(group_id, user_id))
+        ensure_active_member(
+            GroupMemberProjectionRepository.get_active_member(group_id, user_id)
+        )
         snapshot = self.my_balance(group_id, user_id, currency=currency)
         if not snapshot:
             return None
@@ -114,10 +143,16 @@ class BalanceService:
             "status": balance_status(snapshot.net_balance_minor),
         }
 
-    def render_group_debts(self, group_id, requester_user_id=None, currency=CurrencyChoices.IRR):
+    def render_group_debts(
+        self, group_id, requester_user_id=None, currency=CurrencyChoices.IRR
+    ):
         ensure_group_active(GroupProjectionRepository.get(group_id))
         if requester_user_id is not None:
-            ensure_active_member(GroupMemberProjectionRepository.get_active_member(group_id, requester_user_id))
+            ensure_active_member(
+                GroupMemberProjectionRepository.get_active_member(
+                    group_id, requester_user_id
+                )
+            )
         debts = DebtLedgerRepository.active_by_group(group_id).filter(currency=currency)
         return {
             "group_id": str(group_id),
@@ -125,7 +160,11 @@ class BalanceService:
             "debts": [
                 {
                     "id": str(entry.id),
-                    "source_expense_id": str(entry.source_expense_id) if entry.source_expense_id else None,
+                    "source_expense_id": (
+                        str(entry.source_expense_id)
+                        if entry.source_expense_id
+                        else None
+                    ),
                     "debtor_user_id": str(entry.debtor_user_id),
                     "creditor_user_id": str(entry.creditor_user_id),
                     "amount_minor": entry.amount_minor,

@@ -19,14 +19,20 @@ class JWKSAuthentication(BaseAuthentication):
     def __init__(self):
         self.jwks_client = get_default_jwks_client()
         self.issuer = os.getenv("JWT_ISSUER") or getattr(settings, "JWT_ISSUER", None)
-        self.audience = os.getenv("JWT_AUDIENCE") or getattr(settings, "JWT_AUDIENCE", None)
-        self.algorithms = [os.getenv("JWT_ALGORITHM") or getattr(settings, "JWT_ALGORITHM", "RS256")]
+        self.audience = os.getenv("JWT_AUDIENCE") or getattr(
+            settings, "JWT_AUDIENCE", None
+        )
+        self.algorithms = [
+            os.getenv("JWT_ALGORITHM") or getattr(settings, "JWT_ALGORITHM", "RS256")
+        ]
 
     def authenticate_header(self, request):
         return 'Bearer realm="api"'
 
     def authenticate(self, request):
-        header = request.META.get("HTTP_AUTHORIZATION") or request.headers.get("Authorization")
+        header = request.META.get("HTTP_AUTHORIZATION") or request.headers.get(
+            "Authorization"
+        )
         if not header:
             return None
         if not header.startswith("Bearer "):
@@ -38,9 +44,13 @@ class JWKSAuthentication(BaseAuthentication):
             raise exceptions.AuthenticationFailed("Invalid token header")
 
         try:
-            key = self.jwks_client.get_public_key(kid=unverified_header.get("kid"), header=unverified_header)
+            key = self.jwks_client.get_public_key(
+                kid=unverified_header.get("kid"), header=unverified_header
+            )
         except Exception as exc:
-            raise exceptions.AuthenticationFailed("Unable to obtain public key for token") from exc
+            raise exceptions.AuthenticationFailed(
+                "Unable to obtain public key for token"
+            ) from exc
 
         try:
             payload = jwt.decode(

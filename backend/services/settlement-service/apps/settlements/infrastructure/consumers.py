@@ -1,1 +1,0 @@
-from apps.settlements.infrastructure.rabbitmq_consumer import SettlementEventConsumer

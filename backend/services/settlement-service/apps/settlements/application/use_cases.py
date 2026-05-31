@@ -5,7 +5,6 @@ from apps.settlements.application.debt_service import DebtService
 from apps.settlements.application.recalculation_service import RecalculationService
 from apps.settlements.application.settlement_service import SettlementService
 from apps.settlements.domain.models import CurrencyChoices
-from apps.settlements.infrastructure.repositories import DebtLedgerRepository
 
 
 class GetGroupBalancesUseCase:
@@ -13,7 +12,9 @@ class GetGroupBalancesUseCase:
         self.balance_service = balance_service or BalanceService()
 
     def execute(self, user, group_id):
-        return self.balance_service.render_group_balances(group_id, requester_user_id=user.sub, currency=CurrencyChoices.IRR)
+        return self.balance_service.render_group_balances(
+            group_id, requester_user_id=user.sub, currency=CurrencyChoices.IRR
+        )
 
 
 class GetMyBalanceUseCase:
@@ -21,7 +22,9 @@ class GetMyBalanceUseCase:
         self.balance_service = balance_service or BalanceService()
 
     def execute(self, user, group_id):
-        return self.balance_service.render_my_balance(group_id, user.sub, currency=CurrencyChoices.IRR)
+        return self.balance_service.render_my_balance(
+            group_id, user.sub, currency=CurrencyChoices.IRR
+        )
 
 
 class GetGroupDebtsUseCase:
@@ -29,7 +32,9 @@ class GetGroupDebtsUseCase:
         self.balance_service = balance_service or BalanceService()
 
     def execute(self, user, group_id):
-        return self.balance_service.render_group_debts(group_id, requester_user_id=user.sub, currency=CurrencyChoices.IRR)
+        return self.balance_service.render_group_debts(
+            group_id, requester_user_id=user.sub, currency=CurrencyChoices.IRR
+        )
 
 
 class CreateManualSettlementUseCase:
@@ -37,7 +42,9 @@ class CreateManualSettlementUseCase:
         self.settlement_service = settlement_service or SettlementService()
 
     def execute(self, user, group_id, payload):
-        return self.settlement_service.create_manual_settlement(group_id, user.sub, payload)
+        return self.settlement_service.create_manual_settlement(
+            group_id, user.sub, payload
+        )
 
 
 class ListGroupSettlementsUseCase:
@@ -45,7 +52,9 @@ class ListGroupSettlementsUseCase:
         self.settlement_service = settlement_service or SettlementService()
 
     def execute(self, user, group_id, filters=None):
-        return self.settlement_service.list_group_settlements(group_id, user.sub, filters=filters)
+        return self.settlement_service.list_group_settlements(
+            group_id, user.sub, filters=filters
+        )
 
 
 class ConfirmSettlementUseCase:
@@ -61,7 +70,9 @@ class RejectSettlementUseCase:
         self.settlement_service = settlement_service or SettlementService()
 
     def execute(self, user, settlement_id, reason=None):
-        return self.settlement_service.reject_settlement(settlement_id, user.sub, reason=reason)
+        return self.settlement_service.reject_settlement(
+            settlement_id, user.sub, reason=reason
+        )
 
 
 class CancelSettlementUseCase:
@@ -77,7 +88,9 @@ class RebuildGroupBalancesUseCase:
         self.recalculation_service = recalculation_service or RecalculationService()
 
     def execute(self, group_id):
-        return self.recalculation_service.rebuild_group_balances(group_id, currency=CurrencyChoices.IRR)
+        return self.recalculation_service.rebuild_group_balances(
+            group_id, currency=CurrencyChoices.IRR
+        )
 
 
 class ExpenseEventUseCase:

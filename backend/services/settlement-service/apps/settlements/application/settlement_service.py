@@ -3,8 +3,7 @@ from django.conf import settings
 
 from apps.settlements.application.balance_service import BalanceService
 from apps.settlements.application.debt_service import DebtService
-from apps.settlements.domain.events import SettlementCancelled, SettlementConfirmed, SettlementCreated, SettlementRejected
-from apps.settlements.domain.models import CurrencyChoices, ManualSettlementStatusChoices
+from apps.settlements.domain.models import CurrencyChoices
 from apps.settlements.domain.rules import (
     ensure_active_member,
     ensure_different_participants,
@@ -13,14 +12,11 @@ from apps.settlements.domain.rules import (
     ensure_irr_currency,
     ensure_positive_amount,
     ensure_settlement_can_be_modified,
-    InvalidSettlementStatusError,
-    NotGroupMemberError,
     SettlementNotFoundError,
     SettlementPermissionDeniedError,
 )
 from apps.settlements.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 from apps.settlements.infrastructure.repositories import (
-    DebtLedgerRepository,
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
     ManualSettlementRepository,
@@ -30,7 +26,10 @@ from apps.settlements.infrastructure.repositories import (
 class SettlementService:
     def __init__(self, publisher=None, debt_service=None, balance_service=None):
         self.publisher = publisher or RabbitMQPublisher()
-        self.debt_service = debt_service or DebtService(publisher=self.publisher, balance_service=balance_service or BalanceService())
+        self.debt_service = debt_service or DebtService(
+            publisher=self.publisher,
+            balance_service=balance_service or BalanceService(),
+        )
         self.balance_service = balance_service or BalanceService()
 
     def _get_group_and_member(self, group_id, user_id):
@@ -45,11 +44,15 @@ class SettlementService:
         self._get_group_and_member(group_id, payer_user_id)
         receiver_user_id = payload.get("receiver_user_id")
         ensure_different_participants(payer_user_id, receiver_user_id)
-        receiver = GroupMemberProjectionRepository.get_active_member(group_id, receiver_user_id)
+        receiver = GroupMemberProjectionRepository.get_active_member(
+            group_id, receiver_user_id
+        )
         ensure_active_member(receiver)
         amount_minor = int(payload.get("amount_minor", 0))
         ensure_positive_amount(amount_minor)
-        ensure_amount_within_limit(amount_minor, getattr(settings, "MAX_SETTLEMENT_AMOUNT_MINOR", 100000000000))
+        ensure_amount_within_limit(
+            amount_minor, getattr(settings, "MAX_SETTLEMENT_AMOUNT_MINOR", 100000000000)
+        )
         ensure_irr_currency(payload.get("currency", CurrencyChoices.IRR))
         settlement = ManualSettlementRepository.create_pending(
             group_id=group_id,
