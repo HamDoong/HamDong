@@ -127,10 +127,67 @@ services:
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      SETTLEMENT_RABBITMQ_EXCHANGE: ${SETTLEMENT_RABBITMQ_EXCHANGE:-hamdong.settlement}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+      EXPENSE_RABBITMQ_EXCHANGE: ${EXPENSE_RABBITMQ_EXCHANGE:-hamdong.expense}
+      SETTLEMENT_IDENTITY_QUEUE: ${SETTLEMENT_IDENTITY_QUEUE:-settlement.identity.user_events}
+      SETTLEMENT_GROUP_QUEUE: ${SETTLEMENT_GROUP_QUEUE:-settlement.group.events}
+      SETTLEMENT_EXPENSE_QUEUE: ${SETTLEMENT_EXPENSE_QUEUE:-settlement.expense.events}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
+      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-IRR}
+      MAX_SETTLEMENT_AMOUNT_MINOR: ${MAX_SETTLEMENT_AMOUNT_MINOR:-100000000000}
     ports:
       - "8004:8000"
     volumes:
       - ./services/settlement-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+
+  settlement-consumer:
+    build: ./services/settlement-service
+    env_file: .env
+    command: ["python", "manage.py", "consume_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${SETTLEMENT_DB_NAME}
+      SETTLEMENT_DB_NAME: ${SETTLEMENT_DB_NAME}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      SETTLEMENT_RABBITMQ_EXCHANGE: ${SETTLEMENT_RABBITMQ_EXCHANGE:-hamdong.settlement}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+      EXPENSE_RABBITMQ_EXCHANGE: ${EXPENSE_RABBITMQ_EXCHANGE:-hamdong.expense}
+      SETTLEMENT_IDENTITY_QUEUE: ${SETTLEMENT_IDENTITY_QUEUE:-settlement.identity.user_events}
+      SETTLEMENT_GROUP_QUEUE: ${SETTLEMENT_GROUP_QUEUE:-settlement.group.events}
+      SETTLEMENT_EXPENSE_QUEUE: ${SETTLEMENT_EXPENSE_QUEUE:-settlement.expense.events}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
+      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-IRR}
+      MAX_SETTLEMENT_AMOUNT_MINOR: ${MAX_SETTLEMENT_AMOUNT_MINOR:-100000000000}
     depends_on:
       postgres:
         condition: service_healthy

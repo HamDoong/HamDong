@@ -1,1 +1,1 @@
-"""RabbitMQ consumers for settlement-service."""
+from apps.settlements.infrastructure.rabbitmq_consumer import SettlementEventConsumer
