@@ -58,3 +58,19 @@ format:
 	docker compose run --rm settlement-service black .
 	docker compose run --rm media-service black .
 	docker compose run --rm notification-service black .
+
+.PHONY: smoke seed test-smoke ci-check
+
+smoke:
+	./backend/scripts/smoke-test.sh
+
+seed:
+	./backend/scripts/seed-demo-data.sh
+
+test-smoke:
+	@echo "Running quick smoke tests..."
+	./backend/scripts/smoke-test.sh
+
+ci-check:
+	docker compose config >/dev/null
+	@echo "docker compose config OK"
