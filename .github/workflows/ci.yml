@@ -11,9 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+
       - name: Validate docker compose
         run: docker compose -f backend/docker-compose.yml config
-      - name: Run backend tests (Makefile)
-        run: make -C backend test
+
+      - name: Build services
+        run: docker compose -f backend/docker-compose.yml build

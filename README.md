@@ -31,21 +31,6 @@ Folder Structure
 - api-tests/: VS Code REST Client requests
 - scripts/: helper and demo scripts
 
-How to Run Locally
-1. Copy and edit `.env.example` to `.env` with secrets and keys.
-2. Build and start services:
-
-    make build
-    make up
-
-3. Apply migrations:
-
-    make migrate
-
-4. Run tests:
-
-    make test
-
 Environment Variables
 - See `.env.example` for required variables (Postgres, Redis, RabbitMQ, JWT, OTP, SMS, event/outbox settings).
 
@@ -92,9 +77,6 @@ Smart Settlement Flow
 Reminder Flow
 - Reminder scheduler creates reminder events which are consumed by notification-service to send SMS reminders.
 
-Testing
-- See `docs/testing.md`. Use `make -C backend test` for all service tests and per-service `make -C backend test-<service>` targets.
-
 API Documentation
 - Each service exposes OpenAPI at `/api/schema/` and interactive docs at `/api/docs/`.
 
@@ -114,3 +96,13 @@ Future Improvements
 - Grafana/Prometheus monitoring
 - Kubernetes deployment
 - Mobile app / Frontend integration
+
+| قبلاً                 | از این به بعد                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------- |
+| `make up`             | `docker compose -f backend/docker-compose.yml up --build`                                     |
+| `make down`           | `docker compose -f backend/docker-compose.yml down`                                           |
+| `make logs`           | `docker compose -f backend/docker-compose.yml logs -f`                                        |
+| `make ps`             | `docker compose -f backend/docker-compose.yml ps`                                             |
+| `make test`           | `docker compose -f backend/docker-compose.yml exec <service> pytest`                          |
+| `make migrate`        | `docker compose -f backend/docker-compose.yml exec <service> python manage.py migrate`        |
+| `make makemigrations` | `docker compose -f backend/docker-compose.yml exec <service> python manage.py makemigrations` |

@@ -58,17 +58,6 @@ Examples (service direct ports):
 ## RabbitMQ Management
 - http://localhost:15672
 
-## Makefile Commands
-- `make build`
-- `make up`
-- `make down`
-- `make logs`
-- `make ps`
-- `make migrate`
-- `make makemigrations`
-- `make test`
-- `make lint`
-- `make format`
 
 ## Phase 1 Non-Goals (Intentionally Not Implemented)
 - Registration, OTP, or real JWT auth
