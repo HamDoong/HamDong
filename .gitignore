@@ -1,7 +1,31 @@
-### AL ###
-#Template for AL projects for Dynamics 365 Business Central
-#launch.json folder
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Vite
+.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
 .vscode/
+
 #Cache folder
 .alcache/
 #Symbols folder
@@ -45,3 +69,20 @@ docker-compose.override.yml
 # IDE
 .vscode/
 .idea/
+
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+
