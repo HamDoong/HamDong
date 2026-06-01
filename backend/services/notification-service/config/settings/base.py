@@ -121,6 +121,9 @@ SMS_PROVIDER = env("SMS_PROVIDER", default="fake")
 SMS_API_KEY = env("SMS_API_KEY", default="")
 SMS_SENDER = env("SMS_SENDER", default="")
 SMS_TEMPLATE_OTP_LOGIN = env("SMS_TEMPLATE_OTP_LOGIN", default="OTP_LOGIN")
+SMS_TEMPLATE_SETTLEMENT_REMINDER = env(
+    "SMS_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER"
+)
 
 SMS_CIRCUIT_FAIL_MAX = env("SMS_CIRCUIT_FAIL_MAX", default=5, cast=int)
 SMS_CIRCUIT_RESET_TIMEOUT_SECONDS = env(
@@ -129,5 +132,18 @@ SMS_CIRCUIT_RESET_TIMEOUT_SECONDS = env(
 
 SMS_OTP_MAX_RETRIES = env("SMS_OTP_MAX_RETRIES", default=2, cast=int)
 SMS_OTP_RETRY_DELAYS_SECONDS = env("SMS_OTP_RETRY_DELAYS_SECONDS", default="10,30")
+
+SETTLEMENT_RABBITMQ_EXCHANGE = env(
+    "SETTLEMENT_RABBITMQ_EXCHANGE", default="hamdong.settlement"
+)
+SETTLEMENT_REMINDER_QUEUE = env(
+    "SETTLEMENT_REMINDER_QUEUE", default="notification.settlement.reminders"
+)
+SETTLEMENT_REMINDER_DLX = env(
+    "SETTLEMENT_REMINDER_DLX", default="notification.settlement.reminders.dlx"
+)
+SETTLEMENT_REMINDER_DLQ = env(
+    "SETTLEMENT_REMINDER_DLQ", default="notification.settlement.reminders.dlq"
+)
 
 CORS_ALLOW_ALL_ORIGINS = True

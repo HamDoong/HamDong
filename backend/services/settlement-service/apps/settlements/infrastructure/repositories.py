@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 from django.utils import timezone
 
@@ -16,7 +17,10 @@ from apps.settlements.domain.models import (
     GroupStatusChoices,
     ManualSettlement,
     ManualSettlementStatusChoices,
+    OutboxMessage,
+    OutboxMessageStatusChoices,
     ProcessedEvent,
+    ReminderDispatchLog,
     SettlementPlan,
     SettlementPlanEventLog,
     SettlementPlanItem,
@@ -710,3 +714,109 @@ class ProcessedEventRepository:
             },
         )
         return obj, created
+
+
+class OutboxRepository:
+    @staticmethod
+    def create(**data):
+        return OutboxMessage.objects.create(
+            event_id=normalize_uuid(data.get("event_id")) or uuid.uuid4(),
+            source_service=data.get("source_service", "settlement-service"),
+            aggregate_type=data.get("aggregate_type", "Settlement"),
+            aggregate_id=normalize_uuid(data.get("aggregate_id")),
+            event_type=data.get("event_type"),
+            routing_key=data.get("routing_key"),
+            exchange=data.get("exchange", "hamdong.settlement"),
+            correlation_id=normalize_uuid(data.get("correlation_id")),
+            causation_id=normalize_uuid(data.get("causation_id")),
+            payload=data.get("payload") or {},
+            status=data.get("status", OutboxMessageStatusChoices.PENDING),
+            retry_count=data.get("retry_count", 0),
+            available_at=data.get("available_at") or timezone.now(),
+            published_at=data.get("published_at"),
+            last_error=data.get("last_error"),
+        )
+
+    @staticmethod
+    def pending(limit=100):
+        return OutboxMessage.objects.filter(
+            status__in=[
+                OutboxMessageStatusChoices.PENDING,
+                OutboxMessageStatusChoices.RETRY_PENDING,
+            ],
+            available_at__lte=timezone.now(),
+        ).order_by("created_at")[:limit]
+
+    @staticmethod
+    def mark_sent(message):
+        message.status = OutboxMessageStatusChoices.SENT
+        message.published_at = timezone.now()
+        message.last_error = None
+        message.save(
+            update_fields=["status", "published_at", "last_error", "updated_at"]
+        )
+        return message
+
+    @staticmethod
+    def mark_retry(message, error_message, retry_delay_seconds=0):
+        message.retry_count += 1
+        message.status = OutboxMessageStatusChoices.RETRY_PENDING
+        message.last_error = error_message
+        if retry_delay_seconds > 0:
+            message.available_at = timezone.now() + timedelta(seconds=retry_delay_seconds)
+        message.save(
+            update_fields=[
+                "retry_count",
+                "status",
+                "last_error",
+                "available_at",
+                "updated_at",
+            ]
+        )
+        return message
+
+
+class ReminderDispatchRepository:
+    @staticmethod
+    def upsert_target(**data):
+        defaults = {
+            "source_event_id": normalize_uuid(data.get("source_event_id")),
+            "recipient_phone_number": data.get("recipient_phone_number", ""),
+            "sent_count": data.get("sent_count", 0),
+            "last_sent_at": data.get("last_sent_at"),
+            "next_allowed_at": data.get("next_allowed_at"),
+            "metadata": data.get("metadata") or {},
+        }
+        obj, _ = ReminderDispatchLog.objects.update_or_create(
+            reminder_type=data.get("reminder_type"),
+            group_id=normalize_uuid(data.get("group_id")),
+            settlement_plan_id=normalize_uuid(data.get("settlement_plan_id")),
+            settlement_plan_item_id=normalize_uuid(data.get("settlement_plan_item_id")),
+            manual_settlement_id=normalize_uuid(data.get("manual_settlement_id")),
+            recipient_user_id=normalize_uuid(data.get("recipient_user_id")),
+            defaults=defaults,
+        )
+        return obj
+
+    @staticmethod
+    def eligible(reminder_type, group_id, recipient_user_id):
+        return ReminderDispatchLog.objects.filter(
+            reminder_type=reminder_type,
+            group_id=normalize_uuid(group_id),
+            recipient_user_id=normalize_uuid(recipient_user_id),
+        ).first()
+
+    @staticmethod
+    def touch_sent(log, sent_at=None):
+        log.sent_count += 1
+        log.last_sent_at = sent_at or timezone.now()
+        log.next_allowed_at = log.last_sent_at + timedelta(hours=1)
+        log.save(
+            update_fields=[
+                "sent_count",
+                "last_sent_at",
+                "next_allowed_at",
+                "updated_at",
+            ]
+        )
+        return log
