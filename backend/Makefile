@@ -43,6 +43,34 @@ test:
 	docker compose run --rm media-service python manage.py test
 	docker compose run --rm notification-service python manage.py test
 
+# per-service test targets
+.PHONY: test-identity test-group test-expense test-settlement test-media test-notification test-integration test-smoke
+
+test-identity:
+	docker compose run --rm identity-service python manage.py test
+
+test-group:
+	docker compose run --rm group-service python manage.py test
+
+test-expense:
+	docker compose run --rm expense-service python manage.py test
+
+test-settlement:
+	docker compose run --rm settlement-service python manage.py test
+
+test-media:
+	docker compose run --rm media-service python manage.py test
+
+test-notification:
+	docker compose run --rm notification-service python manage.py test
+
+test-integration:
+	# run a curated integration test suite (to be implemented)
+	@echo "Run integration tests inside your environment"
+
+test-smoke:
+	./backend/scripts/smoke-test.sh
+
 lint:
 	docker compose run --rm identity-service ruff check .
 	docker compose run --rm group-service ruff check .
@@ -74,3 +102,27 @@ test-smoke:
 ci-check:
 	docker compose config >/dev/null
 	@echo "docker compose config OK"
+
+.PHONY: restart createsuperuser check dispatch-outbox consume-events run-reminders reset
+
+restart:
+	docker compose down && docker compose up -d
+
+createsuperuser:
+	docker compose run --rm identity-service python manage.py createsuperuser
+
+check:
+	make -C . ci-check
+
+dispatch-outbox:
+	docker compose run --rm settlement-service python manage.py dispatch_outbox
+
+consume-events:
+	# run a consumer for a service, e.g. notification consumer
+	docker compose run --rm notification-service python manage.py run_consumer
+
+run-reminders:
+	docker compose run --rm settlement-service python manage.py run_reminder_scheduler
+
+reset:
+	./backend/scripts/reset-local.sh
