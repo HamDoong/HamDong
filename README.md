@@ -32,22 +32,22 @@ Folder Structure
 - scripts/: helper and demo scripts
 
 How to Run Locally
-1. Copy and edit `backend/.env.example` to `backend/.env` with secrets and keys.
+1. Copy and edit `.env.example` to `.env` with secrets and keys.
 2. Build and start services:
 
-    make -C backend build
-    make -C backend up
+    make build
+    make up
 
 3. Apply migrations:
 
-    make -C backend migrate
+    make migrate
 
 4. Run tests:
 
-    make -C backend test
+    make test
 
 Environment Variables
-- See `backend/.env.example` for required variables (Postgres, Redis, RabbitMQ, JWT, OTP, SMS, event/outbox settings).
+- See `.env.example` for required variables (Postgres, Redis, RabbitMQ, JWT, OTP, SMS, event/outbox settings).
 
 Ports
 - Nginx API Gateway: `8080`
