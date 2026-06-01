@@ -21,3 +21,27 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+
+# Python / Django
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Environment
+.env
+
+# Django
+db.sqlite3
+media/
+staticfiles/
+
+# Docker
+docker-compose.override.yml
+*.log
+
+# IDE
+.vscode/
+.idea/

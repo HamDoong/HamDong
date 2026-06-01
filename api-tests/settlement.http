@@ -1,0 +1,18 @@
+@baseUrl = http://localhost:8080
+
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/activate/
+Authorization: Bearer {{accessToken}}
+
+
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{planItemId}}/report-paid/
+Authorization: Bearer {{accessToken}}
+
+
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/confirm/
+Authorization: Bearer {{accessToken}}
