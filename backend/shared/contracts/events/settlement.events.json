@@ -1,0 +1,40 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "settlement-service",
+  "description": "Settlement service reminder events.",
+  "events": [
+    {
+      "event_type": "PaymentReminderRequested",
+      "routing_key": "settlement.reminder.requested",
+      "data_example": {
+        "group_id": "00000000-0000-0000-0000-000000000010",
+        "settlement_plan_id": "00000000-0000-0000-0000-000000000021",
+        "settlement_plan_item_id": "00000000-0000-0000-0000-000000000022",
+        "recipient_user_id": "00000000-0000-0000-0000-000000000002",
+        "recipient_phone_number": "09123456789",
+        "template_code": "SETTLEMENT_REMINDER"
+      }
+    },
+    {
+      "event_type": "SettlementConfirmationReminderRequested",
+      "routing_key": "settlement.reminder.requested",
+      "data_example": {
+        "group_id": "00000000-0000-0000-0000-000000000010",
+        "manual_settlement_id": "00000000-0000-0000-0000-000000000023",
+        "recipient_user_id": "00000000-0000-0000-0000-000000000002",
+        "recipient_phone_number": "09123456789",
+        "template_code": "SETTLEMENT_REMINDER"
+      }
+    },
+    {
+      "event_type": "SettlementPlanItemReminderRequested",
+      "routing_key": "settlement.reminder.requested",
+      "data_example": {
+        "group_id": "00000000-0000-0000-0000-000000000010",
+        "recipient_user_id": "00000000-0000-0000-0000-000000000002",
+        "recipient_phone_number": "09123456789",
+        "template_code": "SETTLEMENT_REMINDER"
+      }
+    }
+  ]
+}

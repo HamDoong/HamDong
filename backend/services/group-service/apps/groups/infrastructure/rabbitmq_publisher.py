@@ -28,7 +28,7 @@ class RabbitMQPublisher:
             self._channel = None
 
     def publish(self, event_type: str, data: dict, routing_key: str) -> bool:
-        envelope = make_event(event_type, data)
+        envelope = make_event(event_type, data, routing_key=routing_key)
         body = json.dumps(envelope)
         try:
             if not self._channel:

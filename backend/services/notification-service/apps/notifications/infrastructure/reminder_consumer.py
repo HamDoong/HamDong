@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 import pika
 from django.conf import settings
@@ -170,17 +171,23 @@ class SettlementReminderConsumer:
             channel.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
 
     def start(self):
-        self._connect()
-        self._declare_topology()
-        self.channel.basic_qos(prefetch_count=1)
-        self.channel.basic_consume(
-            queue=self.queue,
-            on_message_callback=self._handle_message,
-            auto_ack=False,
-        )
-        logger.info("Consuming settlement reminder messages from queue=%s", self.queue)
-        try:
-            self.channel.start_consuming()
-        finally:
-            if self.connection and not self.connection.is_closed:
-                self.connection.close()
+        while True:
+            try:
+                self._connect()
+                self._declare_topology()
+                self.channel.basic_qos(prefetch_count=1)
+                self.channel.basic_consume(
+                    queue=self.queue,
+                    on_message_callback=self._handle_message,
+                    auto_ack=False,
+                )
+                logger.info("Consuming settlement reminder messages from queue=%s", self.queue)
+                try:
+                    self.channel.start_consuming()
+                finally:
+                    if self.connection and not self.connection.is_closed:
+                        self.connection.close()
+                break
+            except Exception:
+                logger.exception("Settlement reminder consumer unavailable; retrying")
+                time.sleep(self.retry_delay_seconds)

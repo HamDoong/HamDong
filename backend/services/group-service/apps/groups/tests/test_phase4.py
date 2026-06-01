@@ -34,14 +34,13 @@ def disable_publishing(monkeypatch):
 @pytest.fixture
 def api_client(monkeypatch):
     client = APIClient()
+    authenticated_user = FakeUser()
 
     def fake_auth(self, request):
         auth = request.META.get("HTTP_AUTHORIZATION")
         if not auth:
             raise Exception("NOT_AUTHENTICATED")
-        # return a FakeUser for tests
-        user = FakeUser()
-        return (user, None)
+        return (authenticated_user, None)
 
     monkeypatch.setattr(JWTAuthentication, "authenticate", fake_auth)
     return client
@@ -168,4 +167,3 @@ def test_raw_token_not_stored(api_client):
     raw = resp.json()["invite_url"].rsplit("/", 1)[-1]
     # ensure only hash is stored
     assert not GroupInvite.objects.filter(token_hash=raw).exists()
-*** End Patch

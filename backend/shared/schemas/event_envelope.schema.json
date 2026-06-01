@@ -3,16 +3,17 @@
   "$id": "https://hamdong.local/schemas/event_envelope.schema.json",
   "title": "EventEnvelope",
   "type": "object",
-  "required": ["event_id", "event_type", "occurred_at", "version", "source_service", "data"],
+  "required": ["event_id", "event_type", "event_version", "occurred_at", "source_service", "data"],
   "properties": {
     "event_id": {"type": "string"},
     "event_type": {"type": "string"},
+    "event_version": {"type": ["integer", "string"]},
     "occurred_at": {"type": "string"},
-    "version": {"type": "integer", "minimum": 1},
     "source_service": {"type": "string"},
     "routing_key": {"type": ["string", "null"]},
     "correlation_id": {"type": ["string", "null"]},
     "causation_id": {"type": ["string", "null"]},
+    "version": {"type": ["integer", "string", "null"]},
     "data": {"type": "object"}
   },
   "additionalProperties": true

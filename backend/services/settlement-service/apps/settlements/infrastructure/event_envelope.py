@@ -13,9 +13,11 @@ def build_event_envelope(
     causation_id: str | None = None,
     event_id: str | None = None,
 ) -> dict:
+    event_id_value = event_id or str(uuid.uuid4())
     return {
-        "event_id": event_id or str(uuid.uuid4()),
+        "event_id": event_id_value,
         "event_type": event_type,
+        "event_version": version,
         "occurred_at": datetime.now(timezone.utc).isoformat(),
         "version": version,
         "source_service": source_service,

@@ -9,6 +9,7 @@ celery
 redis
 pika
 httpx
+PyJWT>=2.8
 pybreaker
 ruff
 black

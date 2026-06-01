@@ -47,6 +47,7 @@ class RabbitMQPublisher:
                     build_event_envelope(
                         event_type,
                         data,
+                        version=1,
                         source_service="settlement-service",
                         routing_key=routing_key,
                     )

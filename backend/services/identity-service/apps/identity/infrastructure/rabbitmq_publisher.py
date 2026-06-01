@@ -2,6 +2,8 @@
 
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 import pika
@@ -77,7 +79,7 @@ class RabbitMqPublisher:
                 logger.warning("Skipping event publish - exchange not available")
                 return False
 
-            message = json.dumps(event_data)
+            message = json.dumps(self._build_envelope(event_data, routing_key))
             self.channel.basic_publish(
                 exchange=self.exchange,
                 routing_key=routing_key,
@@ -97,6 +99,20 @@ class RabbitMqPublisher:
         except Exception as e:
             logger.error(f"Failed to publish event to RabbitMQ: {e}")
             return False
+
+    def _build_envelope(self, event_data: Dict[str, Any], routing_key: str) -> Dict[str, Any]:
+        envelope = dict(event_data)
+        envelope.setdefault("event_id", str(uuid.uuid4()))
+        envelope.setdefault("event_version", envelope.get("version", 1))
+        envelope.setdefault("version", envelope["event_version"])
+        envelope.setdefault("occurred_at", datetime.now(timezone.utc).isoformat())
+        envelope.setdefault("source_service", getattr(settings, "SERVICE_NAME", "identity-service"))
+        envelope["routing_key"] = routing_key
+        envelope.setdefault("correlation_id", None)
+        envelope.setdefault("causation_id", None)
+        if "data" not in envelope:
+            envelope["data"] = {}
+        return envelope
 
     def close(self):
         """Close connection."""
