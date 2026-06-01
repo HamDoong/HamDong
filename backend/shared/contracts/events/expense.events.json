@@ -1,0 +1,10 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "expense-service",
+  "description": "Expense service domain events.",
+  "events": [
+    {"event_type": "ExpenseCreated", "routing_key": "expense.created", "data_example": {"expense_id": "00000000-0000-0000-0000-000000000020", "group_id": "00000000-0000-0000-0000-000000000010"}},
+    {"event_type": "ExpenseUpdated", "routing_key": "expense.updated", "data_example": {"expense_id": "00000000-0000-0000-0000-000000000020", "group_id": "00000000-0000-0000-0000-000000000010"}},
+    {"event_type": "ExpenseDeleted", "routing_key": "expense.deleted", "data_example": {"expense_id": "00000000-0000-0000-0000-000000000020"}}
+  ]
+}

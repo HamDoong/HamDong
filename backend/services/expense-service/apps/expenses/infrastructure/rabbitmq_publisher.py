@@ -2,10 +2,11 @@
 
 import json
 import logging
-import pika
-from django.conf import settings
 from datetime import datetime
 import uuid
+
+import pika
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +15,13 @@ def envelope(event_type: str, data: dict, version: str = "1.0") -> dict:
     return {
         "event_id": str(uuid.uuid4()),
         "event_type": event_type,
+        "event_version": version,
         "occurred_at": datetime.utcnow().isoformat() + "Z",
         "version": version,
+        "source_service": getattr(settings, "SERVICE_NAME", "expense-service"),
+        "routing_key": None,
+        "correlation_id": None,
+        "causation_id": None,
         "data": data,
     }
 
@@ -40,6 +46,7 @@ class RabbitMQPublisher:
 
     def publish(self, event_type: str, data: dict, routing_key: str) -> bool:
         env = envelope(event_type, data)
+        env["routing_key"] = routing_key
         body = json.dumps(env)
         try:
             if not self._channel:

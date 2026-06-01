@@ -1,0 +1,16 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "notification-service",
+  "description": "Notification service reminder delivery events.",
+  "events": [
+    {
+      "event_type": "NotificationJobCreated",
+      "routing_key": "notification.job.created",
+      "data_example": {
+        "event_id": "00000000-0000-0000-0000-000000000040",
+        "recipient_phone_number": "09123456789",
+        "template_code": "SETTLEMENT_REMINDER"
+      }
+    }
+  ]
+}

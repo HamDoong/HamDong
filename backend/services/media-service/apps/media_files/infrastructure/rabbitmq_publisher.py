@@ -1,5 +1,7 @@
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 
 import pika
 from django.conf import settings
@@ -19,10 +21,22 @@ class RabbitMQPublisher:
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
             channel.exchange_declare(exchange=self.exchange, exchange_type="topic", durable=True)
+            envelope = {
+                "event_id": str(uuid.uuid4()),
+                "event_type": event_type,
+                "event_version": 1,
+                "version": 1,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                "source_service": getattr(settings, "SERVICE_NAME", "media-service"),
+                "routing_key": routing_key,
+                "correlation_id": None,
+                "causation_id": None,
+                "data": data,
+            }
             channel.basic_publish(
                 exchange=self.exchange,
                 routing_key=routing_key,
-                body=json.dumps(data),
+                body=json.dumps(envelope),
                 properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
             )
             return True

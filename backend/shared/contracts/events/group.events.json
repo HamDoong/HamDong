@@ -1,0 +1,13 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "group-service",
+  "description": "Group service domain events.",
+  "events": [
+    {"event_type": "GroupCreated", "routing_key": "group.created", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "created_by": "00000000-0000-0000-0000-000000000001"}},
+    {"event_type": "GroupUpdated", "routing_key": "group.updated", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "updated_by": "00000000-0000-0000-0000-000000000001"}},
+    {"event_type": "GroupArchived", "routing_key": "group.archived", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "archived_by": "00000000-0000-0000-0000-000000000001"}},
+    {"event_type": "GroupMemberJoined", "routing_key": "group.member.joined", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "user_id": "00000000-0000-0000-0000-000000000002", "role": "MEMBER"}},
+    {"event_type": "GroupMemberRemoved", "routing_key": "group.member.removed", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "member_id": "00000000-0000-0000-0000-000000000003"}},
+    {"event_type": "GroupMemberLeft", "routing_key": "group.member.left", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "member_id": "00000000-0000-0000-0000-000000000003"}}
+  ]
+}

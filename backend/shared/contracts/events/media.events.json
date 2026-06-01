@@ -1,0 +1,9 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "media-service",
+  "description": "Media service domain events.",
+  "events": [
+    {"event_type": "MediaUploaded", "routing_key": "media.uploaded", "data_example": {"media_id": "00000000-0000-0000-0000-000000000030", "group_id": "00000000-0000-0000-0000-000000000010"}},
+    {"event_type": "MediaDeleted", "routing_key": "media.deleted", "data_example": {"media_id": "00000000-0000-0000-0000-000000000030"}}
+  ]
+}
