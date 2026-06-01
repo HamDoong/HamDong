@@ -4,20 +4,18 @@ import logging
 import pika
 from django.conf import settings
 
+from apps.settlements.infrastructure.event_envelope import build_event_envelope
+
 logger = logging.getLogger(__name__)
 
 
 def envelope(event_type: str, data: dict, version: int = 1) -> dict:
-    from datetime import datetime, timezone
-    import uuid
-
-    return {
-        "event_id": str(uuid.uuid4()),
-        "event_type": event_type,
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
-        "version": version,
-        "data": data,
-    }
+    return build_event_envelope(
+        event_type,
+        data,
+        version=version,
+        source_service="settlement-service",
+    )
 
 
 class RabbitMQPublisher:
@@ -45,7 +43,14 @@ class RabbitMQPublisher:
             channel.basic_publish(
                 exchange=self.exchange,
                 routing_key=routing_key,
-                body=json.dumps(envelope(event_type, data)),
+                body=json.dumps(
+                    build_event_envelope(
+                        event_type,
+                        data,
+                        source_service="settlement-service",
+                        routing_key=routing_key,
+                    )
+                ),
                 properties=pika.BasicProperties(
                     content_type="application/json", delivery_mode=2
                 ),

@@ -1,0 +1,11 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "event_type": "SettlementPlanItemReminderRequested",
+  "description": "Reminder delivery event consumed by notification-service.",
+  "data_example": {
+    "group_title": "Trip to Shiraz",
+    "message": "لطفاً مبلغ این آیتم تسویه را پرداخت کنید.",
+    "recipient_phone_number": "09123456789",
+    "template_code": "SETTLEMENT_REMINDER"
+  }
+}

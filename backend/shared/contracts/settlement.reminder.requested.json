@@ -1,0 +1,16 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "event_type": "PaymentReminderRequested",
+  "description": "Settlement reminder events published by settlement-service for notification delivery.",
+  "data_example": {
+    "group_id": "00000000-0000-0000-0000-000000000001",
+    "group_title": "Trip to Shiraz",
+    "settlement_plan_id": "00000000-0000-0000-0000-000000000002",
+    "settlement_plan_item_id": "00000000-0000-0000-0000-000000000003",
+    "manual_settlement_id": null,
+    "recipient_user_id": "00000000-0000-0000-0000-000000000004",
+    "recipient_phone_number": "09123456789",
+    "template_code": "SETTLEMENT_REMINDER",
+    "message": "لطفاً مبلغ این آیتم تسویه را پرداخت کنید."
+  }
+}

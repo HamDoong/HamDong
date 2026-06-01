@@ -2,6 +2,8 @@
 
 from apps.notifications.domain.models import (
     NotificationMessage,
+    NotificationJob,
+    NotificationJobStatusChoices,
     ProviderDeliveryLog,
     SmsTemplate,
 )
@@ -39,3 +41,26 @@ class NotificationRepository:
             template.is_active = True
             template.save(update_fields=["is_active", "updated_at"])
         return template
+
+    @staticmethod
+    def create_notification_job(**kwargs) -> NotificationJob:
+        return NotificationJob.objects.create(**kwargs)
+
+    @staticmethod
+    def update_notification_job(notification_job: NotificationJob, **kwargs) -> NotificationJob:
+        for key, value in kwargs.items():
+            setattr(notification_job, key, value)
+        notification_job.save()
+        return notification_job
+
+    @staticmethod
+    def get_notification_job(event_id):
+        return NotificationJob.objects.filter(event_id=event_id).first()
+
+    @staticmethod
+    def mark_notification_job_sent(notification_job: NotificationJob, **kwargs):
+        return NotificationRepository.update_notification_job(
+            notification_job,
+            status=NotificationJobStatusChoices.SENT,
+            **kwargs,
+        )

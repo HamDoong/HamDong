@@ -52,6 +52,24 @@ DEFAULT_CURRENCY = env("DEFAULT_CURRENCY", default="IRR")
 MAX_SETTLEMENT_AMOUNT_MINOR = env.int(
     "MAX_SETTLEMENT_AMOUNT_MINOR", default=100000000000
 )
+EVENT_OUTBOX_BATCH_SIZE = env.int("EVENT_OUTBOX_BATCH_SIZE", default=100)
+EVENT_MAX_RETRY_COUNT = env.int("EVENT_MAX_RETRY_COUNT", default=5)
+EVENT_RETRY_DELAY_SECONDS = env.int("EVENT_RETRY_DELAY_SECONDS", default=30)
+EVENT_DLQ_SUFFIX = env("EVENT_DLQ_SUFFIX", default=".dlq")
+REMINDER_ENABLED = env.bool("REMINDER_ENABLED", default=True)
+REMINDER_MIN_INTERVAL_HOURS = env.int("REMINDER_MIN_INTERVAL_HOURS", default=24)
+SETTLEMENT_REMINDER_QUEUE = env(
+    "SETTLEMENT_REMINDER_QUEUE", default="notification.settlement.reminders"
+)
+SETTLEMENT_REMINDER_DLX = env(
+    "SETTLEMENT_REMINDER_DLX", default="notification.settlement.reminders.dlx"
+)
+SETTLEMENT_REMINDER_DLQ = env(
+    "SETTLEMENT_REMINDER_DLQ", default="notification.settlement.reminders.dlq"
+)
+SMS_TEMPLATE_SETTLEMENT_REMINDER = env(
+    "SMS_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER"
+)
 
 SECRET_KEY = env("SECRET_KEY", default="change-me")
 DEBUG = env.bool("DEBUG", default=False)

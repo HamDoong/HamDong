@@ -85,6 +85,64 @@ class NotificationMessage(models.Model):
         return f"{self.channel}:{self.message_type}:{self.recipient_masked}"
 
 
+class NotificationJobStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    PROCESSING = "PROCESSING", "Processing"
+    SENT = "SENT", "Sent"
+    FAILED = "FAILED", "Failed"
+    RETRY_PENDING = "RETRY_PENDING", "Retry pending"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class NotificationJob(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    source_service = models.CharField(max_length=128)
+    source_event_type = models.CharField(max_length=128)
+    reminder_type = models.CharField(max_length=48)
+    channel = models.CharField(
+        max_length=16,
+        choices=NotificationChannelChoices.choices,
+        default=NotificationChannelChoices.SMS,
+    )
+    recipient = models.CharField(max_length=32)
+    recipient_masked = models.CharField(max_length=32)
+    template_code = models.CharField(max_length=64, null=True, blank=True)
+    rendered_message = models.TextField()
+    payload = models.JSONField(default=dict)
+    status = models.CharField(
+        max_length=32,
+        choices=NotificationJobStatusChoices.choices,
+        default=NotificationJobStatusChoices.PENDING,
+    )
+    notification_message = models.ForeignKey(
+        NotificationMessage,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jobs",
+    )
+    retry_count = models.PositiveIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    error_code = models.CharField(max_length=64, null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "notification_jobs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["event_id"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["recipient"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source_event_type}:{self.recipient_masked}"
+
+
 class ProviderDeliveryLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     notification_message = models.ForeignKey(

@@ -65,10 +65,11 @@ class SettlementEventConsumer:
         event_type = body.get("event_type") or body.get("eventType") or body.get("type")
         data = body.get("data") if isinstance(body.get("data"), dict) else body
         event_id = body.get("event_id") or body.get("id")
-        return event_id, event_type, data
+        source_service = body.get("source_service") or body.get("sourceService")
+        return event_id, event_type, data, source_service
 
     def _process(self, source_service, body, handler):
-        event_id, event_type, data = self._decode(body)
+        event_id, event_type, data, decoded_source_service = self._decode(body)
         if not event_type:
             raise InvalidEventPayloadError()
         if event_id and ProcessedEventRepository.was_processed(event_id):
@@ -76,7 +77,7 @@ class SettlementEventConsumer:
         handler(event_type, data)
         if event_id:
             ProcessedEventRepository.mark_processed(
-                event_id, event_type, source_service
+                event_id, event_type, decoded_source_service or source_service
             )
         return True
 

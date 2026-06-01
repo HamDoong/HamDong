@@ -311,6 +311,99 @@ class ProcessedEvent(models.Model):
         db_table = "settlement_processed_events"
 
 
+class OutboxMessageStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    RETRY_PENDING = "RETRY_PENDING", "Retry pending"
+    SENT = "SENT", "Sent"
+    FAILED = "FAILED", "Failed"
+
+
+class ReminderDispatchTypeChoices(models.TextChoices):
+    PAYMENT_REMINDER = "PAYMENT_REMINDER", "Payment reminder"
+    SETTLEMENT_CONFIRMATION_REMINDER = (
+        "SETTLEMENT_CONFIRMATION_REMINDER",
+        "Settlement confirmation reminder",
+    )
+    SETTLEMENT_PLAN_ITEM_REMINDER = (
+        "SETTLEMENT_PLAN_ITEM_REMINDER",
+        "Settlement plan item reminder",
+    )
+
+
+class OutboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True, default=uuid.uuid4)
+    source_service = models.CharField(max_length=128, default="settlement-service")
+    aggregate_type = models.CharField(max_length=64)
+    aggregate_id = models.UUIDField(null=True, blank=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    routing_key = models.CharField(max_length=128)
+    exchange = models.CharField(max_length=128, default="hamdong.settlement")
+    correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    causation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(
+        max_length=20,
+        choices=OutboxMessageStatusChoices.choices,
+        default=OutboxMessageStatusChoices.PENDING,
+    )
+    retry_count = models.PositiveIntegerField(default=0)
+    available_at = models.DateTimeField(default=timezone.now, db_index=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_outbox_messages"
+        indexes = [
+            models.Index(fields=["status", "available_at"]),
+            models.Index(fields=["routing_key"]),
+            models.Index(fields=["aggregate_type", "aggregate_id"]),
+        ]
+
+
+class ReminderDispatchLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reminder_type = models.CharField(
+        max_length=48, choices=ReminderDispatchTypeChoices.choices
+    )
+    group_id = models.UUIDField(db_index=True)
+    settlement_plan_id = models.UUIDField(null=True, blank=True, db_index=True)
+    settlement_plan_item_id = models.UUIDField(null=True, blank=True, db_index=True)
+    manual_settlement_id = models.UUIDField(null=True, blank=True, db_index=True)
+    recipient_user_id = models.UUIDField(db_index=True)
+    recipient_phone_number = models.CharField(max_length=32)
+    source_event_id = models.UUIDField(null=True, blank=True, db_index=True)
+    sent_count = models.PositiveIntegerField(default=0)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    next_allowed_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_reminder_dispatch_logs"
+        indexes = [
+            models.Index(fields=["reminder_type", "group_id"]),
+            models.Index(fields=["recipient_user_id"]),
+            models.Index(fields=["next_allowed_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "reminder_type",
+                    "group_id",
+                    "settlement_plan_id",
+                    "settlement_plan_item_id",
+                    "manual_settlement_id",
+                    "recipient_user_id",
+                ],
+                name="settlement_reminder_unique_target",
+            )
+        ]
+
+
 class SettlementPlan(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group_id = models.UUIDField(db_index=True)
