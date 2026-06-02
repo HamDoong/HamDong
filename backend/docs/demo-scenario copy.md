@@ -15,4 +15,4 @@ Steps:
 10) Sara confirms payment `POST /api/v1/settlements/{settlement_id}/confirm/`.
 11) Balances update and reminders can be issued for outstanding items.
 
-Use `api-tests/hamdong.http` to run the full scenario.
+Use `../api-tests/hamdong.http` to run the full scenario.

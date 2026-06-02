@@ -25,11 +25,8 @@ Tech Stack
 - drf-spectacular (OpenAPI/Swagger)
 
 Folder Structure
-- backend/: all service source code and compose files
+- backend/: all service source code, compose files, docs, API tests, and helper scripts
 - frontend/: optional frontend assets
-- docs/: architecture and how-to guides
-- api-tests/: VS Code REST Client requests
-- scripts/: helper and demo scripts
 
 Environment Variables
 - See `.env.example` for required variables (Postgres, Redis, RabbitMQ, JWT, OTP, SMS, event/outbox settings).
@@ -48,7 +45,7 @@ API Gateway Routes
 - `/api/v1/notifications/` — notification endpoints
 
 Database Design Summary
-- Each service owns its database and projections to avoid cross-service coupling. See `docs/database.md` for per-service tables.
+- Each service owns its database and projections to avoid cross-service coupling. See `backend/docs/database.md` for per-service tables.
 
 Event-driven Architecture
 - Services publish events to RabbitMQ and consume where needed. Outbox/Inbox patterns ensure reliable delivery and idempotency.
@@ -81,10 +78,10 @@ API Documentation
 - Each service exposes OpenAPI at `/api/schema/` and interactive docs at `/api/docs/`.
 
 Demo Scenario
-- See `docs/demo-scenario.md` and `api-tests/hamdong.http` for a runnable demo flow.
+- See `backend/docs/demo-scenario.md` and `backend/api-tests/hamdong.http` for a runnable demo flow.
 
 Troubleshooting
-- See `docs/troubleshooting.md` for common issues and commands.
+- See `backend/docs/troubleshooting.md` for common issues and commands.
 
 Future Improvements
 - Wallet service

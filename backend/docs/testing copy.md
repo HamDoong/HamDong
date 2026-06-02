@@ -2,7 +2,7 @@
 
 API tests with VS Code REST Client:
 
-1. Open `api-tests/hamdong.http` in VS Code.
+1. Open `../api-tests/hamdong.http` in VS Code.
 2. Set `@baseUrl` if your gateway runs on a different port.
 3. Run requests in order and replace variables as needed.
 
