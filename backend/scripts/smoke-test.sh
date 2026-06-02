@@ -38,4 +38,4 @@ else
   echo "Redis unreachable"; exit 1
 fi
 
-echo "Smoke test complete."
+echo "All gateway health checks passed."
