@@ -263,3 +263,34 @@ def test_outbox_repositories_use_configurable_retry_policy():
         assert "EVENT_MAX_RETRY_COUNT" in text
         assert "EVENT_RETRY_DELAY_SECONDS" in text
         assert "available_at" in text
+
+
+def test_phase9_env_defaults_match_fix_pack_requirements():
+    for rel in [".env.example", "Backend/.env.example"]:
+        text = (REPO_ROOT.parent / rel).read_text(encoding="utf-8")
+        assert "EVENT_OUTBOX_BATCH_SIZE=50" in text
+        assert "EVENT_OUTBOX_POLL_INTERVAL_SECONDS=5" in text
+        assert "EVENT_MAX_RETRY_COUNT=5" in text
+        assert "EVENT_RETRY_DELAY_SECONDS=10,30,60" in text
+        assert "EVENT_DLQ_SUFFIX=.dlq" in text
+        assert "REMINDER_ENABLED=true" in text
+        assert "REMINDER_MIN_INTERVAL_HOURS=24" in text
+        assert "REMINDER_SCHEDULER_INTERVAL_SECONDS=3600" in text
+        assert "PAYMENT_REMINDER_MIN_AMOUNT_MINOR=1000" in text
+        assert "PENDING_SETTLEMENT_REMINDER_AFTER_HOURS=24" in text
+        assert "PLAN_ITEM_REMINDER_AFTER_HOURS=24" in text
+        assert "NOTIFICATION_REMINDER_QUEUE=notification.reminders" in text
+        assert "SETTLEMENT_REMINDER_EXCHANGE=hamdong.settlement" in text
+
+
+def test_phase9_compose_defaults_match_fix_pack_requirements():
+    backend_compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "${EVENT_OUTBOX_BATCH_SIZE:-50}" in backend_compose
+    assert "${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}" in backend_compose
+    assert "${EVENT_RETRY_DELAY_SECONDS:-10,30,60}" in backend_compose
+    assert "NOTIFICATION_REMINDER_QUEUE: ${NOTIFICATION_REMINDER_QUEUE:-notification.reminders}" in backend_compose
+
+    repo_compose = (REPO_ROOT.parent / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "${EVENT_OUTBOX_BATCH_SIZE:-50}" in repo_compose
+    assert "${EVENT_RETRY_DELAY_SECONDS:-10,30,60}" in repo_compose
+    assert "NOTIFICATION_REMINDER_QUEUE: ${NOTIFICATION_REMINDER_QUEUE:-notification.reminders}" in repo_compose
