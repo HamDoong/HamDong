@@ -1,20 +1,20 @@
 @baseUrl = http://localhost:8080
 
-@phoneNumber = 09120000001
-@debugOtp =
+@phone = 09120000001
+@otp =
 @accessToken =
 @refreshToken =
 
-### Identity health
+### Health endpoint
 GET {{baseUrl}}/api/v1/auth/health/
 
 ### Request OTP
-# When DEBUG=true, copy debug_otp from the response into @debugOtp manually.
+# If DEBUG=true returns debug_otp, copy it manually into @otp.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "{{phoneNumber}}"
+  "phone_number": "{{phone}}"
 }
 
 ### Verify OTP
@@ -22,24 +22,11 @@ POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "{{phoneNumber}}",
-  "code": "{{debugOtp}}"
+  "phone_number": "{{phone}}",
+  "code": "{{otp}}"
 }
 
-### Get current user
-GET {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{accessToken}}
-
-### Update current user
-PATCH {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{
-  "display_name": "علی"
-}
-
-### Refresh token
+### Refresh access token
 POST {{baseUrl}}/api/v1/auth/token/refresh/
 Content-Type: application/json
 
@@ -55,9 +42,20 @@ Content-Type: application/json
   "refresh_token": "{{refreshToken}}"
 }
 
-### JWKS
-GET {{baseUrl}}/api/v1/auth/jwks/
+### Get current user
+GET {{baseUrl}}/api/v1/users/me/
+Authorization: Bearer {{accessToken}}
 
-### Well-known JWKS
-# This project exposes the working route without a trailing slash.
+### Update current user
+PATCH {{baseUrl}}/api/v1/users/me/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "display_name": "Ali Demo",
+  "first_name": "Ali",
+  "last_name": "Tester"
+}
+
+### JWKS endpoint
 GET {{baseUrl}}/api/v1/auth/.well-known/jwks.json

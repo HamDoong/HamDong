@@ -2,40 +2,41 @@
 
 @accessToken =
 @groupId =
-@fileId =
+@mediaFileId =
 
-### Media service health
+### Health endpoint
 GET {{baseUrl}}/api/v1/media/health/
 
 ### Upload receipt
-# Requires a real file fixture such as backend/api-tests/fixtures/receipt.jpg.
+# Optional: add api-tests/fixtures/receipt.jpg before running this request.
+# If the fixture does not exist yet, skip this request or create that file first.
 POST {{baseUrl}}/api/v1/media/receipts/
 Authorization: Bearer {{accessToken}}
-Content-Type: multipart/form-data; boundary=MediaBoundary
+Content-Type: multipart/form-data; boundary=WebKitFormBoundary7MA4YWxkTrZu0gW
 
---MediaBoundary
+--WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="group_id"
 
 {{groupId}}
---MediaBoundary
+--WebKitFormBoundary7MA4YWxkTrZu0gW
 Content-Disposition: form-data; name="file"; filename="receipt.jpg"
 Content-Type: image/jpeg
 
 < ./fixtures/receipt.jpg
---MediaBoundary--
+--WebKitFormBoundary7MA4YWxkTrZu0gW--
 
-### Media detail
-GET {{baseUrl}}/api/v1/media/files/{{fileId}}/
+### Get media detail
+GET {{baseUrl}}/api/v1/media/files/{{mediaFileId}}/
 Authorization: Bearer {{accessToken}}
 
-### Download media
-GET {{baseUrl}}/api/v1/media/files/{{fileId}}/download/
+### Download media file
+GET {{baseUrl}}/api/v1/media/files/{{mediaFileId}}/download/
 Authorization: Bearer {{accessToken}}
 
 ### List group media
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/media/
 Authorization: Bearer {{accessToken}}
 
-### Delete media
-DELETE {{baseUrl}}/api/v1/media/files/{{fileId}}/
+### Delete media file
+DELETE {{baseUrl}}/api/v1/media/files/{{mediaFileId}}/
 Authorization: Bearer {{accessToken}}

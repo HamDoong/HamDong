@@ -1,12 +1,13 @@
 @baseUrl = http://localhost:8080
 
 @accessToken =
+@secondAccessToken =
 @groupId =
-@inviteId =
 @inviteToken =
+@inviteId =
 @memberId =
 
-### Group service health
+### Health endpoint
 GET {{baseUrl}}/api/v1/groups/health/
 
 ### Create group
@@ -20,7 +21,7 @@ Content-Type: application/json
   "group_type": "EVENT"
 }
 
-### List my groups
+### List groups
 GET {{baseUrl}}/api/v1/groups/
 Authorization: Bearer {{accessToken}}
 
@@ -34,11 +35,10 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "description": "دورهمی دوستانه - به‌روزرسانی"
+  "title": "شام جمعه - ویرایش"
 }
 
 ### Create invite
-# If the response only includes invite_url, copy the token from the end of invite_url into @inviteToken.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -48,32 +48,30 @@ Content-Type: application/json
   "max_uses": 5
 }
 
-### Preview invite
+### Get invite detail
 GET {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/
 
 ### Accept invite
 POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
-Authorization: Bearer {{accessToken}}
-
-### Revoke invite
-POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/{{inviteId}}/revoke/
-Authorization: Bearer {{accessToken}}
+Authorization: Bearer {{secondAccessToken}}
 
 ### List members
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/members/
 Authorization: Bearer {{accessToken}}
 
 ### Remove member
-# Destructive action: run this after invite/member checks.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/members/{{memberId}}/remove/
 Authorization: Bearer {{accessToken}}
 
 ### Leave group
-# Destructive action: run this after other group checks.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/leave/
+Authorization: Bearer {{secondAccessToken}}
+
+### Revoke invite
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/{{inviteId}}/revoke/
 Authorization: Bearer {{accessToken}}
 
 ### Archive group
-# Destructive action: run this last.
+# Keep this destructive step last if you execute the whole file top-to-bottom.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/archive/
 Authorization: Bearer {{accessToken}}
