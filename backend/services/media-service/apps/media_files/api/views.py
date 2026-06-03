@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.media_files.api.serializers import MediaListItemSerializer, MediaListResponseSerializer, MediaMetadataSerializer, MessageSerializer, ReceiptUploadSerializer
+from apps.media_files.api.serializers import MediaListResponseSerializer, MediaMetadataSerializer, MessageSerializer, ReceiptUploadSerializer
 from apps.media_files.application.file_validator import FileTooLargeError, GroupNotFoundError, InvalidFileTypeError, MediaFileNotFoundError, MediaPermissionDeniedError, NotGroupMemberError
 from apps.media_files.application.use_cases import DeleteMediaUseCase, DownloadMediaUseCase, GetMediaDetailUseCase, ListGroupMediaUseCase, UploadReceiptUseCase
 from apps.media_files.infrastructure.jwt_authentication import JWTAuthentication

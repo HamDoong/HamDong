@@ -11,6 +11,5 @@ urlpatterns = [
         SpectacularSwaggerView.as_view(url_name="schema"),
         name="docs",
     ),
-    path("api/v1/groups/<uuid:group_id>/media/", ListGroupMediaView.as_view(), name="group_media_list_public"),
     path("api/v1/media/", include("apps.media_files.api.urls")),
 ]

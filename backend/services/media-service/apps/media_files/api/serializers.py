@@ -31,8 +31,3 @@ class MediaListItemSerializer(serializers.Serializer):
 
 class MessageSerializer(serializers.Serializer):
     message = serializers.CharField()
-
-
-class MediaListResponseSerializer(serializers.Serializer):
-    count = serializers.IntegerField()
-    results = MediaListItemSerializer(many=True)

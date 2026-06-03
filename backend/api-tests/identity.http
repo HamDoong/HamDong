@@ -5,11 +5,11 @@
 @accessToken =
 @refreshToken =
 
-### Identity health
+### Health endpoint
 GET {{baseUrl}}/api/v1/auth/health/
 
 ### Request OTP
-# If DEBUG=true returns debug_otp, copy it manually into @otp before the verify request.
+# If DEBUG=true returns debug_otp, copy it manually into @otp.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
@@ -18,7 +18,6 @@ Content-Type: application/json
 }
 
 ### Verify OTP
-# Copy access_token and refresh_token from the response into @accessToken and @refreshToken.
 POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
@@ -27,20 +26,7 @@ Content-Type: application/json
   "code": "{{otp}}"
 }
 
-### Get current user
-GET {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{accessToken}}
-
-### Update current user
-PATCH {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{
-  "display_name": "علی"
-}
-
-### Refresh token
+### Refresh access token
 POST {{baseUrl}}/api/v1/auth/token/refresh/
 Content-Type: application/json
 
@@ -56,6 +42,20 @@ Content-Type: application/json
   "refresh_token": "{{refreshToken}}"
 }
 
-### JWKS
-# Preferred working route for this project.
-GET {{baseUrl}}/api/v1/auth/jwks/
+### Get current user
+GET {{baseUrl}}/api/v1/users/me/
+Authorization: Bearer {{accessToken}}
+
+### Update current user
+PATCH {{baseUrl}}/api/v1/users/me/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "display_name": "Ali Demo",
+  "first_name": "Ali",
+  "last_name": "Tester"
+}
+
+### JWKS endpoint
+GET {{baseUrl}}/api/v1/auth/.well-known/jwks.json
