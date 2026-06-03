@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from django.conf import settings
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -39,15 +38,6 @@ class HealthView(APIView):
 class AuthenticatedExpenseAPIView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
-
-    def handle_exception(self, exc):
-        if isinstance(exc, (AuthenticationFailed, NotAuthenticated)):
-            return _error_response(
-                "NOT_AUTHENTICATED",
-                "Authentication credentials were not provided.",
-                status.HTTP_401_UNAUTHORIZED,
-            )
-        return super().handle_exception(exc)
 
 
 class GroupExpensesView(AuthenticatedExpenseAPIView):

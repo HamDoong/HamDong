@@ -169,3 +169,58 @@ def test_missing_public_key_returns_service_unavailable():
             "message": "JWT public key is not available.",
         }
     }
+
+
+def test_missing_sub_returns_invalid_token():
+    token = build_token()
+    payload = jwt.decode(token, options={"verify_signature": False})
+    payload.pop("sub", None)
+    tampered = jwt.encode(
+        payload,
+        PRIVATE_KEY,
+        algorithm="RS256",
+        headers={"kid": "hamdong-main-key", "typ": "JWT"},
+    )
+    with pytest.raises(exceptions.AuthenticationFailed) as exc_info:
+        make_auth().authenticate(make_request(tampered))
+
+    response = api_exception_handler(exc_info.value, {})
+    assert response.status_code == 401
+    assert response.data["error"]["code"] == "INVALID_TOKEN"
+
+
+def test_missing_jti_returns_invalid_token():
+    token = build_token()
+    payload = jwt.decode(token, options={"verify_signature": False})
+    payload.pop("jti", None)
+    tampered = jwt.encode(
+        payload,
+        PRIVATE_KEY,
+        algorithm="RS256",
+        headers={"kid": "hamdong-main-key", "typ": "JWT"},
+    )
+    with pytest.raises(exceptions.AuthenticationFailed) as exc_info:
+        make_auth().authenticate(make_request(tampered))
+
+    response = api_exception_handler(exc_info.value, {})
+    assert response.status_code == 401
+    assert response.data["error"]["code"] == "INVALID_TOKEN"
+
+
+def test_no_unsafe_jwt_decode_in_production_code():
+    services_root = Path(__file__).resolve().parents[4]
+    disallowed = (
+        '"verify_signature": False',
+        "\"verify_signature': False",
+        "verify=False",
+        '"verify_exp": False',
+        "\"verify_exp': False",
+    )
+    production_files = [
+        path
+        for path in services_root.rglob("*.py")
+        if "tests" not in path.parts and path.name != "README.md"
+    ]
+    for file_path in production_files:
+        contents = file_path.read_text(encoding="utf-8")
+        assert not any(pattern in contents for pattern in disallowed), file_path
