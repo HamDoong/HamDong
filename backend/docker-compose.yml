@@ -26,13 +26,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${IDENTITY_DB_NAME}
       IDENTITY_DB_NAME: ${IDENTITY_DB_NAME}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
-      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
-      JWT_ACCESS_TOKEN_LIFETIME_SECONDS: ${JWT_ACCESS_TOKEN_LIFETIME_SECONDS:-900}
-      JWT_REFRESH_TOKEN_LIFETIME_SECONDS: ${JWT_REFRESH_TOKEN_LIFETIME_SECONDS:-604800}
-      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-/app/keys/private.pem}
-      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:-/app/keys/public.pem}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_DB: ${REDIS_DB}
@@ -548,11 +541,6 @@ services:
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
-      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
-      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
     ports:
       - "8003:8000"
     volumes:
@@ -588,11 +576,6 @@ services:
       EXPENSE_RABBITMQ_EXCHANGE: ${EXPENSE_RABBITMQ_EXCHANGE}
       IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE}
       GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE}
-      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
-      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
-      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
     depends_on:
       rabbitmq:
         condition: service_started
@@ -602,6 +585,147 @@ services:
         condition: service_started
       group-service:
         condition: service_started
+
+identity-outbox-dispatcher:
+  build: ./services/identity-service
+  env_file: .env
+  command: ["sh", "-c", "while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done"]
+  environment:
+    APP_ENV: ${APP_ENV}
+    DEBUG: ${DEBUG}
+    SECRET_KEY: ${SECRET_KEY}
+    POSTGRES_HOST: ${POSTGRES_HOST}
+    POSTGRES_PORT: ${POSTGRES_PORT}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${IDENTITY_DB_NAME}
+    IDENTITY_DB_NAME: ${IDENTITY_DB_NAME}
+    RABBITMQ_HOST: ${RABBITMQ_HOST}
+    RABBITMQ_PORT: ${RABBITMQ_PORT}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+    EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+    EVENT_OUTBOX_POLL_INTERVAL_SECONDS: ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}
+    EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_started
+
+group-outbox-dispatcher:
+  build: ./services/group-service
+  env_file: .env
+  command: ["sh", "-c", "while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done"]
+  environment:
+    APP_ENV: ${APP_ENV}
+    DEBUG: ${DEBUG}
+    SECRET_KEY: ${SECRET_KEY}
+    POSTGRES_HOST: ${POSTGRES_HOST}
+    POSTGRES_PORT: ${POSTGRES_PORT}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${GROUP_DB_NAME}
+    GROUP_DB_NAME: ${GROUP_DB_NAME}
+    RABBITMQ_HOST: ${RABBITMQ_HOST}
+    RABBITMQ_PORT: ${RABBITMQ_PORT}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+    EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+    EVENT_OUTBOX_POLL_INTERVAL_SECONDS: ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}
+    EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_started
+
+expense-outbox-dispatcher:
+  build: ./services/expense-service
+  env_file: .env
+  command: ["sh", "-c", "while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done"]
+  environment:
+    APP_ENV: ${APP_ENV}
+    DEBUG: ${DEBUG}
+    SECRET_KEY: ${SECRET_KEY}
+    POSTGRES_HOST: ${POSTGRES_HOST}
+    POSTGRES_PORT: ${POSTGRES_PORT}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${EXPENSE_DB_NAME}
+    EXPENSE_DB_NAME: ${EXPENSE_DB_NAME}
+    RABBITMQ_HOST: ${RABBITMQ_HOST}
+    RABBITMQ_PORT: ${RABBITMQ_PORT}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    EXPENSE_RABBITMQ_EXCHANGE: ${EXPENSE_RABBITMQ_EXCHANGE:-hamdong.expense}
+    EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+    EVENT_OUTBOX_POLL_INTERVAL_SECONDS: ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}
+    EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_started
+
+media-outbox-dispatcher:
+  build: ./services/media-service
+  env_file: .env
+  command: ["sh", "-c", "while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done"]
+  environment:
+    APP_ENV: ${APP_ENV}
+    DEBUG: ${DEBUG}
+    SECRET_KEY: ${SECRET_KEY}
+    POSTGRES_HOST: ${POSTGRES_HOST}
+    POSTGRES_PORT: ${POSTGRES_PORT}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${MEDIA_DB_NAME}
+    MEDIA_DB_NAME: ${MEDIA_DB_NAME}
+    RABBITMQ_HOST: ${RABBITMQ_HOST}
+    RABBITMQ_PORT: ${RABBITMQ_PORT}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    MEDIA_RABBITMQ_EXCHANGE: ${MEDIA_RABBITMQ_EXCHANGE:-hamdong.media}
+    EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+    EVENT_OUTBOX_POLL_INTERVAL_SECONDS: ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}
+    EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_started
+
+notification-outbox-dispatcher:
+  build: ./services/notification-service
+  env_file: .env
+  entrypoint: ["sh", "-c"]
+  command: ["while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done"]
+  environment:
+    APP_ENV: ${APP_ENV}
+    DEBUG: ${DEBUG}
+    SECRET_KEY: ${SECRET_KEY}
+    POSTGRES_HOST: ${POSTGRES_HOST}
+    POSTGRES_PORT: ${POSTGRES_PORT}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+    NOTIFICATION_DB_NAME: ${NOTIFICATION_DB_NAME}
+    RABBITMQ_HOST: ${RABBITMQ_HOST}
+    RABBITMQ_PORT: ${RABBITMQ_PORT}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    NOTIFICATION_RABBITMQ_EXCHANGE: ${NOTIFICATION_RABBITMQ_EXCHANGE:-hamdong.notification}
+    EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+    EVENT_OUTBOX_POLL_INTERVAL_SECONDS: ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}
+    EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_started
 
   postgres:
     image: postgres:16-alpine

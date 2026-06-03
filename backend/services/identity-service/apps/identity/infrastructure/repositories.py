@@ -94,3 +94,45 @@ class RefreshTokenRepository:
             revoked_at__isnull=True,
             expires_at__gt=timezone.now(),
         )
+
+
+from django.utils import timezone
+from apps.identity.domain.models import OutboxMessage, OutboxMessageStatusChoices
+
+
+class OutboxRepository:
+    @staticmethod
+    def create(*, event_type, routing_key, payload, exchange, source_service="identity-service"):
+        return OutboxMessage.objects.create(
+            event_id=payload["event_id"],
+            event_type=event_type,
+            event_version=int(payload.get("event_version", 1)),
+            source_service=source_service,
+            exchange=exchange,
+            routing_key=routing_key,
+            payload=payload,
+        )
+
+    @staticmethod
+    def pending(limit: int = 50, max_retry_count: int = 5):
+        return OutboxMessage.objects.filter(
+            status__in=[OutboxMessageStatusChoices.PENDING, OutboxMessageStatusChoices.FAILED],
+            retry_count__lt=max_retry_count,
+            available_at__lte=timezone.now(),
+        ).order_by("created_at")[:limit]
+
+    @staticmethod
+    def mark_published(message):
+        message.status = OutboxMessageStatusChoices.PUBLISHED
+        message.published_at = timezone.now()
+        message.last_error = None
+        message.save(update_fields=["status", "published_at", "last_error", "updated_at"])
+
+    @staticmethod
+    def mark_failed(message, error: str):
+        message.retry_count += 1
+        message.last_error = error
+        if message.retry_count >= 5:
+            message.status = OutboxMessageStatusChoices.FAILED
+        message.save(update_fields=["retry_count", "last_error", "status", "updated_at"])
+

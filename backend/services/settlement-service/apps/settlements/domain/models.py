@@ -313,8 +313,7 @@ class ProcessedEvent(models.Model):
 
 class OutboxMessageStatusChoices(models.TextChoices):
     PENDING = "PENDING", "Pending"
-    RETRY_PENDING = "RETRY_PENDING", "Retry pending"
-    SENT = "SENT", "Sent"
+    PUBLISHED = "PUBLISHED", "Published"
     FAILED = "FAILED", "Failed"
 
 
@@ -337,6 +336,7 @@ class OutboxMessage(models.Model):
     aggregate_type = models.CharField(max_length=64)
     aggregate_id = models.UUIDField(null=True, blank=True, db_index=True)
     event_type = models.CharField(max_length=128)
+    event_version = models.PositiveIntegerField(default=1)
     routing_key = models.CharField(max_length=128)
     exchange = models.CharField(max_length=128, default="hamdong.settlement")
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
@@ -488,3 +488,30 @@ class SettlementPlanEventLog(models.Model):
             models.Index(fields=["actor_user_id"]),
             models.Index(fields=["event_type"]),
         ]
+
+
+
+
+class InboxMessageStatusChoices(models.TextChoices):
+    PROCESSED = "PROCESSED", "Processed"
+    FAILED = "FAILED", "Failed"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class InboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    source_service = models.CharField(max_length=128)
+    routing_key = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=InboxMessageStatusChoices.choices, default=InboxMessageStatusChoices.PROCESSED)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_inbox_messages"
+        indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
+

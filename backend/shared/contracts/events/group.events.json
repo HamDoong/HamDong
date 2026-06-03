@@ -1,13 +1,102 @@
 {
   "$schema": "../schemas/event_envelope.schema.json",
   "service": "group-service",
-  "description": "Group service domain events.",
   "events": [
-    {"event_type": "GroupCreated", "routing_key": "group.created", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "created_by": "00000000-0000-0000-0000-000000000001"}},
-    {"event_type": "GroupUpdated", "routing_key": "group.updated", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "updated_by": "00000000-0000-0000-0000-000000000001"}},
-    {"event_type": "GroupArchived", "routing_key": "group.archived", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "archived_by": "00000000-0000-0000-0000-000000000001"}},
-    {"event_type": "GroupMemberJoined", "routing_key": "group.member.joined", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "user_id": "00000000-0000-0000-0000-000000000002", "role": "MEMBER"}},
-    {"event_type": "GroupMemberRemoved", "routing_key": "group.member.removed", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "member_id": "00000000-0000-0000-0000-000000000003"}},
-    {"event_type": "GroupMemberLeft", "routing_key": "group.member.left", "data_example": {"group_id": "00000000-0000-0000-0000-000000000010", "member_id": "00000000-0000-0000-0000-000000000003"}}
+    {
+      "event_type": "GroupCreated",
+      "routing_key": "group.created",
+      "payload_keys": [
+        "group_id",
+        "title",
+        "description",
+        "group_type",
+        "status",
+        "created_by_user_id",
+        "created_by_phone_number",
+        "member_count"
+      ]
+    },
+    {
+      "event_type": "GroupUpdated",
+      "routing_key": "group.updated",
+      "payload_keys": [
+        "group_id",
+        "title",
+        "description",
+        "group_type",
+        "status",
+        "updated_by_user_id",
+        "member_count"
+      ]
+    },
+    {
+      "event_type": "GroupArchived",
+      "routing_key": "group.archived",
+      "payload_keys": [
+        "group_id",
+        "archived_by_user_id",
+        "status"
+      ]
+    },
+    {
+      "event_type": "GroupInviteCreated",
+      "routing_key": "group.invite.created",
+      "payload_keys": [
+        "group_id",
+        "invite_id",
+        "created_by_user_id"
+      ]
+    },
+    {
+      "event_type": "GroupInviteAccepted",
+      "routing_key": "group.invite.accepted",
+      "payload_keys": [
+        "group_id",
+        "invite_id",
+        "user_id"
+      ]
+    },
+    {
+      "event_type": "GroupMemberJoined",
+      "routing_key": "group.member.joined",
+      "payload_keys": [
+        "group_id",
+        "user_id",
+        "phone_number",
+        "display_name",
+        "role",
+        "status"
+      ]
+    },
+    {
+      "event_type": "GroupMemberRemoved",
+      "routing_key": "group.member.removed",
+      "payload_keys": [
+        "group_id",
+        "user_id",
+        "member_id",
+        "removed_by_user_id",
+        "status"
+      ]
+    },
+    {
+      "event_type": "GroupMemberLeft",
+      "routing_key": "group.member.left",
+      "payload_keys": [
+        "group_id",
+        "user_id",
+        "left_by_user_id",
+        "status"
+      ]
+    },
+    {
+      "event_type": "GroupInviteRevoked",
+      "routing_key": "group.invite.revoked",
+      "payload_keys": [
+        "group_id",
+        "invite_id",
+        "revoked_by_user_id"
+      ]
+    }
   ]
 }

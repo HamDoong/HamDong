@@ -4,8 +4,8 @@ from apps.settlements.infrastructure.outbox_dispatcher import OutboxDispatcher
 
 
 class Command(BaseCommand):
-    help = "Dispatch pending settlement-service outbox messages."
+    help = "Dispatch pending outbox messages."
 
     def handle(self, *args, **options):
-        dispatched = OutboxDispatcher().dispatch()
-        self.stdout.write(self.style.SUCCESS(f"Dispatched {dispatched} outbox messages."))
+        count = OutboxDispatcher().dispatch()
+        self.stdout.write(self.style.SUCCESS(f"Dispatched {count} outbox messages."))

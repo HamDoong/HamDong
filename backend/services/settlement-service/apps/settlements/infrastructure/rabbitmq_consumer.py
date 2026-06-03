@@ -1,17 +1,18 @@
+from __future__ import annotations
+
 import json
 import logging
 import time
-from threading import Thread
 
 import pika
 from django.conf import settings
 
 from apps.settlements.application.use_cases import ExpenseEventUseCase
-from apps.settlements.domain.rules import InvalidEventPayloadError
+from apps.settlements.infrastructure.event_envelope import validate_event_envelope
 from apps.settlements.infrastructure.repositories import (
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
-    ProcessedEventRepository,
+    InboxRepository,
     UserProjectionRepository,
 )
 
@@ -20,205 +21,103 @@ logger = logging.getLogger(__name__)
 
 class SettlementEventConsumer:
     def __init__(self):
-        self.exchange_identity = getattr(
-            settings, "IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity"
-        )
-        self.exchange_group = getattr(
-            settings, "GROUP_RABBITMQ_EXCHANGE", "hamdong.group"
-        )
-        self.exchange_expense = getattr(
-            settings, "EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense"
-        )
-        self.queue_identity = getattr(
-            settings, "SETTLEMENT_IDENTITY_QUEUE", "settlement.identity.user_events"
-        )
-        self.queue_group = getattr(
-            settings, "SETTLEMENT_GROUP_QUEUE", "settlement.group.events"
-        )
-        self.queue_expense = getattr(
-            settings, "SETTLEMENT_EXPENSE_QUEUE", "settlement.expense.events"
-        )
-        self.retry_delay_seconds = getattr(
-            settings, "SETTLEMENT_CONSUMER_RETRY_DELAY_SECONDS", 2
-        )
+        self.exchange_identity = getattr(settings, "IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity")
+        self.exchange_group = getattr(settings, "GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
+        self.exchange_expense = getattr(settings, "EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense")
+        self.queue_identity = getattr(settings, "SETTLEMENT_IDENTITY_QUEUE", "settlement.identity.user_events")
+        self.queue_group = getattr(settings, "SETTLEMENT_GROUP_QUEUE", "settlement.group.events")
+        self.queue_expense = getattr(settings, "SETTLEMENT_EXPENSE_QUEUE", "settlement.expense.events")
+        self.retry_delay_seconds = 2
         self.expense_events = ExpenseEventUseCase()
 
     def _connect(self):
-        credentials = pika.PlainCredentials(
-            settings.RABBITMQ_DEFAULT_USER, settings.RABBITMQ_DEFAULT_PASS
-        )
-        params = pika.ConnectionParameters(
-            host=settings.RABBITMQ_HOST,
-            port=settings.RABBITMQ_PORT,
-            credentials=credentials,
-        )
+        credentials = pika.PlainCredentials(settings.RABBITMQ_DEFAULT_USER, settings.RABBITMQ_DEFAULT_PASS)
+        params = pika.ConnectionParameters(host=settings.RABBITMQ_HOST, port=settings.RABBITMQ_PORT, credentials=credentials)
         connection = pika.BlockingConnection(params)
         return connection, connection.channel()
 
-    def _decode(self, body):
+    def _parse(self, body):
         if isinstance(body, (bytes, bytearray)):
             body = body.decode("utf-8")
-        if isinstance(body, str):
-            body = json.loads(body)
-        if not isinstance(body, dict):
-            raise InvalidEventPayloadError()
-        event_type = body.get("event_type") or body.get("eventType") or body.get("type")
-        data = body.get("data") if isinstance(body.get("data"), dict) else body
-        event_id = body.get("event_id") or body.get("id")
-        source_service = body.get("source_service") or body.get("sourceService")
-        return event_id, event_type, data, source_service
+        return json.loads(body)
 
-    def _process(self, source_service, body, handler):
-        event_id, event_type, data, decoded_source_service = self._decode(body)
-        if not event_type:
-            raise InvalidEventPayloadError()
-        if event_id and ProcessedEventRepository.was_processed(event_id):
-            return False
-        handler(event_type, data)
-        if event_id:
-            ProcessedEventRepository.mark_processed(
-                event_id, event_type, decoded_source_service or source_service
-            )
-        return True
+    def _declare(self, channel, exchange, queue, routing_keys):
+        dlq = f"{queue}{getattr(settings, 'EVENT_DLQ_SUFFIX', '.dlq')}"
+        channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
+        channel.queue_declare(queue=dlq, durable=True)
+        channel.queue_declare(queue=queue, durable=True, arguments={"x-dead-letter-exchange": "", "x-dead-letter-routing-key": dlq})
+        for key in routing_keys:
+            channel.queue_bind(queue=queue, exchange=exchange, routing_key=key)
 
-    def process_identity_payload(self, payload):
-        def handler(event_type, data):
-            if event_type in ("UserCreated", "UserUpdated"):
-                UserProjectionRepository.upsert_from_event(**data)
+    def _process(self, payload, handler):
+        valid, error = validate_event_envelope(payload)
+        if not valid:
+            raise ValueError(error)
+        event_id = payload["event_id"]
+        if InboxRepository.was_processed(event_id):
+            InboxRepository.mark_skipped(event_id, payload["event_type"], payload["source_service"], payload["routing_key"], payload)
+            return
+        handler(payload["event_type"], payload["data"] or {})
+        InboxRepository.mark_processed(event_id, payload["event_type"], payload["source_service"], payload["routing_key"], payload)
 
-        return self._process("identity-service", payload, handler)
+    def _handle_identity(self, event_type, data):
+        if event_type in ("UserCreated", "UserUpdated"):
+            UserProjectionRepository.upsert_from_event(**data)
 
-    def process_group_payload(self, payload):
-        def handler(event_type, data):
-            if event_type in ("GroupCreated", "GroupUpdated"):
-                GroupProjectionRepository.upsert_from_event(**data)
-            elif event_type == "GroupArchived":
-                GroupProjectionRepository.upsert_from_event(
-                    **{**data, "status": "ARCHIVED"}
-                )
-            elif event_type == "GroupMemberJoined":
-                GroupMemberProjectionRepository.upsert_joined(**data)
-            elif event_type == "GroupMemberRemoved":
-                GroupMemberProjectionRepository.mark_removed(**data)
-            elif event_type == "GroupMemberLeft":
-                GroupMemberProjectionRepository.mark_left(**data)
+    def _handle_group(self, event_type, data):
+        if event_type == "GroupCreated":
+            GroupProjectionRepository.upsert_from_event(**data)
+        elif event_type == "GroupUpdated":
+            GroupProjectionRepository.upsert_from_event(**data)
+        elif event_type == "GroupArchived":
+            GroupProjectionRepository.upsert_from_event(**{**data, "status": "ARCHIVED"})
+        elif event_type == "GroupMemberJoined":
+            GroupMemberProjectionRepository.upsert_joined(**data)
+        elif event_type == "GroupMemberRemoved":
+            GroupMemberProjectionRepository.mark_removed(**data)
+        elif event_type == "GroupMemberLeft":
+            GroupMemberProjectionRepository.mark_left(**data)
 
-        return self._process("group-service", payload, handler)
+    def _handle_expense(self, event_type, data):
+        self.expense_events.handle(event_type, data)
 
-    def process_expense_payload(self, payload):
-        return self._process("expense-service", payload, self.expense_events.handle)
+    def _callback_factory(self, handler):
+        def _callback(ch, method, properties, body):
+            payload = None
+            try:
+                payload = self._parse(body)
+                self._process(payload, handler)
+            except Exception as exc:
+                logger.exception("Failed to process settlement event")
+                if isinstance(payload, dict) and payload.get("event_id"):
+                    InboxRepository.mark_failed(payload["event_id"], payload.get("event_type","UNKNOWN"), payload.get("source_service",""), payload.get("routing_key",""), payload, str(exc))
+            finally:
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+        return _callback
 
-    def _consume(self, queue_name, exchange_name, routing_keys, callback):
+    def _start_queue(self, exchange, queue, routing_keys, callback):
         while True:
             connection = None
             try:
                 connection, channel = self._connect()
-                channel.exchange_declare(
-                    exchange=exchange_name, exchange_type="topic", durable=True
-                )
-                channel.queue_declare(queue=queue_name, durable=True)
-                for routing_key in routing_keys:
-                    channel.queue_bind(
-                        queue=queue_name,
-                        exchange=exchange_name,
-                        routing_key=routing_key,
-                    )
-                channel.basic_qos(prefetch_count=10)
-                channel.basic_consume(
-                    queue=queue_name, on_message_callback=callback, auto_ack=False
-                )
-                logger.info(
-                    "Started consumer queue=%s exchange=%s keys=%s",
-                    queue_name,
-                    exchange_name,
-                    routing_keys,
-                )
+                self._declare(channel, exchange, queue, routing_keys)
+                channel.basic_qos(prefetch_count=1)
+                channel.basic_consume(queue=queue, on_message_callback=callback)
                 channel.start_consuming()
-            except pika.exceptions.AMQPConnectionError:
-                logger.warning(
-                    "RabbitMQ unavailable for queue=%s; retrying in %ss",
-                    queue_name,
-                    self.retry_delay_seconds,
-                )
-                time.sleep(self.retry_delay_seconds)
+            except KeyboardInterrupt:
+                break
             except Exception:
-                logger.exception(
-                    "Consumer crashed for queue=%s; retrying in %ss",
-                    queue_name,
-                    self.retry_delay_seconds,
-                )
+                logger.exception("Settlement consumer unavailable; retrying")
                 time.sleep(self.retry_delay_seconds)
             finally:
                 if connection and not connection.is_closed:
                     connection.close()
 
-    def _callback_identity(self, ch, method, properties, body):
-        try:
-            self.process_identity_payload(body)
-        except Exception:
-            logger.exception("Failed to process identity event")
-        finally:
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    def _callback_group(self, ch, method, properties, body):
-        try:
-            self.process_group_payload(body)
-        except Exception:
-            logger.exception("Failed to process group event")
-        finally:
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-    def _callback_expense(self, ch, method, properties, body):
-        try:
-            self.process_expense_payload(body)
-        except Exception:
-            logger.exception("Failed to process expense event")
-        finally:
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
     def start_identity_consumer(self):
-        self._consume(
-            self.queue_identity,
-            self.exchange_identity,
-            ["identity.user.created", "identity.user.updated"],
-            self._callback_identity,
-        )
+        self._start_queue(self.exchange_identity, self.queue_identity, ["identity.user.created", "identity.user.updated"], self._callback_factory(self._handle_identity))
 
     def start_group_consumer(self):
-        self._consume(
-            self.queue_group,
-            self.exchange_group,
-            [
-                "group.created",
-                "group.updated",
-                "group.archived",
-                "group.member.joined",
-                "group.member.removed",
-                "group.member.left",
-            ],
-            self._callback_group,
-        )
+        self._start_queue(self.exchange_group, self.queue_group, ["group.created", "group.updated", "group.archived", "group.member.joined", "group.member.removed", "group.member.left"], self._callback_factory(self._handle_group))
 
     def start_expense_consumer(self):
-        self._consume(
-            self.queue_expense,
-            self.exchange_expense,
-            [
-                "expense.created",
-                "expense.updated",
-                "expense.deleted",
-                "expense.participants.changed",
-            ],
-            self._callback_expense,
-        )
-
-    def start_consumers(self):
-        threads = [
-            Thread(target=self.start_identity_consumer, daemon=True),
-            Thread(target=self.start_group_consumer, daemon=True),
-            Thread(target=self.start_expense_consumer, daemon=True),
-        ]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        self._start_queue(self.exchange_expense, self.queue_expense, ["expense.created", "expense.updated", "expense.deleted", "expense.participants.changed"], self._callback_factory(self._handle_expense))

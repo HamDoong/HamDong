@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 
 class NotificationChannelChoices(models.TextChoices):
@@ -49,6 +50,8 @@ class SmsTemplate(models.Model):
 
 class NotificationMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient_user_id = models.UUIDField(null=True, blank=True)
+    recipient_phone_number = models.CharField(max_length=32, null=True, blank=True)
     channel = models.CharField(
         max_length=16, choices=NotificationChannelChoices.choices
     )
@@ -71,7 +74,9 @@ class NotificationMessage(models.Model):
     provider_message_id = models.CharField(max_length=128, null=True, blank=True)
     error_code = models.CharField(max_length=64, null=True, blank=True)
     error_message = models.TextField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
     retry_count = models.PositiveIntegerField(default=0)
+    scheduled_at = models.DateTimeField(default=timezone.now)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -87,10 +92,9 @@ class NotificationMessage(models.Model):
 
 class NotificationJobStatusChoices(models.TextChoices):
     PENDING = "PENDING", "Pending"
-    PROCESSING = "PROCESSING", "Processing"
+    SENDING = "SENDING", "Sending"
     SENT = "SENT", "Sent"
     FAILED = "FAILED", "Failed"
-    RETRY_PENDING = "RETRY_PENDING", "Retry pending"
     SKIPPED = "SKIPPED", "Skipped"
 
 
@@ -100,6 +104,9 @@ class NotificationJob(models.Model):
     source_service = models.CharField(max_length=128)
     source_event_type = models.CharField(max_length=128)
     reminder_type = models.CharField(max_length=48)
+    notification_type = models.CharField(max_length=48, default="OTP")
+    recipient_user_id = models.UUIDField(null=True, blank=True)
+    recipient_phone_number = models.CharField(max_length=32, null=True, blank=True)
     channel = models.CharField(
         max_length=16,
         choices=NotificationChannelChoices.choices,
@@ -123,10 +130,12 @@ class NotificationJob(models.Model):
         related_name="jobs",
     )
     retry_count = models.PositiveIntegerField(default=0)
+    scheduled_at = models.DateTimeField(default=timezone.now)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     error_code = models.CharField(max_length=64, null=True, blank=True)
     error_message = models.TextField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -168,3 +177,57 @@ class ProviderDeliveryLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}:{self.is_success}"
+
+
+class OutboxMessageStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    PUBLISHED = "PUBLISHED", "Published"
+    FAILED = "FAILED", "Failed"
+
+
+class OutboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    event_version = models.PositiveIntegerField(default=1)
+    source_service = models.CharField(max_length=128)
+    exchange = models.CharField(max_length=128)
+    routing_key = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=OutboxMessageStatusChoices.choices, default=OutboxMessageStatusChoices.PENDING)
+    retry_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    available_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "notifications_outbox_messages"
+        indexes = [models.Index(fields=["status", "available_at"]), models.Index(fields=["routing_key"])]
+
+
+
+class InboxMessageStatusChoices(models.TextChoices):
+    PROCESSED = "PROCESSED", "Processed"
+    FAILED = "FAILED", "Failed"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class InboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    source_service = models.CharField(max_length=128)
+    routing_key = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=InboxMessageStatusChoices.choices, default=InboxMessageStatusChoices.PROCESSED)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "notifications_inbox_messages"
+        indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
+
