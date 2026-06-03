@@ -1,120 +1,91 @@
+from __future__ import annotations
+
+import json
 import os
 import time
-import json
+from pathlib import Path
 from threading import Lock
+from typing import Any
 
 import httpx
+from django.conf import settings
 from jwt import algorithms
 
 
-class JWKSClient:
-    """Simple JWKS client with in-memory caching and optional PEM file fallback."""
+class JWKSClientError(RuntimeError):
+    """Raised when a verifier service cannot load a usable JWT public key."""
 
-    def __init__(self, jwks_url=None, public_key_path=None, cache_ttl=600):
-        self.jwks_url = jwks_url or os.getenv("IDENTITY_JWKS_URL")
-        self.public_key_path = public_key_path or os.getenv("IDENTITY_PUBLIC_KEY_PATH")
+
+class JWKSClient:
+    def __init__(self, jwks_url: str | None = None, public_key_path: str | None = None, cache_ttl: int = 600):
+        self.jwks_url = jwks_url or os.getenv("IDENTITY_JWKS_URL") or getattr(settings, "IDENTITY_JWKS_URL", "")
+        self.public_key_path = public_key_path or os.getenv("IDENTITY_PUBLIC_KEY_PATH") or getattr(settings, "IDENTITY_PUBLIC_KEY_PATH", "")
         self.cache_ttl = int(os.getenv("JWKS_CACHE_TTL", cache_ttl))
-        self._cache = {}
+        self._cache: dict[str, Any] = {}
         self._lock = Lock()
 
-    def _load_pem(self):
+    def _load_pem(self) -> str | None:
         if not self.public_key_path:
             return None
-        try:
-            with open(self.public_key_path, "r", encoding="utf-8") as fh:
-                return fh.read()
-        except Exception:
+        path = Path(self.public_key_path)
+        if not path.exists():
             return None
+        return path.read_text(encoding="utf-8")
 
-    def _fetch_jwks(self):
+    def _fetch_jwks(self) -> dict[str, Any]:
         if not self.jwks_url:
-            return None
-        r = httpx.get(self.jwks_url, timeout=5.0)
-        r.raise_for_status()
-        return r.json()
+            raise JWKSClientError("JWT public key is not available.")
+        try:
+            response = httpx.get(self.jwks_url, timeout=5.0)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            raise JWKSClientError("JWT public key is not available.") from exc
 
-    def get_public_key(self, kid=None, header=None):
-        """Return a key suitable for PyJWT verification.
+        keys = data.get("keys")
+        if not isinstance(keys, list) or not keys:
+            raise JWKSClientError("JWT public key is not available.")
+        return data
 
-        If `IDENTITY_PUBLIC_KEY_PATH` is provided, this will return the PEM contents.
-        Otherwise it fetches JWKS and returns an RSA key object for the matching `kid`.
-        """
-        # PEM override
+    def _get_cached_jwks(self) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            entry = self._cache.get("jwks")
+            if entry and (now - entry["fetched_at"]) < self.cache_ttl:
+                return entry["value"]
+            jwks = self._fetch_jwks()
+            self._cache["jwks"] = {"value": jwks, "fetched_at": now}
+            return jwks
+
+    def get_public_key(self, kid: str | None = None, header: dict | None = None):
         pem = self._load_pem()
         if pem:
             return pem
 
-        now = time.time()
-        with self._lock:
-            entry = self._cache.get("jwks")
-            if not entry or now - entry.get("fetched_at", 0) > self.cache_ttl:
-                jwks = self._fetch_jwks()
-                self._cache["jwks"] = {"jwks": jwks, "fetched_at": now}
-            else:
-                jwks = entry.get("jwks")
-
-        if not jwks:
-            raise RuntimeError("No JWKS available")
-
+        jwks = self._get_cached_jwks()
         keys = jwks.get("keys", [])
-        # If no kid provided and only one key is present, use it.
         if kid is None and len(keys) == 1:
-            key = keys[0]
-            return algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
+            return algorithms.RSAAlgorithm.from_jwk(json.dumps(keys[0]))
 
         for key in keys:
             if key.get("kid") == kid:
                 return algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
+        raise JWKSClientError("JWT public key is not available.")
 
-        raise KeyError(f"JWKS key not found for kid={kid}")
+    def clear_cache(self) -> None:
+        with self._lock:
+            self._cache.clear()
 
 
-_default_jwks_client = None
+_default_jwks_client: JWKSClient | None = None
 
 
-def get_default_jwks_client():
+def get_default_jwks_client() -> JWKSClient:
     global _default_jwks_client
     if _default_jwks_client is None:
         _default_jwks_client = JWKSClient()
     return _default_jwks_client
-import time
-import httpx
-from django.conf import settings
-
-_cached = None
-_cached_at = 0
-_ttl = 600
 
 
 def get_jwks():
-    global _cached, _cached_at
-    now = time.time()
-    if _cached and (now - _cached_at) < _ttl:
-        return _cached
-
-    pub_path = getattr(settings, "IDENTITY_PUBLIC_KEY_PATH", None)
-    if pub_path:
-        try:
-            with open(pub_path, "r", encoding="utf-8") as fh:
-                pem = fh.read()
-            _cached = {"pem": pem}
-            _cached_at = now
-            return _cached
-        except Exception:
-            pass
-
-    jwks_url = getattr(settings, "IDENTITY_JWKS_URL", None)
-    if not jwks_url:
-        return None
-
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            r = client.get(jwks_url)
-            if r.status_code == 200:
-                _cached = r.json()
-                _cached_at = now
-                return _cached
-    except Exception:
-        return None
-
-    return None
+    return get_default_jwks_client()._get_cached_jwks()

@@ -91,7 +91,20 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.expenses.infrastructure.exception_handlers.api_exception_handler",
 }
+
+
+IDENTITY_JWKS_URL = env(
+    "IDENTITY_JWKS_URL",
+    default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json",
+)
+IDENTITY_PUBLIC_KEY_PATH = env(
+    "IDENTITY_PUBLIC_KEY_PATH", default="/app/keys/public.pem"
+)
+JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
+JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
+JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "expense-service API",

@@ -34,7 +34,7 @@ from apps.groups.domain import rules
 
 class GroupListCreateView(GenericAPIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
     serializer_class = CreateGroupSerializer
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -65,7 +65,7 @@ class GroupListCreateView(GenericAPIView):
 
 class GroupDetailView(GenericAPIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
     serializer_class = GroupDetailSerializer
 
     def get_object(self, group_id):
@@ -111,6 +111,7 @@ class GroupDetailView(GenericAPIView):
 
 class GroupArchiveView(APIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, group_id):
         user = request.user
@@ -129,6 +130,7 @@ class GroupArchiveView(APIView):
 
 class CreateInviteView(GenericAPIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     serializer_class = CreateInviteSerializer
 
     def post(self, request, group_id):
@@ -191,6 +193,7 @@ class InvitePreviewView(APIView):
 
 class AcceptInviteView(APIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, token):
         user = request.user
@@ -212,6 +215,7 @@ class AcceptInviteView(APIView):
 
 class RevokeInviteView(APIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, group_id, invite_id):
         user = request.user
@@ -230,6 +234,7 @@ class RevokeInviteView(APIView):
 
 class MembersListView(APIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, group_id):
         user = request.user
@@ -266,6 +271,7 @@ class MembersListView(APIView):
 
 class RemoveMemberView(APIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, group_id, member_id):
         user = request.user
@@ -286,6 +292,7 @@ class RemoveMemberView(APIView):
 
 class LeaveGroupView(APIView):
     authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, group_id):
         user = request.user
