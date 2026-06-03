@@ -1,103 +1,111 @@
 """Database repositories for group-service."""
 
+from __future__ import annotations
+
+from datetime import timedelta
 from typing import Optional
+
+from django.conf import settings
 from django.db import transaction
-from apps.groups.domain.models import (
-	UserProjection,
-	Group,
-	GroupMember,
-	GroupInvite,
-)
-
-
-class UserProjectionRepository:
-	@staticmethod
-	def get_by_identity_id(identity_user_id):
-		return UserProjection.objects.filter(identity_user_id=identity_user_id).first()
-
-	@staticmethod
-	def create_or_update(identity_user_id, phone_number, display_name=None, first_name=None, last_name=None, role=None, is_active=True):
-		obj, _ = UserProjection.objects.update_or_create(
-			identity_user_id=identity_user_id,
-			defaults={
-				"phone_number": phone_number,
-				"display_name": display_name,
-				"first_name": first_name,
-				"last_name": last_name,
-				"role": role or "USER",
-				"is_active": is_active,
-			},
-		)
-		return obj
-
-
-class GroupRepository:
-	@staticmethod
-	def create(**kwargs) -> Group:
-		return Group.objects.create(**kwargs)
-
-	@staticmethod
-	def get_by_id(group_id) -> Optional[Group]:
-		return Group.objects.filter(id=group_id).first()
-
-
-class GroupMemberRepository:
-	@staticmethod
-	@transaction.atomic
-	def add_owner(group: Group, user_id, phone_number, display_name):
-		member = GroupMember.objects.create(
-			group=group,
-			user_id=user_id,
-			phone_number=phone_number,
-			display_name_snapshot=display_name,
-			role="OWNER",
-			status="ACTIVE",
-		)
-		group.member_count = GroupMember.objects.filter(group=group, status="ACTIVE").count()
-		group.save(update_fields=["member_count"])
-		return member
-
-	@staticmethod
-	def is_active_member(group: Group, user_id) -> bool:
-		return GroupMember.objects.filter(group=group, user_id=user_id, status="ACTIVE").exists()
-
-
-class GroupInviteRepository:
-	@staticmethod
-	def create(**kwargs) -> GroupInvite:
-		return GroupInvite.objects.create(**kwargs)
-
-	@staticmethod
-	def get_by_token_hash(token_hash) -> Optional[GroupInvite]:
-		return GroupInvite.objects.filter(token_hash=token_hash).first()
-
-	@staticmethod
-	def get_by_id(invite_id) -> Optional[GroupInvite]:
-		return GroupInvite.objects.filter(id=invite_id).first()
-
-	@staticmethod
-	def increment_used(invite: GroupInvite) -> GroupInvite:
-		invite.used_count = (invite.used_count or 0) + 1
-		invite.save(update_fields=["used_count"])
-		return invite
-
-	@staticmethod
-	def revoke(invite: GroupInvite) -> GroupInvite:
-		from django.utils import timezone
-
-		invite.status = "REVOKED"
-		invite.revoked_at = timezone.now()
-		invite.save(update_fields=["status", "revoked_at"])
-		return invite
-
-
 from django.utils import timezone
+
 from apps.groups.domain.models import (
+    Group,
+    GroupInvite,
+    GroupMember,
     InboxMessage,
     InboxMessageStatusChoices,
     OutboxMessage,
     OutboxMessageStatusChoices,
+    UserProjection,
 )
+
+
+class UserProjectionRepository:
+    @staticmethod
+    def get_by_identity_id(identity_user_id):
+        return UserProjection.objects.filter(identity_user_id=identity_user_id).first()
+
+    @staticmethod
+    def create_or_update(
+        identity_user_id,
+        phone_number,
+        display_name=None,
+        first_name=None,
+        last_name=None,
+        role=None,
+        is_active=True,
+    ):
+        obj, _ = UserProjection.objects.update_or_create(
+            identity_user_id=identity_user_id,
+            defaults={
+                "phone_number": phone_number,
+                "display_name": display_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": role or "USER",
+                "is_active": is_active,
+            },
+        )
+        return obj
+
+
+class GroupRepository:
+    @staticmethod
+    def create(**kwargs) -> Group:
+        return Group.objects.create(**kwargs)
+
+    @staticmethod
+    def get_by_id(group_id) -> Optional[Group]:
+        return Group.objects.filter(id=group_id).first()
+
+
+class GroupMemberRepository:
+    @staticmethod
+    @transaction.atomic
+    def add_owner(group: Group, user_id, phone_number, display_name):
+        member = GroupMember.objects.create(
+            group=group,
+            user_id=user_id,
+            phone_number=phone_number,
+            display_name_snapshot=display_name,
+            role="OWNER",
+            status="ACTIVE",
+        )
+        group.member_count = GroupMember.objects.filter(group=group, status="ACTIVE").count()
+        group.save(update_fields=["member_count"])
+        return member
+
+    @staticmethod
+    def is_active_member(group: Group, user_id) -> bool:
+        return GroupMember.objects.filter(group=group, user_id=user_id, status="ACTIVE").exists()
+
+
+class GroupInviteRepository:
+    @staticmethod
+    def create(**kwargs) -> GroupInvite:
+        return GroupInvite.objects.create(**kwargs)
+
+    @staticmethod
+    def get_by_token_hash(token_hash) -> Optional[GroupInvite]:
+        return GroupInvite.objects.filter(token_hash=token_hash).first()
+
+    @staticmethod
+    def get_by_id(invite_id) -> Optional[GroupInvite]:
+        return GroupInvite.objects.filter(id=invite_id).first()
+
+    @staticmethod
+    def increment_used(invite: GroupInvite) -> GroupInvite:
+        invite.used_count = (invite.used_count or 0) + 1
+        invite.save(update_fields=["used_count"])
+        return invite
+
+    @staticmethod
+    def revoke(invite: GroupInvite) -> GroupInvite:
+        invite.status = "REVOKED"
+        invite.revoked_at = timezone.now()
+        invite.save(update_fields=["status", "revoked_at"])
+        return invite
 
 
 class OutboxRepository:
@@ -132,15 +140,31 @@ class OutboxRepository:
     def mark_failed(message, error: str):
         message.retry_count += 1
         message.last_error = error
-        if message.retry_count >= 5:
+        max_retry_count = int(getattr(settings, "EVENT_MAX_RETRY_COUNT", 5))
+        retry_delays = [
+            int(value.strip())
+            for value in str(getattr(settings, "EVENT_RETRY_DELAY_SECONDS", "10,30,60")).split(",")
+            if value.strip()
+        ]
+        if hasattr(message, "available_at") and message.retry_count <= len(retry_delays):
+            message.available_at = timezone.now() + timedelta(seconds=retry_delays[message.retry_count - 1])
+        if message.retry_count >= max_retry_count:
             message.status = OutboxMessageStatusChoices.FAILED
-        message.save(update_fields=["retry_count", "last_error", "status", "updated_at"])
+        else:
+            message.status = OutboxMessageStatusChoices.PENDING
+        update_fields = ["retry_count", "last_error", "status", "updated_at"]
+        if hasattr(message, "available_at"):
+            update_fields.append("available_at")
+        message.save(update_fields=update_fields)
 
 
 class InboxRepository:
     @staticmethod
     def was_processed(event_id):
-        return InboxMessage.objects.filter(event_id=event_id, status=InboxMessageStatusChoices.PROCESSED).exists()
+        return InboxMessage.objects.filter(
+            event_id=event_id,
+            status=InboxMessageStatusChoices.PROCESSED,
+        ).exists()
 
     @staticmethod
     def mark_processed(event_id, event_type, source_service, routing_key, payload):
@@ -189,4 +213,3 @@ class InboxRepository:
             },
         )
         return obj
-

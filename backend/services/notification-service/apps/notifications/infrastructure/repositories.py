@@ -1,3 +1,4 @@
+from datetime import timedelta
 """Database repositories for notification-service."""
 
 from apps.notifications.domain.models import (
@@ -66,6 +67,7 @@ class NotificationRepository:
         )
 
 
+from django.conf import settings
 from django.utils import timezone
 from apps.notifications.domain.models import (
     InboxMessage,
@@ -109,9 +111,18 @@ class OutboxRepository:
     def mark_failed(message, error: str):
         message.retry_count += 1
         message.last_error = error
-        if message.retry_count >= 5:
+        max_retry_count = int(getattr(settings, "EVENT_MAX_RETRY_COUNT", 5))
+        retry_delays = [int(value.strip()) for value in str(getattr(settings, "EVENT_RETRY_DELAY_SECONDS", "10,30,60")).split(",") if value.strip()]
+        if hasattr(message, "available_at") and message.retry_count <= len(retry_delays):
+            message.available_at = timezone.now() + timedelta(seconds=retry_delays[message.retry_count - 1])
+        if message.retry_count >= max_retry_count:
             message.status = OutboxMessageStatusChoices.FAILED
-        message.save(update_fields=["retry_count", "last_error", "status", "updated_at"])
+        else:
+            message.status = OutboxMessageStatusChoices.PENDING
+        update_fields = ["retry_count", "last_error", "status", "updated_at"]
+        if hasattr(message, "available_at"):
+            update_fields.append("available_at")
+        message.save(update_fields=update_fields)
 
 
 class InboxRepository:

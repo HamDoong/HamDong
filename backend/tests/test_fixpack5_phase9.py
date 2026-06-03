@@ -201,3 +201,65 @@ def test_docker_compose_contains_phase9_workers():
 
 def test_no_makefile_was_added():
     assert not (REPO_ROOT / "Makefile").exists()
+
+
+def test_notification_templates_and_retry_env_are_configured():
+    env_example = read(".env.example")
+    for key in [
+        "SMS_TEMPLATE_PAYMENT_REMINDER",
+        "SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER",
+        "SMS_TEMPLATE_PLAN_ITEM_REMINDER",
+        "EVENT_MAX_RETRY_COUNT",
+        "EVENT_RETRY_DELAY_SECONDS",
+        "REMINDER_SCHEDULER_INTERVAL_SECONDS",
+    ]:
+        assert f"{key}=" in env_example
+
+    template_service = read(
+        "services",
+        "notification-service",
+        "apps",
+        "notifications",
+        "application",
+        "template_service.py",
+    )
+    assert "PAYMENT_REMINDER" in template_service
+    assert "SETTLEMENT_CONFIRMATION_REMINDER" in template_service
+    assert "PLAN_ITEM_REMINDER" in template_service
+
+    consumer = read(
+        "services",
+        "notification-service",
+        "apps",
+        "notifications",
+        "infrastructure",
+        "reminder_consumer.py",
+    )
+    assert "render_reminder_message(reminder_type, context)" in consumer
+
+    settlement_settings = read(
+        "services",
+        "settlement-service",
+        "config",
+        "settings",
+        "base.py",
+    )
+    assert "REMINDER_SCHEDULER_INTERVAL_SECONDS" in settlement_settings
+
+    docker_compose = read("docker-compose.yml")
+    assert "${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}" in docker_compose
+    assert "${REMINDER_SCHEDULER_INTERVAL_SECONDS:-3600}" in docker_compose
+
+
+def test_outbox_repositories_use_configurable_retry_policy():
+    for rel in [
+        ("services", "identity-service", "apps", "identity", "infrastructure", "repositories.py"),
+        ("services", "group-service", "apps", "groups", "infrastructure", "repositories.py"),
+        ("services", "expense-service", "apps", "expenses", "infrastructure", "repositories.py"),
+        ("services", "media-service", "apps", "media_files", "infrastructure", "repositories.py"),
+        ("services", "notification-service", "apps", "notifications", "infrastructure", "repositories.py"),
+    ]:
+        text = read(*rel)
+        assert "EVENT_MAX_RETRY_COUNT" in text
+        assert "EVENT_RETRY_DELAY_SECONDS" in text
+        assert "available_at" in text

@@ -60,22 +60,27 @@ class SettlementReminderConsumer:
     def _render_message(self, payload: dict) -> tuple[str, str]:
         data = payload.get("data") or {}
         event_type = payload["event_type"]
+        reminder_type = SUPPORTED_REMINDER_EVENTS[event_type]
         if event_type == "PaymentReminderRequested":
             context = {
-                "group_title": (data.get("message_context") or {}).get("group_title", "Settlement group"),
-                "message": f"شما در گروه {(data.get('message_context') or {}).get('group_title', 'هم‌دنگ')} مبلغ {data.get('amount_minor')} {data.get('currency', 'IRR')} بدهکار هستید. لطفاً در زمان مناسب تسویه را انجام دهید.",
+                "group_title": (data.get("message_context") or {}).get("group_title", "هم‌دنگ"),
+                "amount": data.get("amount_minor"),
+                "currency": data.get("currency", "IRR"),
             }
         elif event_type == "SettlementConfirmationReminderRequested":
             context = {
-                "group_title": "هم‌دنگ",
-                "message": f"{data.get('payer_display_name', 'کاربر')} اعلام کرده مبلغ {data.get('amount_minor')} {data.get('currency', 'IRR')} را پرداخت کرده است. لطفاً دریافت مبلغ را تأیید یا رد کنید.",
+                "payer_name": data.get("payer_display_name", "کاربر"),
+                "amount": data.get("amount_minor"),
+                "currency": data.get("currency", "IRR"),
             }
         else:
             context = {
                 "group_title": (data.get("message_context") or {}).get("group_title", "هم‌دنگ"),
-                "message": f"برای تسویه گروه {(data.get('message_context') or {}).get('group_title', 'هم‌دنگ')} لطفاً مبلغ {data.get('amount_minor')} {data.get('currency', 'IRR')} را به {data.get('receiver_display_name', 'گیرنده')} پرداخت کنید.",
+                "amount": data.get("amount_minor"),
+                "currency": data.get("currency", "IRR"),
+                "receiver_name": data.get("receiver_display_name", "گیرنده"),
             }
-        return self.template_service.render_reminder_message(context)
+        return self.template_service.render_reminder_message(reminder_type, context)
 
     def _handle_message(self, channel, method, properties, body):
         payload = self._parse(body)
