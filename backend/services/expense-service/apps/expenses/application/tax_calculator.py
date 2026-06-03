@@ -1,82 +1,120 @@
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Dict, List
+from typing import Mapping
+
+from .rounding import distribute_integer_minor_by_weights
 
 
-def compute_percentage_amount(base_amount_minor: int, percentage: Decimal) -> int:
-    if percentage is None:
+def _to_decimal(value: Decimal | str | int | None) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    return Decimal(str(value))
+
+
+def calculate_amount_minor(
+    *,
+    amount_type: str,
+    base_amount_minor: int,
+    percentage: Decimal | str | int | None = None,
+    amount_minor: int | None = None,
+) -> int:
+    normalized_amount_type = str(amount_type or "NONE")
+
+    if normalized_amount_type == "NONE":
         return 0
-    p = Decimal(percentage)
-    if p < 0:
-        raise ValueError("Negative percentage not allowed")
-    amt = (Decimal(base_amount_minor) * p / Decimal("100"))
-    # round half up to nearest minor unit
-    return int(amt.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+    if normalized_amount_type == "PERCENTAGE":
+        normalized_percentage = _to_decimal(percentage)
+        if normalized_percentage < 0:
+            raise ValueError("percentage cannot be negative")
+        raw_amount = (Decimal(int(base_amount_minor)) * normalized_percentage) / Decimal("100")
+        return int(raw_amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    if normalized_amount_type == "FIXED":
+        if amount_minor is None:
+            raise ValueError("amount_minor is required for FIXED amounts")
+        fixed_amount = int(amount_minor)
+        if fixed_amount < 0:
+            raise ValueError("amount_minor cannot be negative")
+        return fixed_amount
+
+    raise ValueError("invalid amount_type")
 
 
-def distribute_proportional(total_amount: int, participants_map: Dict[str, int]) -> Dict[str, int]:
-    """Distribute `total_amount` proportionally according to participants_map (user_id -> base_share_minor).
-
-    Deterministic remainder distribution by sorting user_id string.
-    """
-    if total_amount <= 0:
-        return {uid: 0 for uid in participants_map}
-
-    total_base = sum(int(v) for v in participants_map.values())
-    if total_base <= 0:
-        return {uid: 0 for uid in participants_map}
-
-    floor_shares = {}
-    allocated = 0
-    for uid, base in participants_map.items():
-        share = (int(base) * int(total_amount)) // int(total_base)
-        floor_shares[uid] = int(share)
-        allocated += int(share)
-
-    remainder = int(total_amount) - allocated
-    if remainder > 0:
-        # deterministic order by user_id string
-        ordered = sorted((str(uid) for uid in participants_map.keys()))
-        for i in range(remainder):
-            uid = ordered[i % len(ordered)]
-            floor_shares[uid] += 1
-
-    # final sanity
-    assert sum(floor_shares.values()) == int(total_amount)
-    return floor_shares
-from decimal import Decimal
-from typing import Dict
+def calculate_tax_amount(
+    *,
+    tax_type: str,
+    base_amount_minor: int,
+    tax_percentage: Decimal | str | int | None = None,
+    tax_amount_minor: int | None = None,
+) -> int:
+    return calculate_amount_minor(
+        amount_type=tax_type,
+        base_amount_minor=base_amount_minor,
+        percentage=tax_percentage,
+        amount_minor=tax_amount_minor,
+    )
 
 
-def compute_percentage_amount(base: int, percentage: Decimal) -> int:
-    # returns floored integer minor units
-    if percentage is None:
-        return 0
-    amt = (Decimal(base) * (percentage / Decimal(100))).quantize(Decimal("1."), rounding="ROUND_FLOOR")
-    return int(amt)
+def calculate_service_fee_amount(
+    *,
+    service_fee_type: str,
+    base_amount_minor: int,
+    service_fee_percentage: Decimal | str | int | None = None,
+    service_fee_amount_minor: int | None = None,
+) -> int:
+    return calculate_amount_minor(
+        amount_type=service_fee_type,
+        base_amount_minor=base_amount_minor,
+        percentage=service_fee_percentage,
+        amount_minor=service_fee_amount_minor,
+    )
 
 
-def distribute_proportional(total_amount: int, base_shares: Dict[str, int]) -> Dict[str, int]:
-    total_base = sum(base_shares.values())
-    if total_base == 0:
-        # nothing to distribute
-        return {k: 0 for k in base_shares}
+def distribute_proportional(
+    total_amount_minor: int,
+    base_shares: Mapping[object, int],
+    deterministic_order: str = "sorted",
+) -> dict[str, int]:
+    normalized_base_shares = {str(user_id): int(value) for user_id, value in base_shares.items()}
+    if total_amount_minor < 0:
+        raise ValueError("total_amount_minor cannot be negative")
+    if not normalized_base_shares:
+        raise ValueError("base_shares must not be empty")
 
-    shares = {}
-    accumulated = 0
-    # compute floor share
-    for k, v in base_shares.items():
-        share = (total_amount * v) // total_base
-        shares[k] = share
-        accumulated += share
+    if total_amount_minor == 0:
+        return {user_id: 0 for user_id in normalized_base_shares}
 
-    remainder = total_amount - accumulated
-    if remainder > 0:
-        # deterministic distribution by sorted keys
-        keys = sorted(base_shares.keys(), key=lambda x: str(x))
-        i = 0
-        while remainder > 0:
-            shares[keys[i % len(keys)]] += 1
-            remainder -= 1
-            i += 1
+    if sum(normalized_base_shares.values()) <= 0:
+        raise ValueError("base_shares must have a positive total")
 
-    return shares
+    return distribute_integer_minor_by_weights(
+        total_amount_minor=int(total_amount_minor),
+        weights=normalized_base_shares,
+        deterministic_order=deterministic_order,
+    )
+
+
+def distribute_tax_amount(
+    *,
+    tax_amount_minor: int,
+    base_shares: Mapping[object, int],
+    deterministic_order: str = "sorted",
+) -> dict[str, int]:
+    return distribute_proportional(
+        total_amount_minor=tax_amount_minor,
+        base_shares=base_shares,
+        deterministic_order=deterministic_order,
+    )
+
+
+def distribute_service_fee_amount(
+    *,
+    service_fee_amount_minor: int,
+    base_shares: Mapping[object, int],
+    deterministic_order: str = "sorted",
+) -> dict[str, int]:
+    return distribute_proportional(
+        total_amount_minor=service_fee_amount_minor,
+        base_shares=base_shares,
+        deterministic_order=deterministic_order,
+    )

@@ -1,16 +1,80 @@
 @baseUrl = http://localhost:8080
 
+### Create equal expense
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
 Content-Type: application/json
 Authorization: Bearer {{accessToken}}
 
 {
   "title": "Lunch",
-  "amount": 900000,
-  "paid_by": "{{memberId}}",
-  "participants": ["{{memberId}}","{{secondMemberId}}","{{thirdMemberId}}"],
-  "currency": "IRR"
+  "description": "Shared lunch at restaurant",
+  "payer_user_id": "{{memberId}}",
+  "base_amount_minor": 1200000,
+  "currency": "IRR",
+  "split_method": "EQUAL",
+  "participant_user_ids": [
+    "{{memberId}}",
+    "{{secondMemberId}}",
+    "{{thirdMemberId}}"
+  ],
+  "tax_type": "PERCENTAGE",
+  "tax_percentage": "10.00",
+  "service_fee_type": "FIXED",
+  "service_fee_amount_minor": 50000,
+  "expense_date": "2026-06-02T12:00:00Z"
 }
 
-GET {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/list/
+### Create custom amount expense
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Content-Type: application/json
 Authorization: Bearer {{accessToken}}
+
+{
+  "title": "Shopping",
+  "description": "Shared shopping for the trip",
+  "payer_user_id": "{{memberId}}",
+  "base_amount_minor": 1000000,
+  "currency": "IRR",
+  "split_method": "CUSTOM_AMOUNT",
+  "participants": [
+    {
+      "user_id": "{{memberId}}",
+      "base_share_minor": 400000
+    },
+    {
+      "user_id": "{{secondMemberId}}",
+      "base_share_minor": 300000
+    },
+    {
+      "user_id": "{{thirdMemberId}}",
+      "base_share_minor": 300000
+    }
+  ],
+  "tax_type": "FIXED",
+  "tax_amount_minor": 100000,
+  "service_fee_type": "NONE",
+  "expense_date": "2026-06-02T12:00:00Z"
+}
+
+### List group expenses
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Authorization: Bearer {{accessToken}}
+
+### Get expense detail
+GET {{baseUrl}}/api/v1/expenses/{{expenseId}}/
+Authorization: Bearer {{accessToken}}
+
+### Update expense
+PATCH {{baseUrl}}/api/v1/expenses/{{expenseId}}/
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "title": "Lunch - Updated",
+  "description": "Updated description"
+}
+
+### Delete expense
+DELETE {{baseUrl}}/api/v1/expenses/{{expenseId}}/
+Authorization: Bearer {{accessToken}}
+

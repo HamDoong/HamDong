@@ -35,9 +35,13 @@ Authorization: Bearer {{accessToken}}
 
 {
   "title": "Lunch",
-  "amount": 45.50,
-  "paid_by": "{{memberId}}",
-  "participants": ["{{memberId}}"]
+  "payer_user_id": "{{memberId}}",
+  "base_amount_minor": 4550000,
+  "currency": "IRR",
+  "split_method": "EQUAL",
+  "participant_user_ids": ["{{memberId}}"],
+  "tax_type": "NONE",
+  "service_fee_type": "NONE"
 }
 
 # 5) Generate settlement plan

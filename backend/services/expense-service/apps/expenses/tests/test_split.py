@@ -1,32 +1,38 @@
-from apps.expenses.application.split_calculator import equal_split, custom_split
+import pytest
+
+from apps.expenses.application.split_calculator import INVALID_SPLIT_AMOUNT, custom_split, equal_split
 
 
 def test_equal_split_even():
-    p = ["a","b","c"]
-    res = equal_split(p, 900)
-    assert sum(res.values()) == 900
-    assert set(res.keys()) == set(p)
+    result = equal_split(["a", "b", "c"], 900)
+    assert result == {"a": 300, "b": 300, "c": 300}
 
 
 def test_equal_split_remainder():
-    p = ["a","b","c"]
-    res = equal_split(p, 1000)
-    assert sum(res.values()) == 1000
-    # base share floor is 333 each -> remainder 1 -> one gets +1
-    assert sorted(res.values(), reverse=True)[0] in (334,)
+    result = equal_split(["b", "a", "c"], 1000)
+    assert sum(result.values()) == 1000
+    assert result["a"] == 334
+    assert result["b"] == 333
+    assert result["c"] == 333
 
 
 def test_custom_split_valid():
-    parts = [{"user_id":"a","base_share_minor":400}, {"user_id":"b","base_share_minor":600}]
-    res = custom_split(parts, 1000)
-    assert res["a"] == 400
-    assert res["b"] == 600
+    result = custom_split(
+        [
+            {"user_id": "a", "base_share_minor": 400},
+            {"user_id": "b", "base_share_minor": 600},
+        ],
+        1000,
+    )
+    assert result == {"a": 400, "b": 600}
 
 
-def test_custom_split_invalid():
-    parts = [{"user_id":"a","base_share_minor":300}, {"user_id":"b","base_share_minor":600}]
-    try:
-        custom_split(parts, 1000)
-        assert False
-    except ValueError:
-        assert True
+def test_custom_split_sum_mismatch_should_fail():
+    with pytest.raises(ValueError, match=INVALID_SPLIT_AMOUNT):
+        custom_split(
+            [
+                {"user_id": "a", "base_share_minor": 300},
+                {"user_id": "b", "base_share_minor": 600},
+            ],
+            1000,
+        )
