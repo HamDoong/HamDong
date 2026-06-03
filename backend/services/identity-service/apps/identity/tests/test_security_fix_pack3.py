@@ -12,8 +12,6 @@ from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
 class IdentitySecurityFixPack3Tests(TestCase):
     def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
         self.user = User.objects.create(phone_number="09123456789")
         self.otp_store = RedisOtpStore()
         self.otp_store.redis_client.flushdb()
@@ -68,13 +66,3 @@ class IdentitySecurityFixPack3Tests(TestCase):
         joined = "\n".join(logs.output)
         assert "0912***6789" in joined
         assert "09123456789" not in joined
-
-
-    def test_jwks_endpoint_returns_rs256_keyset(self):
-        response = self.client.get("/api/v1/auth/.well-known/jwks.json")
-        assert response.status_code == 200
-        data = response.json()
-        assert "keys" in data
-        assert data["keys"][0]["kty"] == "RSA"
-        assert data["keys"][0]["alg"] == "RS256"
-        assert data["keys"][0]["kid"] == ACCESS_TOKEN_KID

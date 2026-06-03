@@ -29,5 +29,10 @@ class MediaListItemSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
+class MediaListResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    results = MediaListItemSerializer(many=True)
+
+
 class MessageSerializer(serializers.Serializer):
     message = serializers.CharField()

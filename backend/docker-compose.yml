@@ -26,13 +26,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${IDENTITY_DB_NAME}
       IDENTITY_DB_NAME: ${IDENTITY_DB_NAME}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
-      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
-      JWT_ACCESS_TOKEN_LIFETIME_SECONDS: ${JWT_ACCESS_TOKEN_LIFETIME_SECONDS:-900}
-      JWT_REFRESH_TOKEN_LIFETIME_SECONDS: ${JWT_REFRESH_TOKEN_LIFETIME_SECONDS:-604800}
-      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-/app/keys/private.pem}
-      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:-/app/keys/public.pem}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_DB: ${REDIS_DB}
@@ -548,11 +541,6 @@ services:
       RABBITMQ_PORT: ${RABBITMQ_PORT}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
-      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
-      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
-      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
     ports:
       - "8003:8000"
     volumes:
@@ -588,11 +576,6 @@ services:
       EXPENSE_RABBITMQ_EXCHANGE: ${EXPENSE_RABBITMQ_EXCHANGE}
       IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE}
       GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE}
-      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
-      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
-      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
     depends_on:
       rabbitmq:
         condition: service_started

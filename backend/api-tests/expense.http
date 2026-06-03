@@ -2,16 +2,16 @@
 
 @accessToken =
 @groupId =
-@expenseId =
 @payerUserId =
 @participantUserId1 =
 @participantUserId2 =
 @participantUserId3 =
+@expenseId =
 
-### Expense service health
+### Health endpoint
 GET {{baseUrl}}/api/v1/expenses/health/
 
-### Create equal expense
+### Create equal split expense
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -39,7 +39,7 @@ Content-Type: application/json
 
 {
   "title": "خرید مشترک",
-  "description": "خرید برای سفر",
+  "description": "تقسیم سفارشی",
   "payer_user_id": "{{payerUserId}}",
   "base_amount_minor": 1000000,
   "currency": "IRR",
@@ -58,7 +58,8 @@ Content-Type: application/json
       "base_share_minor": 300000
     }
   ],
-  "tax_type": "NONE",
+  "tax_type": "FIXED",
+  "tax_amount_minor": 100000,
   "service_fee_type": "NONE"
 }
 
@@ -76,7 +77,11 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "title": "شام رستوران - ویرایش شده"
+  "title": "شام رستوران - ویرایش شده",
+  "tax_type": "PERCENTAGE",
+  "tax_percentage": 10,
+  "service_fee_type": "FIXED",
+  "service_fee_amount_minor": 50000
 }
 
 ### Delete expense
