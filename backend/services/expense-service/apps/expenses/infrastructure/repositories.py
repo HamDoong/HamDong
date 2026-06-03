@@ -1,6 +1,12 @@
+"""Database repositories for expense-service."""
+
+from __future__ import annotations
+
 from typing import Optional
 
 from django.db import transaction
+from django.db.models import QuerySet
+from django.utils import timezone
 
 from apps.expenses.domain.models import (
     Expense,
@@ -12,70 +18,73 @@ from apps.expenses.domain.models import (
 
 
 class ProjectionRepository:
+    """Read access for local identity/group projections."""
+
     @staticmethod
-    def get_group(group_id):
+    def get_group(group_id: object) -> GroupProjection | None:
         return GroupProjection.objects.filter(group_id=group_id).first()
 
     @staticmethod
-    def is_active_member(group_id, user_id) -> bool:
+    def get_member(group_id: object, user_id: object) -> GroupMemberProjection | None:
+        return GroupMemberProjection.objects.filter(group_id=group_id, user_id=user_id).first()
+
+    @staticmethod
+    def get_active_member(group_id: object, user_id: object) -> GroupMemberProjection | None:
         return GroupMemberProjection.objects.filter(
             group_id=group_id,
             user_id=user_id,
             status=GroupMemberProjection.STATUS_ACTIVE,
-        ).exists()
+        ).first()
 
     @staticmethod
-    def get_member(group_id, user_id, *, active_only: bool = False):
-        queryset = GroupMemberProjection.objects.filter(group_id=group_id, user_id=user_id)
-        if active_only:
-            queryset = queryset.filter(status=GroupMemberProjection.STATUS_ACTIVE)
-        return queryset.first()
+    def is_active_member(group_id: object, user_id: object) -> bool:
+        return ProjectionRepository.get_active_member(group_id, user_id) is not None
 
     @staticmethod
-    def get_active_members_map(group_id, user_ids):
-        queryset = GroupMemberProjection.objects.filter(
-            group_id=group_id,
-            user_id__in=list(user_ids),
-            status=GroupMemberProjection.STATUS_ACTIVE,
-        )
-        return {str(member.user_id): member for member in queryset}
-
-    @staticmethod
-    def get_user_projection(identity_user_id):
+    def get_user(identity_user_id: object) -> UserProjection | None:
         return UserProjection.objects.filter(identity_user_id=identity_user_id).first()
 
 
 class ExpenseRepository:
+    """Persistence helpers for expenses and participants."""
+
     @staticmethod
     def create_expense(**kwargs) -> Expense:
         return Expense.objects.create(**kwargs)
 
     @staticmethod
-    def get_by_id(expense_id) -> Optional[Expense]:
-        return Expense.objects.prefetch_related("participants").filter(id=expense_id).first()
+    def get_by_id(expense_id: object) -> Optional[Expense]:
+        return Expense.objects.filter(id=expense_id).prefetch_related("participants").first()
 
     @staticmethod
-    def list_by_group(group_id, filters: dict | None = None, page: int = 1, page_size: int = 50):
-        queryset = (
-            Expense.objects.prefetch_related("participants")
-            .filter(group_id=group_id)
+    def list_by_group(
+        group_id: object,
+        filters: dict | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> list[Expense]:
+        qs: QuerySet[Expense] = (
+            Expense.objects.filter(group_id=group_id)
             .exclude(status=Expense.STATUS_DELETED)
+            .prefetch_related("participants")
             .order_by("-created_at")
         )
 
         if filters:
             if filters.get("payer_user_id"):
-                queryset = queryset.filter(payer_user_id=filters["payer_user_id"])
+                qs = qs.filter(payer_user_id=filters["payer_user_id"])
             if filters.get("created_by_user_id"):
-                queryset = queryset.filter(created_by_user_id=filters["created_by_user_id"])
+                qs = qs.filter(created_by_user_id=filters["created_by_user_id"])
             if filters.get("from_date"):
-                queryset = queryset.filter(created_at__gte=filters["from_date"])
+                qs = qs.filter(expense_date__gte=filters["from_date"])
             if filters.get("to_date"):
-                queryset = queryset.filter(created_at__lte=filters["to_date"])
+                qs = qs.filter(expense_date__lte=filters["to_date"])
 
-        start = max(page - 1, 0) * page_size
-        end = start + page_size
-        return list(queryset[start:end])
+        safe_page = max(int(page), 1)
+        safe_page_size = min(max(int(page_size), 1), 100)
+        start = (safe_page - 1) * safe_page_size
+        end = start + safe_page_size
+        return list(qs[start:end])
 
     @staticmethod
     def update_expense(expense: Expense, **kwargs) -> Expense:
@@ -87,17 +96,14 @@ class ExpenseRepository:
     @staticmethod
     def soft_delete(expense: Expense) -> Expense:
         expense.status = Expense.STATUS_DELETED
-        expense.save(update_fields=["status", "deleted_at", "updated_at", "version"])
+        expense.deleted_at = timezone.now()
+        expense.save(update_fields=["status", "deleted_at", "updated_at"])
         return expense
 
     @staticmethod
     @transaction.atomic
     def add_participants(expense: Expense, participants: list[dict]) -> list[ExpenseParticipant]:
-        participant_objects = [
-            ExpenseParticipant(expense=expense, **participant) for participant in participants
-        ]
-        ExpenseParticipant.objects.bulk_create(participant_objects)
-        return participant_objects
+        return [ExpenseParticipant.objects.create(expense=expense, **row) for row in participants]
 
     @staticmethod
     @transaction.atomic

@@ -1,120 +1,123 @@
+"""Tax and service-fee calculations for integer minor units."""
+
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Mapping
 
-from .rounding import distribute_integer_minor_by_weights
+
+VALID_ADJUSTMENT_TYPES = {"NONE", "PERCENTAGE", "FIXED"}
 
 
-def _to_decimal(value: Decimal | str | int | None) -> Decimal:
+def _to_decimal(value: object | None) -> Decimal:
     if value is None:
         return Decimal("0")
     return Decimal(str(value))
 
 
-def calculate_amount_minor(
-    *,
-    amount_type: str,
+def calculate_adjustment_amount_minor(
+    adjustment_type: str,
     base_amount_minor: int,
-    percentage: Decimal | str | int | None = None,
-    amount_minor: int | None = None,
+    percentage: Decimal | str | None = None,
+    fixed_amount_minor: int | None = None,
 ) -> int:
-    normalized_amount_type = str(amount_type or "NONE")
+    """Calculate a tax or service-fee amount in minor units."""
+    if adjustment_type not in VALID_ADJUSTMENT_TYPES:
+        raise ValueError("INVALID_ADJUSTMENT_TYPE")
 
-    if normalized_amount_type == "NONE":
+    normalized_base_amount_minor = int(base_amount_minor)
+    if normalized_base_amount_minor < 0:
+        raise ValueError("base_amount_minor must be non-negative")
+
+    if adjustment_type == "NONE":
         return 0
 
-    if normalized_amount_type == "PERCENTAGE":
-        normalized_percentage = _to_decimal(percentage)
-        if normalized_percentage < 0:
-            raise ValueError("percentage cannot be negative")
-        raw_amount = (Decimal(int(base_amount_minor)) * normalized_percentage) / Decimal("100")
-        return int(raw_amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    if adjustment_type == "PERCENTAGE":
+        percent = _to_decimal(percentage)
+        if percent < 0:
+            raise ValueError("percentage must be non-negative")
 
-    if normalized_amount_type == "FIXED":
-        if amount_minor is None:
-            raise ValueError("amount_minor is required for FIXED amounts")
-        fixed_amount = int(amount_minor)
-        if fixed_amount < 0:
-            raise ValueError("amount_minor cannot be negative")
-        return fixed_amount
+        calculated_amount_minor = (Decimal(normalized_base_amount_minor) * percent) / Decimal("100")
+        return int(calculated_amount_minor.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    raise ValueError("invalid amount_type")
+    if fixed_amount_minor is None:
+        raise ValueError("fixed amount required")
+
+    normalized_fixed_amount_minor = int(fixed_amount_minor)
+    if normalized_fixed_amount_minor < 0:
+        raise ValueError("fixed amount must be non-negative")
+
+    return normalized_fixed_amount_minor
 
 
-def calculate_tax_amount(
-    *,
+def compute_percentage_amount(base_amount_minor: int, percentage: Decimal | str | None) -> int:
+    """Backward-compatible percentage helper used by tests and callers."""
+    return calculate_adjustment_amount_minor("PERCENTAGE", base_amount_minor, percentage=percentage)
+
+
+def calculate_tax_amount_minor(
     tax_type: str,
     base_amount_minor: int,
-    tax_percentage: Decimal | str | int | None = None,
+    tax_percentage: Decimal | str | None = None,
     tax_amount_minor: int | None = None,
 ) -> int:
-    return calculate_amount_minor(
-        amount_type=tax_type,
-        base_amount_minor=base_amount_minor,
+    """Calculate tax in minor units."""
+    return calculate_adjustment_amount_minor(
+        tax_type,
+        base_amount_minor,
         percentage=tax_percentage,
-        amount_minor=tax_amount_minor,
+        fixed_amount_minor=tax_amount_minor,
     )
 
 
-def calculate_service_fee_amount(
-    *,
+def calculate_service_fee_amount_minor(
     service_fee_type: str,
     base_amount_minor: int,
-    service_fee_percentage: Decimal | str | int | None = None,
+    service_fee_percentage: Decimal | str | None = None,
     service_fee_amount_minor: int | None = None,
 ) -> int:
-    return calculate_amount_minor(
-        amount_type=service_fee_type,
-        base_amount_minor=base_amount_minor,
+    """Calculate service fee in minor units."""
+    return calculate_adjustment_amount_minor(
+        service_fee_type,
+        base_amount_minor,
         percentage=service_fee_percentage,
-        amount_minor=service_fee_amount_minor,
+        fixed_amount_minor=service_fee_amount_minor,
     )
 
 
-def distribute_proportional(
-    total_amount_minor: int,
-    base_shares: Mapping[object, int],
-    deterministic_order: str = "sorted",
-) -> dict[str, int]:
-    normalized_base_shares = {str(user_id): int(value) for user_id, value in base_shares.items()}
-    if total_amount_minor < 0:
-        raise ValueError("total_amount_minor cannot be negative")
-    if not normalized_base_shares:
-        raise ValueError("base_shares must not be empty")
+def distribute_proportional(total_amount_minor: int, base_shares: Mapping[str, int]) -> dict[str, int]:
+    """Distribute an amount proportionally by base shares with deterministic rounding."""
+    normalized_total_amount_minor = int(total_amount_minor)
+    if normalized_total_amount_minor < 0:
+        raise ValueError("total_amount_minor must be non-negative")
 
-    if total_amount_minor == 0:
-        return {user_id: 0 for user_id in normalized_base_shares}
+    shares = {str(user_id): int(base_share) for user_id, base_share in base_shares.items()}
+    if any(base_share < 0 for base_share in shares.values()):
+        raise ValueError("base_share_minor must be non-negative")
 
-    if sum(normalized_base_shares.values()) <= 0:
-        raise ValueError("base_shares must have a positive total")
+    if not shares:
+        if normalized_total_amount_minor == 0:
+            return {}
+        raise ValueError("base_shares required")
 
-    return distribute_integer_minor_by_weights(
-        total_amount_minor=int(total_amount_minor),
-        weights=normalized_base_shares,
-        deterministic_order=deterministic_order,
-    )
+    if normalized_total_amount_minor == 0:
+        return {user_id: 0 for user_id in shares}
 
+    total_base = sum(shares.values())
+    if total_base <= 0:
+        raise ValueError("total base_share_minor must be positive")
 
-def distribute_tax_amount(
-    *,
-    tax_amount_minor: int,
-    base_shares: Mapping[object, int],
-    deterministic_order: str = "sorted",
-) -> dict[str, int]:
-    return distribute_proportional(
-        total_amount_minor=tax_amount_minor,
-        base_shares=base_shares,
-        deterministic_order=deterministic_order,
-    )
+    result: dict[str, int] = {}
+    allocated = 0
 
+    for user_id, base_share in shares.items():
+        share = (base_share * normalized_total_amount_minor) // total_base
+        result[user_id] = share
+        allocated += share
 
-def distribute_service_fee_amount(
-    *,
-    service_fee_amount_minor: int,
-    base_shares: Mapping[object, int],
-    deterministic_order: str = "sorted",
-) -> dict[str, int]:
-    return distribute_proportional(
-        total_amount_minor=service_fee_amount_minor,
-        base_shares=base_shares,
-        deterministic_order=deterministic_order,
-    )
+    remainder = normalized_total_amount_minor - allocated
+    for user_id in sorted(result)[:remainder]:
+        result[user_id] += 1
+
+    if sum(result.values()) != normalized_total_amount_minor:
+        raise AssertionError("proportional distribution produced an invalid total")
+
+    return result

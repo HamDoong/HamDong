@@ -1,63 +1,65 @@
-from collections.abc import Iterable
+"""Base-share split calculation for expenses."""
+
+from collections.abc import Iterable, Mapping
 from typing import Any
 
-from .rounding import split_integer_minor
+from apps.expenses.application.rounding import split_integer_minor
+
 
 INVALID_SPLIT_AMOUNT = "INVALID_SPLIT_AMOUNT"
 
 
-def _normalize_user_id(value: Any) -> str:
-    user_id = str(value)
-    if not user_id or user_id == "None":
-        raise ValueError("participant must include user_id")
-    return user_id
+def equal_split(participant_user_ids: Iterable[Any], base_amount_minor: int) -> dict[str, int]:
+    """Return base shares for an EQUAL split."""
+    user_ids = [str(user_id) for user_id in participant_user_ids or []]
+    if not user_ids:
+        raise ValueError("participant_user_ids required")
 
+    if len(set(user_ids)) != len(user_ids):
+        raise ValueError("DUPLICATE_PARTICIPANT")
 
-def equal_split(
-    participant_user_ids: Iterable[object],
-    base_amount_minor: int,
-    deterministic_order: str = "sorted",
-) -> dict[str, int]:
-    participant_ids = [_normalize_user_id(user_id) for user_id in participant_user_ids]
-    if not participant_ids:
-        raise ValueError("at least one participant is required")
-    if len(set(participant_ids)) != len(participant_ids):
-        raise ValueError("duplicate participant_user_ids are not allowed")
-    if int(base_amount_minor) < 0:
+    normalized_base_amount_minor = int(base_amount_minor)
+    if normalized_base_amount_minor < 0:
         raise ValueError("base_amount_minor must be non-negative")
 
-    shares = split_integer_minor(
-        amount=int(base_amount_minor),
-        participant_ids=participant_ids,
-        deterministic_order=deterministic_order,
-    )
-    return {user_id: share for user_id, share in zip(participant_ids, shares)}
+    shares = split_integer_minor(normalized_base_amount_minor, user_ids, deterministic_order="sorted")
+    result = dict(zip(user_ids, shares, strict=True))
+
+    if sum(result.values()) != normalized_base_amount_minor:
+        raise AssertionError("equal split produced an invalid total")
+
+    return result
 
 
-def custom_split(
-    participants: Iterable[dict[str, Any]],
-    base_amount_minor: int,
-) -> dict[str, int]:
-    participant_list = list(participants)
-    if not participant_list:
-        raise ValueError("participants are required")
+def custom_split(participants: Iterable[Mapping[str, Any]], base_amount_minor: int) -> dict[str, int]:
+    """Return base shares for a CUSTOM_AMOUNT split."""
+    rows = list(participants or [])
+    if not rows:
+        raise ValueError("participants required")
 
-    shares: dict[str, int] = {}
-    running_total = 0
+    normalized_base_amount_minor = int(base_amount_minor)
+    if normalized_base_amount_minor < 0:
+        raise ValueError("base_amount_minor must be non-negative")
 
-    for participant in participant_list:
-        user_id = _normalize_user_id(participant.get("user_id"))
-        if user_id in shares:
-            raise ValueError("duplicate participants are not allowed")
+    result: dict[str, int] = {}
+    total = 0
 
-        base_share_minor = int(participant.get("base_share_minor", 0))
-        if base_share_minor < 0:
-            raise ValueError("base_share_minor cannot be negative")
+    for row in rows:
+        if "user_id" not in row or "base_share_minor" not in row:
+            raise ValueError("participants require user_id and base_share_minor")
 
-        shares[user_id] = base_share_minor
-        running_total += base_share_minor
+        user_id = str(row["user_id"])
+        if user_id in result:
+            raise ValueError("DUPLICATE_PARTICIPANT")
 
-    if running_total != int(base_amount_minor):
+        share = int(row["base_share_minor"])
+        if share < 0:
+            raise ValueError("base_share_minor must be non-negative")
+
+        result[user_id] = share
+        total += share
+
+    if total != normalized_base_amount_minor:
         raise ValueError(INVALID_SPLIT_AMOUNT)
 
-    return shares
+    return result

@@ -1,3 +1,8 @@
+"""JWT authentication for expense-service."""
+
+from __future__ import annotations
+
+import os
 from types import SimpleNamespace
 
 import jwt
@@ -9,73 +14,67 @@ from apps.expenses.infrastructure.jwks_client import get_default_jwks_client
 
 class ServiceUser(SimpleNamespace):
     @property
-    def is_authenticated(self):
+    def is_authenticated(self) -> bool:
         return True
 
 
 class JWTAuthentication(BaseAuthentication):
-    def __init__(self):
-        self.jwks_client = get_default_jwks_client()
+    """Validate bearer access tokens from identity-service."""
 
-    def authenticate_header(self, request):
+    def __init__(self) -> None:
+        self.jwks_client = get_default_jwks_client()
+        self.issuer = os.getenv("JWT_ISSUER")
+        self.audience = os.getenv("JWT_AUDIENCE")
+        self.algorithms = [os.getenv("JWT_ALGORITHM", "RS256")]
+
+    def authenticate_header(self, request) -> str:
         return "Bearer"
 
     def authenticate(self, request):
         header = request.META.get("HTTP_AUTHORIZATION") or request.headers.get("Authorization")
-        if not header or not header.startswith("Bearer "):
-            raise exceptions.AuthenticationFailed(
-                {"code": "NOT_AUTHENTICATED", "message": "Authentication credentials were not provided."}
-            )
+        if not header:
+            return None
+        if not header.startswith("Bearer "):
+            return None
 
         token = header.split(" ", 1)[1].strip()
         try:
             unverified_header = jwt.get_unverified_header(token)
-        except jwt.DecodeError as exc:
-            raise exceptions.AuthenticationFailed(
-                {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
-            ) from exc
-
-        try:
-            key = self.jwks_client.get_public_key(kid=unverified_header.get("kid"), header=unverified_header)
+            key = self.jwks_client.get_public_key(
+                kid=unverified_header.get("kid"),
+                header=unverified_header,
+            )
             payload = jwt.decode(
                 token,
                 key=key,
-                algorithms=["RS256", "HS256"],
-                options={
-                    "verify_aud": False,
-                    "verify_iss": False,
-                },
+                algorithms=self.algorithms,
+                issuer=self.issuer,
+                audience=self.audience,
             )
         except jwt.ExpiredSignatureError as exc:
-            raise exceptions.AuthenticationFailed(
-                {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
-            ) from exc
+            raise exceptions.AuthenticationFailed("Token expired") from exc
         except jwt.InvalidTokenError as exc:
-            raise exceptions.AuthenticationFailed(
-                {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
-            ) from exc
+            raise exceptions.AuthenticationFailed("Invalid token") from exc
         except Exception as exc:
-            raise exceptions.AuthenticationFailed(
-                {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
-            ) from exc
+            raise exceptions.AuthenticationFailed("Unable to validate token") from exc
 
         if (payload.get("type") or payload.get("typ")) != "access":
-            raise exceptions.AuthenticationFailed(
-                {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
-            )
+            raise exceptions.AuthenticationFailed("Invalid token type")
 
-        user_id = payload.get("sub")
-        if not user_id:
-            raise exceptions.AuthenticationFailed(
-                {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
-            )
+        subject = payload.get("sub")
+        if not subject:
+            raise exceptions.AuthenticationFailed("Token missing subject")
 
         user = ServiceUser(
-            id=user_id,
-            sub=user_id,
-            identity_user_id=user_id,
+            id=subject,
+            sub=subject,
+            identity_user_id=subject,
             phone_number=payload.get("phone_number") or payload.get("phone"),
             role=payload.get("role"),
             jti=payload.get("jti"),
         )
-        return (user, token)
+        user.username = user.phone_number or str(subject)
+        return user, token
+
+
+JWKSAuthentication = JWTAuthentication

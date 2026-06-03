@@ -1,1 +1,1 @@
-"""Management package for notification-service."""
+"""Management commands for notification-service."""

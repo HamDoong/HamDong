@@ -1,361 +1,432 @@
+"""Use case orchestration for expense-service."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
 
-from apps.expenses.application.split_calculator import custom_split, equal_split
+from apps.expenses.application.split_calculator import INVALID_SPLIT_AMOUNT, custom_split, equal_split
 from apps.expenses.application.tax_calculator import (
-    calculate_service_fee_amount,
-    calculate_tax_amount,
-    distribute_service_fee_amount,
-    distribute_tax_amount,
+    calculate_service_fee_amount_minor,
+    calculate_tax_amount_minor,
+    distribute_proportional,
 )
 from apps.expenses.domain.events import (
     expense_created_event,
     expense_deleted_event,
     expense_updated_event,
 )
-from apps.expenses.domain.models import Expense, GroupMemberProjection
+from apps.expenses.domain.models import Expense, GroupMemberProjection, GroupProjection
 from apps.expenses.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 from apps.expenses.infrastructure.repositories import ExpenseRepository, ProjectionRepository
 
 
+@dataclass
+class ExpenseServiceError(ValueError):
+    """Expected business-rule error."""
+
+    code: str
+    message: str
+
+    def __str__(self) -> str:
+        return self.code
+
+
+@dataclass
+class ExpensePermissionError(PermissionError):
+    """Expected permission error."""
+
+    code: str
+    message: str
+
+    def __str__(self) -> str:
+        return self.code
+
+
 class ExpenseService:
+    """Application service for expense workflows."""
+
     def __init__(self, publisher: RabbitMQPublisher | None = None):
         self.publisher = publisher or RabbitMQPublisher()
 
-    @staticmethod
-    def _request_user_id(user: Any) -> str:
-        user_id = getattr(user, "sub", None) or getattr(user, "id", None)
+    def create_expense(self, group_id: object, creator: Any, payload: dict[str, Any]) -> Expense:
+        creator_user_id = self._request_user_id(creator)
+        group = self._require_active_group(group_id)
+        self._require_active_member(group.group_id, creator_user_id, error_code="NOT_GROUP_MEMBER")
+
+        title = self._validated_title(payload.get("title"))
+        currency = self._validated_currency(payload.get("currency", "IRR"))
+        payer_user_id = payload.get("payer_user_id")
+        payer_member = self._require_active_member(
+            group.group_id,
+            payer_user_id,
+            error_code="PAYER_NOT_GROUP_MEMBER",
+        )
+
+        base_amount_minor = self._positive_amount(payload.get("base_amount_minor"))
+        split_method = payload.get("split_method")
+
+        base_shares = self._calculate_base_shares(split_method, payload, base_amount_minor)
+        member_snapshots = self._require_active_participants(group.group_id, base_shares)
+
+        tax_type = payload.get("tax_type", Expense.TAX_NONE)
+        service_fee_type = payload.get("service_fee_type", Expense.SERVICE_NONE)
+
+        tax_amount_minor = calculate_tax_amount_minor(
+            tax_type,
+            base_amount_minor,
+            tax_percentage=payload.get("tax_percentage"),
+            tax_amount_minor=payload.get("tax_amount_minor"),
+        )
+        service_fee_amount_minor = calculate_service_fee_amount_minor(
+            service_fee_type,
+            base_amount_minor,
+            service_fee_percentage=payload.get("service_fee_percentage"),
+            service_fee_amount_minor=payload.get("service_fee_amount_minor"),
+        )
+        total_amount_minor = base_amount_minor + tax_amount_minor + service_fee_amount_minor
+
+        tax_shares = distribute_proportional(tax_amount_minor, base_shares)
+        service_fee_shares = distribute_proportional(service_fee_amount_minor, base_shares)
+        participants = self._build_participants(
+            base_shares,
+            tax_shares,
+            service_fee_shares,
+            member_snapshots,
+        )
+        self._verify_totals(participants, total_amount_minor)
+
+        with transaction.atomic():
+            expense = ExpenseRepository.create_expense(
+                group_id=group.group_id,
+                created_by_user_id=creator_user_id,
+                payer_user_id=payer_member.user_id,
+                title=title,
+                description=payload.get("description") or None,
+                currency=currency,
+                base_amount_minor=base_amount_minor,
+                tax_type=tax_type,
+                tax_percentage=payload.get("tax_percentage") if tax_type == Expense.TAX_PERCENTAGE else None,
+                tax_amount_minor=tax_amount_minor,
+                service_fee_type=service_fee_type,
+                service_fee_percentage=(
+                    payload.get("service_fee_percentage")
+                    if service_fee_type == Expense.SERVICE_PERCENTAGE
+                    else None
+                ),
+                service_fee_amount_minor=service_fee_amount_minor,
+                total_amount_minor=total_amount_minor,
+                split_method=split_method,
+                receipt_file_id=payload.get("receipt_file_id"),
+                receipt_url=payload.get("receipt_url"),
+                expense_date=payload.get("expense_date") or timezone.now(),
+            )
+            ExpenseRepository.add_participants(expense, participants)
+
+        event = expense_created_event(expense, participants)
+        self._publish(event)
+        return ExpenseRepository.get_by_id(expense.id) or expense
+
+    def list_expenses(
+        self,
+        group_id: object,
+        requester: Any,
+        filters: dict[str, Any] | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> list[Expense]:
+        requester_user_id = self._request_user_id(requester)
+        group = self._require_active_group(group_id)
+        self._require_active_member(group.group_id, requester_user_id, error_code="NOT_GROUP_MEMBER")
+        return ExpenseRepository.list_by_group(group.group_id, filters=filters, page=page, page_size=page_size)
+
+    def get_expense(self, expense_id: object, requester: Any) -> Expense:
+        requester_user_id = self._request_user_id(requester)
+        expense = ExpenseRepository.get_by_id(expense_id)
+        if not expense or expense.status == Expense.STATUS_DELETED:
+            raise ExpenseServiceError("NOT_FOUND", "Expense not found.")
+
+        self._require_active_member(expense.group_id, requester_user_id, error_code="NOT_GROUP_MEMBER")
+        return expense
+
+    def update_expense(self, expense_id: object, requester: Any, payload: dict[str, Any]) -> Expense:
+        requester_user_id = self._request_user_id(requester)
+        expense = ExpenseRepository.get_by_id(expense_id)
+        if not expense or expense.status == Expense.STATUS_DELETED:
+            raise ExpenseServiceError("NOT_FOUND", "Expense not found.")
+
+        self._require_update_permission(expense, requester_user_id)
+
+        merged = self._merged_update_payload(expense, payload)
+        title = self._validated_title(merged.get("title"))
+        currency = self._validated_currency(merged.get("currency", expense.currency))
+        payer_member = self._require_active_member(
+            expense.group_id,
+            merged.get("payer_user_id"),
+            error_code="PAYER_NOT_GROUP_MEMBER",
+        )
+        base_amount_minor = self._positive_amount(merged.get("base_amount_minor"))
+        split_method = merged.get("split_method")
+
+        base_shares = self._calculate_base_shares(split_method, merged, base_amount_minor)
+        member_snapshots = self._require_active_participants(expense.group_id, base_shares)
+
+        tax_type = merged.get("tax_type", Expense.TAX_NONE)
+        service_fee_type = merged.get("service_fee_type", Expense.SERVICE_NONE)
+        tax_amount_minor = calculate_tax_amount_minor(
+            tax_type,
+            base_amount_minor,
+            tax_percentage=merged.get("tax_percentage"),
+            tax_amount_minor=merged.get("tax_amount_minor"),
+        )
+        service_fee_amount_minor = calculate_service_fee_amount_minor(
+            service_fee_type,
+            base_amount_minor,
+            service_fee_percentage=merged.get("service_fee_percentage"),
+            service_fee_amount_minor=merged.get("service_fee_amount_minor"),
+        )
+        total_amount_minor = base_amount_minor + tax_amount_minor + service_fee_amount_minor
+
+        tax_shares = distribute_proportional(tax_amount_minor, base_shares)
+        service_fee_shares = distribute_proportional(service_fee_amount_minor, base_shares)
+        participants = self._build_participants(
+            base_shares,
+            tax_shares,
+            service_fee_shares,
+            member_snapshots,
+        )
+        self._verify_totals(participants, total_amount_minor)
+
+        with transaction.atomic():
+            ExpenseRepository.update_expense(
+                expense,
+                title=title,
+                description=merged.get("description") or None,
+                currency=currency,
+                payer_user_id=payer_member.user_id,
+                base_amount_minor=base_amount_minor,
+                tax_type=tax_type,
+                tax_percentage=merged.get("tax_percentage") if tax_type == Expense.TAX_PERCENTAGE else None,
+                tax_amount_minor=tax_amount_minor,
+                service_fee_type=service_fee_type,
+                service_fee_percentage=(
+                    merged.get("service_fee_percentage")
+                    if service_fee_type == Expense.SERVICE_PERCENTAGE
+                    else None
+                ),
+                service_fee_amount_minor=service_fee_amount_minor,
+                total_amount_minor=total_amount_minor,
+                split_method=split_method,
+                expense_date=merged.get("expense_date") or expense.expense_date,
+                status=Expense.STATUS_UPDATED,
+                version=expense.version + 1,
+            )
+            ExpenseRepository.replace_participants(expense, participants)
+
+        event = expense_updated_event(expense, participants)
+        self._publish(event)
+        return ExpenseRepository.get_by_id(expense.id) or expense
+
+    def delete_expense(self, expense_id: object, requester: Any) -> Expense:
+        requester_user_id = self._request_user_id(requester)
+        expense = ExpenseRepository.get_by_id(expense_id)
+        if not expense or expense.status == Expense.STATUS_DELETED:
+            raise ExpenseServiceError("NOT_FOUND", "Expense not found.")
+
+        self._require_update_permission(expense, requester_user_id)
+        ExpenseRepository.soft_delete(expense)
+
+        event = expense_deleted_event(expense, deleted_by_user_id=requester_user_id)
+        self._publish(event)
+        return expense
+
+    def _request_user_id(self, requester: Any) -> str:
+        user_id = getattr(requester, "sub", None) or getattr(requester, "id", None)
         if not user_id:
-            raise PermissionError("NOT_AUTHENTICATED")
+            raise ExpensePermissionError(
+                "NOT_AUTHENTICATED",
+                "Authentication credentials were not provided.",
+            )
         return str(user_id)
 
-    @staticmethod
-    def _stringify_uuid_list(values: list[Any]) -> list[str]:
-        return [str(value) for value in values]
-
-    def _get_active_group(self, group_id):
+    def _require_active_group(self, group_id: object) -> GroupProjection:
         group = ProjectionRepository.get_group(group_id)
-        if not group or group.status != "ACTIVE":
-            raise ValueError("GROUP_NOT_ACTIVE")
+        if not group:
+            raise ExpenseServiceError("GROUP_NOT_FOUND", "Group not found.")
+        if group.status != GroupProjection.STATUS_ACTIVE:
+            raise ExpenseServiceError("GROUP_NOT_ACTIVE", "Group must be active.")
         return group
 
-    def _ensure_active_member(self, group_id, user_id, *, error_code: str = "NOT_GROUP_MEMBER"):
-        if not ProjectionRepository.is_active_member(group_id, user_id):
+    def _require_active_member(
+        self,
+        group_id: object,
+        user_id: object,
+        error_code: str,
+    ) -> GroupMemberProjection:
+        if not user_id:
+            raise ExpenseServiceError(error_code, "User must be an active group member.")
+
+        member = ProjectionRepository.get_active_member(group_id, user_id)
+        if not member:
             if error_code == "NOT_GROUP_MEMBER":
-                raise PermissionError(error_code)
-            raise ValueError(error_code)
+                raise ExpensePermissionError(
+                    "NOT_GROUP_MEMBER",
+                    "You are not an active member of this group.",
+                )
+            raise ExpenseServiceError(error_code, "User must be an active group member.")
+        return member
 
-    def _ensure_title(self, title: str | None):
-        if not title or not str(title).strip():
-            raise ValueError("TITLE_REQUIRED")
+    def _require_active_participants(
+        self,
+        group_id: object,
+        base_shares: dict[str, int],
+    ) -> dict[str, GroupMemberProjection]:
+        snapshots: dict[str, GroupMemberProjection] = {}
+        for user_id in base_shares:
+            member = ProjectionRepository.get_active_member(group_id, user_id)
+            if not member:
+                raise ExpenseServiceError(
+                    "PARTICIPANT_NOT_GROUP_MEMBER",
+                    "All participants must be active group members.",
+                )
+            snapshots[str(user_id)] = member
+        return snapshots
 
-    def _ensure_currency(self, currency: str):
-        if currency != "IRR":
-            raise ValueError("INVALID_CURRENCY")
+    def _require_update_permission(self, expense: Expense, requester_user_id: str) -> None:
+        if str(expense.created_by_user_id) == str(requester_user_id):
+            return
 
-    def _get_existing_participant_payload(self, expense: Expense) -> dict[str, Any]:
-        participant_records = list(expense.participants.order_by("created_at"))
+        member = ProjectionRepository.get_active_member(expense.group_id, requester_user_id)
+        if not member or member.role not in (
+            GroupMemberProjection.ROLE_OWNER,
+            GroupMemberProjection.ROLE_ADMIN,
+        ):
+            raise ExpensePermissionError("NOT_ALLOWED", "You are not allowed to modify this expense.")
+
+    def _validated_title(self, title: object) -> str:
+        normalized = str(title or "").strip()
+        if not normalized:
+            raise ExpenseServiceError("TITLE_REQUIRED", "Title is required.")
+        return normalized
+
+    def _validated_currency(self, currency: object) -> str:
+        if str(currency or "IRR").upper() != "IRR":
+            raise ExpenseServiceError("UNSUPPORTED_CURRENCY", "Only IRR is supported.")
+        return "IRR"
+
+    def _positive_amount(self, amount: object) -> int:
+        try:
+            amount_minor = int(amount)
+        except (TypeError, ValueError) as exc:
+            raise ExpenseServiceError("INVALID_AMOUNT", "base_amount_minor must be an integer.") from exc
+
+        if amount_minor <= 0:
+            raise ExpenseServiceError("INVALID_AMOUNT", "base_amount_minor must be greater than zero.")
+        return amount_minor
+
+    def _calculate_base_shares(
+        self,
+        split_method: object,
+        payload: dict[str, Any],
+        base_amount_minor: int,
+    ) -> dict[str, int]:
+        try:
+            if split_method == Expense.SPLIT_EQUAL:
+                return equal_split(payload.get("participant_user_ids"), base_amount_minor)
+            if split_method == Expense.SPLIT_CUSTOM:
+                return custom_split(payload.get("participants"), base_amount_minor)
+        except ValueError as exc:
+            code = str(exc)
+            if code == INVALID_SPLIT_AMOUNT:
+                raise ExpenseServiceError(
+                    "INVALID_SPLIT_AMOUNT",
+                    "Sum of participant shares must equal the base amount.",
+                ) from exc
+            raise ExpenseServiceError(code, code) from exc
+
+        raise ExpenseServiceError("INVALID_SPLIT_METHOD", "split_method must be EQUAL or CUSTOM_AMOUNT.")
+
+    def _build_participants(
+        self,
+        base_shares: dict[str, int],
+        tax_shares: dict[str, int],
+        service_fee_shares: dict[str, int],
+        member_snapshots: dict[str, GroupMemberProjection],
+    ) -> list[dict[str, Any]]:
+        participants = []
+        for user_id, base_share in base_shares.items():
+            member = member_snapshots[user_id]
+            tax_share = tax_shares.get(user_id, 0)
+            service_fee_share = service_fee_shares.get(user_id, 0)
+            participants.append(
+                {
+                    "user_id": UUID(str(user_id)),
+                    "phone_number": member.phone_number or "",
+                    "display_name_snapshot": member.display_name_snapshot,
+                    "base_share_minor": int(base_share),
+                    "tax_share_minor": int(tax_share),
+                    "service_fee_share_minor": int(service_fee_share),
+                    "total_share_minor": int(base_share) + int(tax_share) + int(service_fee_share),
+                    "is_included": True,
+                }
+            )
+        return participants
+
+    def _verify_totals(self, participants: list[dict[str, Any]], total_amount_minor: int) -> None:
+        if sum(int(row["total_share_minor"]) for row in participants) != int(total_amount_minor):
+            raise ExpenseServiceError(
+                "INVALID_PARTICIPANT_TOTAL",
+                "Sum of participant totals must equal expense total amount.",
+            )
+
+    def _merged_update_payload(self, expense: Expense, payload: dict[str, Any]) -> dict[str, Any]:
+        participants = list(expense.participants.all())
+
         if expense.split_method == Expense.SPLIT_EQUAL:
-            return {
-                "participant_user_ids": [str(participant.user_id) for participant in participant_records]
-            }
-        return {
-            "participants": [
+            participant_user_ids = [str(participant.user_id) for participant in participants]
+            custom_participants: list[dict[str, Any]] = []
+        else:
+            participant_user_ids = []
+            custom_participants = [
                 {
                     "user_id": str(participant.user_id),
                     "base_share_minor": int(participant.base_share_minor),
                 }
-                for participant in participant_records
+                for participant in participants
             ]
+
+        return {
+            "title": payload.get("title", expense.title),
+            "description": payload.get("description", expense.description),
+            "payer_user_id": payload.get("payer_user_id", expense.payer_user_id),
+            "base_amount_minor": payload.get("base_amount_minor", expense.base_amount_minor),
+            "currency": payload.get("currency", expense.currency),
+            "split_method": payload.get("split_method", expense.split_method),
+            "participant_user_ids": payload.get("participant_user_ids", participant_user_ids),
+            "participants": payload.get("participants", custom_participants),
+            "tax_type": payload.get("tax_type", expense.tax_type),
+            "tax_percentage": payload.get("tax_percentage", expense.tax_percentage),
+            "tax_amount_minor": payload.get("tax_amount_minor", expense.tax_amount_minor),
+            "service_fee_type": payload.get("service_fee_type", expense.service_fee_type),
+            "service_fee_percentage": payload.get(
+                "service_fee_percentage",
+                expense.service_fee_percentage,
+            ),
+            "service_fee_amount_minor": payload.get(
+                "service_fee_amount_minor",
+                expense.service_fee_amount_minor,
+            ),
+            "expense_date": payload.get("expense_date", expense.expense_date),
         }
 
-    def _build_base_shares(self, payload: dict[str, Any]) -> dict[str, int]:
-        split_method = payload.get("split_method")
-        base_amount_minor = int(payload["base_amount_minor"])
-
-        if split_method == Expense.SPLIT_EQUAL:
-            participant_user_ids = self._stringify_uuid_list(payload.get("participant_user_ids", []))
-            return equal_split(participant_user_ids, base_amount_minor)
-
-        if split_method == Expense.SPLIT_CUSTOM:
-            participants = payload.get("participants", [])
-            return custom_split(participants, base_amount_minor)
-
-        raise ValueError("INVALID_SPLIT_METHOD")
-
-    def _get_active_participant_members(
-        self,
-        *,
-        group_id,
-        payer_user_id: str,
-        participant_user_ids: list[str],
-    ) -> dict[str, GroupMemberProjection]:
-        unique_user_ids = list(dict.fromkeys([payer_user_id, *participant_user_ids]))
-        active_members = ProjectionRepository.get_active_members_map(group_id, unique_user_ids)
-        if payer_user_id not in active_members:
-            raise ValueError("INVALID_PAYER")
-
-        missing_participants = [user_id for user_id in participant_user_ids if user_id not in active_members]
-        if missing_participants:
-            raise ValueError("INVALID_PARTICIPANT")
-
-        return active_members
-
-    def _calculate_additional_amounts(self, payload: dict[str, Any]) -> tuple[int, int]:
-        base_amount_minor = int(payload["base_amount_minor"])
-        tax_amount_minor = calculate_tax_amount(
-            tax_type=payload.get("tax_type", Expense.TAX_NONE),
-            base_amount_minor=base_amount_minor,
-            tax_percentage=payload.get("tax_percentage"),
-            tax_amount_minor=payload.get("tax_amount_minor"),
-        )
-        service_fee_amount_minor = calculate_service_fee_amount(
-            service_fee_type=payload.get("service_fee_type", Expense.SERVICE_NONE),
-            base_amount_minor=base_amount_minor,
-            service_fee_percentage=payload.get("service_fee_percentage"),
-            service_fee_amount_minor=payload.get("service_fee_amount_minor"),
-        )
-        return tax_amount_minor, service_fee_amount_minor
-
-    def _build_participant_rows(
-        self,
-        *,
-        active_members: dict[str, GroupMemberProjection],
-        base_shares: dict[str, int],
-        tax_shares: dict[str, int],
-        service_fee_shares: dict[str, int],
-    ) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]] = []
-        for user_id, base_share_minor in base_shares.items():
-            member = active_members[user_id]
-            tax_share_minor = int(tax_shares.get(user_id, 0))
-            service_fee_share_minor = int(service_fee_shares.get(user_id, 0))
-            rows.append(
-                {
-                    "user_id": user_id,
-                    "phone_number": member.phone_number,
-                    "display_name_snapshot": member.display_name_snapshot,
-                    "base_share_minor": int(base_share_minor),
-                    "tax_share_minor": tax_share_minor,
-                    "service_fee_share_minor": service_fee_share_minor,
-                    "total_share_minor": int(base_share_minor) + tax_share_minor + service_fee_share_minor,
-                    "is_included": True,
-                }
-            )
-        return rows
-
-    def _prepare_expense_payload(
-        self,
-        *,
-        group_id,
-        creator,
-        payload: dict[str, Any],
-    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        creator_user_id = self._request_user_id(creator)
-        self._get_active_group(group_id)
-        self._ensure_active_member(group_id, creator_user_id, error_code="NOT_GROUP_MEMBER")
-
-        self._ensure_title(payload.get("title"))
-        self._ensure_currency(payload.get("currency", "IRR"))
-
-        base_amount_minor = int(payload.get("base_amount_minor", 0))
-        if base_amount_minor <= 0:
-            raise ValueError("INVALID_AMOUNT")
-
-        payer_user_id = str(payload["payer_user_id"])
-        base_shares = self._build_base_shares(payload)
-        active_members = self._get_active_participant_members(
-            group_id=group_id,
-            payer_user_id=payer_user_id,
-            participant_user_ids=list(base_shares.keys()),
-        )
-
-        tax_amount_minor, service_fee_amount_minor = self._calculate_additional_amounts(payload)
-        tax_shares = distribute_tax_amount(
-            tax_amount_minor=tax_amount_minor,
-            base_shares=base_shares,
-        )
-        service_fee_shares = distribute_service_fee_amount(
-            service_fee_amount_minor=service_fee_amount_minor,
-            base_shares=base_shares,
-        )
-
-        participant_rows = self._build_participant_rows(
-            active_members=active_members,
-            base_shares=base_shares,
-            tax_shares=tax_shares,
-            service_fee_shares=service_fee_shares,
-        )
-
-        total_amount_minor = base_amount_minor + tax_amount_minor + service_fee_amount_minor
-        participant_total = sum(participant["total_share_minor"] for participant in participant_rows)
-        if participant_total != total_amount_minor:
-            raise ValueError("PARTICIPANT_TOTAL_MISMATCH")
-
-        expense_payload = {
-            "group_id": group_id,
-            "created_by_user_id": creator_user_id,
-            "payer_user_id": payer_user_id,
-            "title": payload["title"],
-            "description": payload.get("description"),
-            "currency": payload.get("currency", "IRR"),
-            "base_amount_minor": base_amount_minor,
-            "tax_type": payload.get("tax_type", Expense.TAX_NONE),
-            "tax_percentage": payload.get("tax_percentage"),
-            "tax_amount_minor": tax_amount_minor,
-            "service_fee_type": payload.get("service_fee_type", Expense.SERVICE_NONE),
-            "service_fee_percentage": payload.get("service_fee_percentage"),
-            "service_fee_amount_minor": service_fee_amount_minor,
-            "total_amount_minor": total_amount_minor,
-            "split_method": payload["split_method"],
-            "receipt_file_id": payload.get("receipt_file_id"),
-            "receipt_url": payload.get("receipt_url"),
-            "expense_date": payload.get("expense_date") or timezone.now(),
-        }
-        return expense_payload, participant_rows
-
-    def _serialize_participants_for_event(self, participants: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [
-            {
-                "user_id": str(participant["user_id"]),
-                "phone_number": participant["phone_number"],
-                "display_name_snapshot": participant.get("display_name_snapshot"),
-                "base_share_minor": int(participant["base_share_minor"]),
-                "tax_share_minor": int(participant["tax_share_minor"]),
-                "service_fee_share_minor": int(participant["service_fee_share_minor"]),
-                "total_share_minor": int(participant["total_share_minor"]),
-                "is_included": bool(participant.get("is_included", True)),
-            }
-            for participant in participants
-        ]
-
-    @transaction.atomic
-    def create_expense(self, group_id, creator, payload: dict[str, Any]):
-        expense_payload, participant_rows = self._prepare_expense_payload(
-            group_id=group_id,
-            creator=creator,
-            payload=payload,
-        )
-
-        expense = ExpenseRepository.create_expense(**expense_payload)
-        ExpenseRepository.add_participants(expense, participant_rows)
-
-        event = expense_created_event(
-            expense_id=str(expense.id),
-            group_id=str(expense.group_id),
-            created_by_user_id=str(expense.created_by_user_id),
-            payer_user_id=str(expense.payer_user_id),
-            currency=expense.currency,
-            base_amount_minor=expense.base_amount_minor,
-            tax_amount_minor=expense.tax_amount_minor,
-            service_fee_amount_minor=expense.service_fee_amount_minor,
-            total_amount_minor=expense.total_amount_minor,
-            participants=self._serialize_participants_for_event(participant_rows),
-        )
-        self.publisher.publish(event)
-        return ExpenseRepository.get_by_id(expense.id)
-
-    def list_expenses(self, group_id, requester, filters: dict | None = None, page: int = 1, page_size: int = 50):
-        requester_user_id = self._request_user_id(requester)
-        self._get_active_group(group_id)
-        self._ensure_active_member(group_id, requester_user_id, error_code="NOT_GROUP_MEMBER")
-        return ExpenseRepository.list_by_group(group_id, filters=filters, page=page, page_size=page_size)
-
-    def get_expense(self, expense_id, requester):
-        requester_user_id = self._request_user_id(requester)
-        expense = ExpenseRepository.get_by_id(expense_id)
-        if not expense or expense.status == Expense.STATUS_DELETED:
-            raise ValueError("NOT_FOUND")
-        self._ensure_active_member(expense.group_id, requester_user_id, error_code="NOT_GROUP_MEMBER")
-        return expense
-
-    def _check_update_permission(self, expense: Expense, requester):
-        requester_user_id = self._request_user_id(requester)
-        if requester_user_id == str(expense.created_by_user_id):
+    def _publish(self, event: dict[str, Any]) -> None:
+        if hasattr(self.publisher, "publish_event"):
+            self.publisher.publish_event(event)
             return
 
-        member = ProjectionRepository.get_member(
-            expense.group_id,
-            requester_user_id,
-            active_only=True,
-        )
-        if not member or member.role not in {
-            GroupMemberProjection.ROLE_OWNER,
-            GroupMemberProjection.ROLE_ADMIN,
-        }:
-            raise PermissionError("NOT_ALLOWED")
-
-    @transaction.atomic
-    def update_expense(self, expense_id, requester, payload: dict[str, Any]):
-        expense = ExpenseRepository.get_by_id(expense_id)
-        if not expense or expense.status == Expense.STATUS_DELETED:
-            raise ValueError("NOT_FOUND")
-
-        self._check_update_permission(expense, requester)
-        self._get_active_group(expense.group_id)
-
-        existing_payload = {
-            "title": expense.title,
-            "description": expense.description,
-            "payer_user_id": str(expense.payer_user_id),
-            "base_amount_minor": expense.base_amount_minor,
-            "currency": expense.currency,
-            "split_method": expense.split_method,
-            "tax_type": expense.tax_type,
-            "tax_percentage": expense.tax_percentage,
-            "tax_amount_minor": expense.tax_amount_minor,
-            "service_fee_type": expense.service_fee_type,
-            "service_fee_percentage": expense.service_fee_percentage,
-            "service_fee_amount_minor": expense.service_fee_amount_minor,
-            "expense_date": expense.expense_date,
-            **self._get_existing_participant_payload(expense),
-        }
-        merged_payload = {**existing_payload, **payload}
-
-        prepared_expense_payload, participant_rows = self._prepare_expense_payload(
-            group_id=expense.group_id,
-            creator=requester if str(getattr(requester, "sub", getattr(requester, "id", ""))) == str(expense.created_by_user_id) else type("CreatorProxy", (), {"sub": expense.created_by_user_id})(),
-            payload=merged_payload,
-        )
-        prepared_expense_payload["created_by_user_id"] = expense.created_by_user_id
-        prepared_expense_payload["status"] = Expense.STATUS_UPDATED
-        prepared_expense_payload["version"] = int(expense.version) + 1
-
-        ExpenseRepository.update_expense(expense, **prepared_expense_payload)
-        ExpenseRepository.replace_participants(expense, participant_rows)
-
-        event = expense_updated_event(
-            expense_id=str(expense.id),
-            group_id=str(expense.group_id),
-            created_by_user_id=str(expense.created_by_user_id),
-            payer_user_id=str(expense.payer_user_id),
-            currency=expense.currency,
-            base_amount_minor=expense.base_amount_minor,
-            tax_amount_minor=expense.tax_amount_minor,
-            service_fee_amount_minor=expense.service_fee_amount_minor,
-            total_amount_minor=expense.total_amount_minor,
-            participants=self._serialize_participants_for_event(participant_rows),
-        )
-        self.publisher.publish(event)
-        return ExpenseRepository.get_by_id(expense.id)
-
-    @transaction.atomic
-    def delete_expense(self, expense_id, requester):
-        expense = ExpenseRepository.get_by_id(expense_id)
-        if not expense or expense.status == Expense.STATUS_DELETED:
-            raise ValueError("NOT_FOUND")
-
-        self._check_update_permission(expense, requester)
-        expense.deleted_at = timezone.now()
-        expense.version = int(expense.version) + 1
-        ExpenseRepository.soft_delete(expense)
-
-        event = expense_deleted_event(
-            expense_id=str(expense.id),
-            group_id=str(expense.group_id),
-        )
-        self.publisher.publish(event)
-        return expense
+        self.publisher.publish(event["event_type"], event["data"], event["routing_key"])

@@ -1,58 +1,52 @@
 from decimal import Decimal
 
+import pytest
+
 from apps.expenses.application.tax_calculator import (
-    calculate_service_fee_amount,
-    calculate_tax_amount,
-    distribute_service_fee_amount,
-    distribute_tax_amount,
+    calculate_service_fee_amount_minor,
+    calculate_tax_amount_minor,
+    compute_percentage_amount,
+    distribute_proportional,
 )
 
 
+def test_tax_none_returns_zero():
+    assert calculate_tax_amount_minor("NONE", 1000000) == 0
+
+
 def test_percentage_tax_calculation():
-    assert calculate_tax_amount(
-        tax_type="PERCENTAGE",
-        base_amount_minor=1000,
-        tax_percentage=Decimal("10"),
-    ) == 100
+    assert calculate_tax_amount_minor("PERCENTAGE", 1200000, tax_percentage=Decimal("10.00")) == 120000
 
 
 def test_fixed_tax_calculation():
-    assert calculate_tax_amount(
-        tax_type="FIXED",
-        base_amount_minor=1000,
-        tax_amount_minor=125,
-    ) == 125
+    assert calculate_tax_amount_minor("FIXED", 1000000, tax_amount_minor=100000) == 100000
 
 
 def test_percentage_service_fee_calculation():
-    assert calculate_service_fee_amount(
-        service_fee_type="PERCENTAGE",
-        base_amount_minor=1000,
-        service_fee_percentage=Decimal("2.5"),
-    ) == 25
+    assert calculate_service_fee_amount_minor("PERCENTAGE", 1000000, service_fee_percentage="2.50") == 25000
 
 
 def test_fixed_service_fee_calculation():
-    assert calculate_service_fee_amount(
-        service_fee_type="FIXED",
-        base_amount_minor=1000,
-        service_fee_amount_minor=75,
-    ) == 75
+    assert calculate_service_fee_amount_minor("FIXED", 1000000, service_fee_amount_minor=50000) == 50000
+
+
+def test_negative_fixed_amount_fails():
+    with pytest.raises(ValueError):
+        calculate_tax_amount_minor("FIXED", 1000000, tax_amount_minor=-1)
+
+
+def test_negative_percentage_fails():
+    with pytest.raises(ValueError):
+        compute_percentage_amount(1000000, Decimal("-1"))
 
 
 def test_tax_distributed_proportionally_by_base_share():
-    shares = distribute_tax_amount(
-        tax_amount_minor=100,
-        base_shares={"user-1": 750, "user-2": 250},
-    )
-    assert shares == {"user-1": 75, "user-2": 25}
-    assert sum(shares.values()) == 100
+    shares = distribute_proportional(100000, {"a": 400000, "b": 300000, "c": 300000})
+    assert shares == {"a": 40000, "b": 30000, "c": 30000}
+    assert sum(shares.values()) == 100000
 
 
-def test_service_fee_distributed_proportionally_by_base_share():
-    shares = distribute_service_fee_amount(
-        service_fee_amount_minor=101,
-        base_shares={"user-1": 500, "user-2": 500},
-    )
-    assert sum(shares.values()) == 101
-    assert shares == {"user-1": 51, "user-2": 50}
+def test_service_fee_distributed_proportionally_with_remainder():
+    shares = distribute_proportional(100001, {"b": 1, "a": 1, "c": 1})
+    assert shares == {"b": 33334, "a": 33334, "c": 33333}
+    assert sum(shares.values()) == 100001

@@ -1,105 +1,230 @@
-# HamDong Project
+# settlement-service (Phases 7 and 8)
 
-Project Title
-- HamDong — Collaborative group expense and settlement microservices.
+Settlement-service is the projection and workflow engine for group balances, debt ledger history, manual settlement lifecycle, and smart settlement planning.
 
-Project Description
-- HamDong implements group expense tracking, receipt/media uploads, smart settlement planning and SMS reminders using a small set of focused microservices.
+## Overview
 
-Architecture Overview
-- Microservices: identity, group, expense, media, settlement, notification. Event-driven integration via RabbitMQ, API gateway via Nginx, per-service PostgreSQL databases.
+- Reads identity, group, and expense domain events from RabbitMQ.
+- Builds local read/write projections in settlement DB only.
+- Computes auditable debt and balance state from ledger entries.
+- Manages manual settlement request/confirm/reject/cancel flows.
+- Generates deterministic debt simplification plans from group balances.
+- Publishes settlement-domain events for downstream consumers.
 
-Services
-- identity-service — authentication and user projection
-- group-service — groups, invites, members
-- expense-service — expense lifecycle and events
-- media-service — receipt uploads and media storage
-- settlement-service — debt ledger, settlement plans, outbox and reminders
-- notification-service — SMS and notification jobs
+## Architecture
 
-Tech Stack
-- Python, Django, Django REST Framework
-- PostgreSQL, Redis
-- RabbitMQ
-- Docker Compose
-- drf-spectacular (OpenAPI/Swagger)
+- API Layer: DRF views and serializers for balance/debt/settlement endpoints.
+- Application Layer: debt, balance, settlement, and recalculation services.
+- Domain Layer: event types, business rules, and status/value semantics.
+- Infrastructure Layer: RabbitMQ consumer/publisher, JWT/JWKS auth, repositories.
 
-Folder Structure
-- backend/: all service source code, compose files, docs, API tests, and helper scripts
-- frontend/: optional frontend assets
+## Projection Strategy
 
-Environment Variables
-- See `.env.example` for required variables (Postgres, Redis, RabbitMQ, JWT, OTP, SMS, event/outbox settings).
+- `UserProjection`, `GroupProjection`, `GroupMemberProjection` are materialized from identity/group events.
+- `ExpenseProjection` and `ExpenseParticipantProjection` are materialized from expense events.
+- `DebtLedgerEntry` is append-only/audit-friendly; updates are reversals, not deletes.
+- `GroupBalanceSnapshot` stores latest per-user computed group balances.
+- `ProcessedEvent` guarantees idempotent event consumption by `event_id`.
 
-Ports
-- Nginx API Gateway: `8080`
-- Identity service: `8000` (internal)
-- RabbitMQ management: `15672`
+## Event Consumption
 
-API Gateway Routes
-- `/api/v1/auth/` — identity endpoints (OTP, JWT, JWKS)
-- `/api/v1/groups/` — group endpoints
-- `/api/v1/expenses/` — expense endpoints
-- `/api/v1/media/` — media endpoints
-- `/api/v1/settlements/` — settlement endpoints
-- `/api/v1/notifications/` — notification endpoints
+### Identity Events
 
-Database Design Summary
-- Each service owns its database and projections to avoid cross-service coupling. See `backend/docs/database.md` for per-service tables.
+- Consumes `UserCreated`, `UserUpdated`.
+- Updates `UserProjection`.
+- Queue: `SETTLEMENT_IDENTITY_QUEUE`.
 
-Event-driven Architecture
-- Services publish events to RabbitMQ and consume where needed. Outbox/Inbox patterns ensure reliable delivery and idempotency.
+### Group Events
 
-Authentication Flow
-- OTP login: request OTP, verify OTP, receive JWT access + refresh tokens. JWT signed with RS256; services validate using JWKS from `identity-service`.
+- Consumes `GroupCreated`, `GroupUpdated`, `GroupArchived`, `GroupMemberJoined`, `GroupMemberRemoved`, `GroupMemberLeft`.
+- Updates `GroupProjection` and `GroupMemberProjection`.
+- Queue: `SETTLEMENT_GROUP_QUEUE`.
 
-OTP/SMS Flow
-- identity-service emits OTP events; notification-service creates `NotificationJob` and sends SMS via configured provider. Circuit breaker protects SMS provider.
+### Expense Events
 
-Group/Invite Flow
-- Owners create invites; invite tokens are one-time and raw tokens are not stored in DB (only hashes).
+- Consumes `ExpenseCreated`, `ExpenseUpdated`, `ExpenseDeleted`, `ExpenseParticipantsChanged`.
+- Updates expense projections, debt ledger, and balance snapshots.
+- Queue: `SETTLEMENT_EXPENSE_QUEUE`.
 
-Expense Flow
-- Expenses are created with `amount_minor` and participants list; events published to drive settlements.
+## Debt Ledger Rules
 
-Media/Receipt Flow
-- Receipts are uploaded, validated, and stored (local in dev). Filenames randomized and checksums recorded.
+- Money is stored in minor integer units.
+- Currency defaults to `IRR`.
+- On expense create: create active `EXPENSE_SHARE` entries for non-payer participants only.
+- On expense update: reverse prior active entries and create new active entries.
+- On expense delete: reverse active entries.
+- Reversed entries are retained for audit and never physically deleted.
 
-Settlement Flow
-- Settlement-service consumes expense events, calculates balances, and can generate a smart settlement plan.
+## Balance Calculation Rules
 
-Smart Settlement Flow
-- Plan minimizes transactions by matching creditors and debtors and emits plan events.
+- Computation uses ACTIVE ledger rows only.
+- Debt row (`debtor -> creditor`) effect:
+	- debtor net decreases by amount
+	- creditor net increases by amount
+- Confirmed manual settlement (`payer -> receiver`) effect:
+	- payer net increases by amount
+	- receiver net decreases by amount
+- Status mapping:
+	- positive: `CREDITOR`
+	- negative: `DEBTOR`
+	- zero: `SETTLED`
 
-Reminder Flow
-- Reminder scheduler creates reminder events which are consumed by notification-service to send SMS reminders.
+## Manual Settlement Workflow
 
-API Documentation
-- Each service exposes OpenAPI at `/api/schema/` and interactive docs at `/api/docs/`.
+- `POST /api/v1/groups/{group_id}/settlements/` creates `PENDING_CONFIRMATION` records.
+- `POST /api/v1/settlements/{settlement_id}/confirm/` confirms by receiver only.
+- `POST /api/v1/settlements/{settlement_id}/reject/` rejects by receiver only.
+- `POST /api/v1/settlements/{settlement_id}/cancel/` cancels by payer only.
+- Non-pending settlements are immutable for these actions.
 
-Demo Scenario
-- See `backend/docs/demo-scenario.md` and `backend/api-tests/hamdong.http` for a runnable demo flow.
+## Phase 8 Smart Settlement
 
-Troubleshooting
-- See `backend/docs/troubleshooting.md` for common issues and commands.
+Phase 8 adds settlement plans that simplify balances into fewer transactions without changing expense calculation or introducing payments.
 
-Future Improvements
-- Wallet service
-- Payment gateway
-- Bank callback
-- Online payment
-- OCR receipt reading
-- MinIO/S3 production storage
-- Grafana/Prometheus monitoring
-- Kubernetes deployment
-- Mobile app / Frontend integration
+### Core Concept
 
-| قبلاً                 | از این به بعد                                                                                 |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| `make up`             | `docker compose -f backend/docker-compose.yml up --build`                                     |
-| `make down`           | `docker compose -f backend/docker-compose.yml down`                                           |
-| `make logs`           | `docker compose -f backend/docker-compose.yml logs -f`                                        |
-| `make ps`             | `docker compose -f backend/docker-compose.yml ps`                                             |
-| `make test`           | `docker compose -f backend/docker-compose.yml exec <service> pytest`                          |
-| `make migrate`        | `docker compose -f backend/docker-compose.yml exec <service> python manage.py migrate`        |
-| `make makemigrations` | `docker compose -f backend/docker-compose.yml exec <service> python manage.py makemigrations` |
+- Input: latest `GroupBalanceSnapshot` rows for a group.
+- Output: `SettlementPlan` and `SettlementPlanItem` rows.
+- Positive balance means creditor.
+- Negative balance means debtor.
+- All money stays in integer minor units.
+
+### Plan Lifecycle
+
+- `DRAFT`: generated but not active yet.
+- `ACTIVE`: members can report and confirm items.
+- `COMPLETED`: all plan items are confirmed.
+- `CANCELLED`: the plan was cancelled.
+- `EXPIRED`: balances changed after the plan was generated.
+
+### Item Lifecycle
+
+- `PENDING`: waiting for the payer to report payment.
+- `REPORTED`: payer reported the payment.
+- `CONFIRMED`: receiver confirmed the payment.
+- `REJECTED`: receiver rejected the payment.
+- `CANCELLED`: item was cancelled with the plan or as part of plan cancellation.
+
+### Debt Simplification Algorithm
+
+- Separate debtors and creditors.
+- Sort debtors by largest absolute debt first.
+- Sort creditors by largest credit first.
+- Match them with a two-pointer walk.
+- Create one plan item per match using `min(abs(debtor), creditor)`.
+- Skip zero-amount items.
+- Never create payer and receiver as the same user.
+- Output is deterministic.
+
+### Permission Rules
+
+- Only `OWNER` or `ADMIN` can generate, activate, or cancel a plan.
+- Only active group members can view the latest plan.
+- Only the payer can report a plan item as paid.
+- Only the receiver can confirm or reject a reported item.
+
+### Manual Settlement Integration
+
+- Reporting a plan item creates a Phase 7 `ManualSettlement` in `PENDING_CONFIRMATION`.
+- Confirming a plan item reuses the Phase 7 manual settlement confirmation logic.
+- Rejecting a plan item reuses the Phase 7 manual settlement rejection logic.
+- Confirming a plan item recalculates the group balance using the existing balance service.
+
+### Settlement Plan Events
+
+- Exchange: `hamdong.settlement`
+- Routing keys:
+	- `settlement.plan.generated`
+	- `settlement.plan.activated`
+	- `settlement.plan.cancelled`
+	- `settlement.plan.expired`
+	- `settlement.plan.completed`
+	- `settlement.plan_item.reported`
+	- `settlement.plan_item.confirmed`
+	- `settlement.plan_item.rejected`
+
+## Event Consumption
+
+## Idempotency
+
+- Every consumable event envelope includes `event_id`.
+- `ProcessedEvent` stores consumed IDs and prevents double application.
+- Duplicate messages are skipped safely.
+
+## Settlement Event Publishing
+
+- Exchange: `hamdong.settlement`.
+- Routing keys:
+	- `settlement.created`
+	- `settlement.confirmed`
+	- `settlement.rejected`
+	- `settlement.cancelled`
+	- `settlement.balance_recalculated`
+	- `settlement.debt_ledger_updated`
+	- `settlement.plan.generated`
+	- `settlement.plan.activated`
+	- `settlement.plan.cancelled`
+	- `settlement.plan.expired`
+	- `settlement.plan.completed`
+	- `settlement.plan_item.reported`
+	- `settlement.plan_item.confirmed`
+	- `settlement.plan_item.rejected`
+- Envelope fields are consistent and versioned:
+	- `event_id`
+	- `event_type`
+	- `occurred_at`
+	- `version`
+	- `data`
+
+## Docker Compose Usage
+
+- API service: `settlement-service`
+- Consumer service: `settlement-consumer`
+- Preferred consumer command: `python manage.py consume_events`
+- Optional split commands:
+	- `python manage.py consume_identity_events`
+	- `python manage.py consume_group_events`
+	- `python manage.py consume_expense_events`
+
+## Endpoint Examples
+
+- `GET /api/v1/groups/{group_id}/balances/`
+- `GET /api/v1/groups/{group_id}/balances/me/`
+- `GET /api/v1/groups/{group_id}/debts/`
+- `GET /api/v1/groups/{group_id}/settlements/?status=PENDING_CONFIRMATION`
+- `POST /api/v1/groups/{group_id}/settlements/`
+- `POST /api/v1/settlements/{settlement_id}/confirm/`
+- `POST /api/v1/settlements/{settlement_id}/reject/`
+- `POST /api/v1/settlements/{settlement_id}/cancel/`
+- `POST /api/v1/groups/{group_id}/settlement-plan/generate/`
+- `GET /api/v1/groups/{group_id}/settlement-plan/`
+- `POST /api/v1/settlement-plans/{plan_id}/activate/`
+- `POST /api/v1/settlement-plans/{plan_id}/cancel/`
+- `POST /api/v1/settlement-plan-items/{item_id}/report-paid/`
+- `POST /api/v1/settlement-plan-items/{item_id}/confirm/`
+- `POST /api/v1/settlement-plan-items/{item_id}/reject/`
+
+## Testing Commands
+
+- `pytest apps/settlements/tests/test_phase7.py -q`
+- `pytest apps/settlements/tests/test_settlement_plan_algorithm.py -q`
+- `pytest apps/settlements/tests/test_generate_settlement_plan.py -q`
+- `pytest apps/settlements/tests/test_activate_settlement_plan.py -q`
+- `pytest apps/settlements/tests/test_report_plan_item.py -q`
+- `pytest apps/settlements/tests/test_complete_settlement_plan.py -q`
+- `pytest -q`
+- `python manage.py check`
+- `python manage.py migrate --noinput`
+
+## Exclusions in Phases 7 and 8
+
+Phases 7 and 8 intentionally do not implement:
+
+- online payment
+- wallet
+- payment gateway
+- bank callback
+- reminders
+- frontend
+- changes to expense calculation
+- changes to media-service

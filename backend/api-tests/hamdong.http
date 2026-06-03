@@ -1,61 +1,58 @@
-### HamDong demo API tests
-@baseUrl = http://localhost:8080
+### Expense-service health
+GET http://localhost:8002/health/
 
-# 1) Request OTP
-POST {{baseUrl}}/api/v1/auth/otp/request/
+### Create equal expense with integer minor units
+POST http://localhost:8002/api/v1/groups/{{group_id}}/expenses/
+Authorization: Bearer {{access_token}}
 Content-Type: application/json
 
 {
-  "phone_number": "+15555550123"
-}
-
-# 2) Verify OTP (replace with code from logs)
-POST {{baseUrl}}/api/v1/auth/otp/verify/
-Content-Type: application/json
-
-{
-  "phone_number": "+15555550123",
-  "code": "000000"
-}
-
-# 3) Create a group (requires Authorization: Bearer <token>)
-POST {{baseUrl}}/api/v1/groups/
-Content-Type: application/json
-Authorization: Bearer {{accessToken}}
-
-{
-  "title": "Demo Group",
-  "group_type": "GENERAL"
-}
-
-# 4) Create an expense in the group
-POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
-Content-Type: application/json
-Authorization: Bearer {{accessToken}}
-
-{
-  "title": "Lunch",
-  "payer_user_id": "{{memberId}}",
-  "base_amount_minor": 4550000,
+  "title": "شام رستوران",
+  "description": "شام جمعه",
+  "payer_user_id": "{{payer_user_id}}",
+  "base_amount_minor": 1200000,
   "currency": "IRR",
   "split_method": "EQUAL",
-  "participant_user_ids": ["{{memberId}}"],
-  "tax_type": "NONE",
-  "service_fee_type": "NONE"
+  "participant_user_ids": [
+    "{{participant_user_id_1}}",
+    "{{participant_user_id_2}}",
+    "{{participant_user_id_3}}"
+  ],
+  "tax_type": "PERCENTAGE",
+  "tax_percentage": "10.00",
+  "service_fee_type": "FIXED",
+  "service_fee_amount_minor": 50000,
+  "expense_date": "2026-06-03T12:00:00Z"
 }
 
-# 5) Generate settlement plan
-POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
-Content-Type: application/json
-Authorization: Bearer {{accessToken}}
-
-{}
-
-# 6) Trigger SMS test endpoint
-POST {{baseUrl}}/api/v1/notifications/sms/test/
+### Create custom amount expense with integer minor units
+POST http://localhost:8002/api/v1/groups/{{group_id}}/expenses/
+Authorization: Bearer {{access_token}}
 Content-Type: application/json
 
 {
-  "to": "+15555550123",
-  "message": "Test SMS from HamDong"
+  "title": "خرید مشترک",
+  "description": "خرید برای سفر",
+  "payer_user_id": "{{payer_user_id}}",
+  "base_amount_minor": 1000000,
+  "currency": "IRR",
+  "split_method": "CUSTOM_AMOUNT",
+  "participants": [
+    {
+      "user_id": "{{participant_user_id_1}}",
+      "base_share_minor": 400000
+    },
+    {
+      "user_id": "{{participant_user_id_2}}",
+      "base_share_minor": 300000
+    },
+    {
+      "user_id": "{{participant_user_id_3}}",
+      "base_share_minor": 300000
+    }
+  ],
+  "tax_type": "FIXED",
+  "tax_amount_minor": 100000,
+  "service_fee_type": "NONE",
+  "expense_date": "2026-06-03T12:00:00Z"
 }
