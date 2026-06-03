@@ -8,8 +8,9 @@ import {
   type CreatedGroupPayload,
 } from './pages/CreateGroupWizard';
 import { GroupsPage } from './pages/GroupsPage';
+import { LandingPage } from './pages/LandingPage';
 
-type AppPage = 'groups' | 'create-group';
+type AppPage = 'landing' | 'groups' | 'create-group';
 type DashboardGroup = (typeof mockGroups)[number];
 
 function mapCreatedGroupToDashboardGroup(
@@ -41,7 +42,7 @@ function mapCreatedGroupToDashboardGroup(
 }
 
 export default function App() {
-  const [page, setPage] = useState<AppPage>('groups');
+  const [page, setPage] = useState<AppPage>('landing');
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [groupItems, setGroupItems] = useState<DashboardGroup[]>(mockGroups);
 
@@ -78,6 +79,14 @@ export default function App() {
     setGroupItems((prev) => [mapCreatedGroupToDashboardGroup(payload), ...prev]);
     setPage('groups');
   };
+
+  if (page === 'landing') {
+    return (
+      <div dir="rtl" className="min-h-screen bg-background text-text">
+        <LandingPage onStart={() => setPage('groups')} />
+      </div>
+    );
+  }
 
   return (
     <div dir="rtl" className="min-h-screen bg-background text-text">
