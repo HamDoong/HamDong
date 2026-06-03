@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from django.conf import settings
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.expenses.api.serializers import CreateExpenseSerializer, UpdateExpenseSerializer
-from apps.expenses.api.serializers_response import serialize_expense
+from apps.expenses.api.serializers_response import ExpenseResponseSerializer, serialize_expense
 from apps.expenses.application.use_cases import ExpensePermissionError, ExpenseService, ExpenseServiceError
 from apps.expenses.infrastructure.jwt_authentication import JWTAuthentication
 
@@ -25,6 +26,7 @@ class HealthView(APIView):
     authentication_classes = []
     permission_classes = []
 
+    @extend_schema(tags=["Expenses"], summary="Expense service health", responses={200: OpenApiResponse(description="Service health status")})
     def get(self, request, *args, **kwargs):
         return Response(
             {
@@ -40,6 +42,39 @@ class AuthenticatedExpenseAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Expenses"],
+        summary="List group expenses",
+        description="List expenses for a group.",
+        parameters=[
+            OpenApiParameter(name="payer_user_id", type=str, required=False),
+            OpenApiParameter(name="created_by_user_id", type=str, required=False),
+            OpenApiParameter(name="from_date", type=str, required=False),
+            OpenApiParameter(name="to_date", type=str, required=False),
+            OpenApiParameter(name="page", type=int, required=False),
+            OpenApiParameter(name="page_size", type=int, required=False),
+        ],
+        responses={
+            200: ExpenseResponseSerializer(many=True),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Forbidden."),
+            400: OpenApiResponse(description="Invalid request."),
+        },
+    ),
+    post=extend_schema(
+        tags=["Expenses"],
+        summary="Create expense",
+        description="Create an expense under a group using the amount_minor contract.",
+        request=CreateExpenseSerializer,
+        responses={
+            201: ExpenseResponseSerializer,
+            400: OpenApiResponse(description="Invalid request."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Forbidden."),
+        },
+    ),
+)
 class GroupExpensesView(AuthenticatedExpenseAPIView):
     def get(self, request, group_id):
         service = ExpenseService()
@@ -83,6 +118,43 @@ class GroupExpensesView(AuthenticatedExpenseAPIView):
         return Response(serialize_expense(expense), status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Expenses"],
+        summary="Get expense detail",
+        description="Return a single expense by identifier.",
+        responses={
+            200: ExpenseResponseSerializer,
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Forbidden."),
+            404: OpenApiResponse(description="Expense not found."),
+        },
+    ),
+    patch=extend_schema(
+        tags=["Expenses"],
+        summary="Update expense",
+        description="Partially update an expense.",
+        request=UpdateExpenseSerializer,
+        responses={
+            200: ExpenseResponseSerializer,
+            400: OpenApiResponse(description="Invalid request."),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Forbidden."),
+            404: OpenApiResponse(description="Expense not found."),
+        },
+    ),
+    delete=extend_schema(
+        tags=["Expenses"],
+        summary="Delete expense",
+        description="Soft delete an expense.",
+        responses={
+            200: OpenApiResponse(description="Deleted expense summary"),
+            401: OpenApiResponse(description="Authentication required."),
+            403: OpenApiResponse(description="Forbidden."),
+            404: OpenApiResponse(description="Expense not found."),
+        },
+    ),
+)
 class ExpenseDetailView(AuthenticatedExpenseAPIView):
     def get(self, request, expense_id):
         service = ExpenseService()

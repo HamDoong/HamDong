@@ -1,12 +1,41 @@
 @baseUrl = http://localhost:8080
 
+@accessToken =
+@groupId =
+@fileId =
+
+### Media service health
+GET {{baseUrl}}/api/v1/media/health/
+
+### Upload receipt
+# Requires a real file fixture such as backend/api-tests/fixtures/receipt.jpg.
 POST {{baseUrl}}/api/v1/media/receipts/
 Authorization: Bearer {{accessToken}}
-Content-Type: multipart/form-data
+Content-Type: multipart/form-data; boundary=MediaBoundary
 
---data
-file=@/path/to/receipt.jpg
-group_id={{groupId}}
+--MediaBoundary
+Content-Disposition: form-data; name="group_id"
 
-GET {{baseUrl}}/api/v1/media/groups/{{groupId}}/media/
+{{groupId}}
+--MediaBoundary
+Content-Disposition: form-data; name="file"; filename="receipt.jpg"
+Content-Type: image/jpeg
+
+< ./fixtures/receipt.jpg
+--MediaBoundary--
+
+### Media detail
+GET {{baseUrl}}/api/v1/media/files/{{fileId}}/
+Authorization: Bearer {{accessToken}}
+
+### Download media
+GET {{baseUrl}}/api/v1/media/files/{{fileId}}/download/
+Authorization: Bearer {{accessToken}}
+
+### List group media
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/media/
+Authorization: Bearer {{accessToken}}
+
+### Delete media
+DELETE {{baseUrl}}/api/v1/media/files/{{fileId}}/
 Authorization: Bearer {{accessToken}}

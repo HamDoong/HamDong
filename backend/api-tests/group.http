@@ -1,20 +1,79 @@
 @baseUrl = http://localhost:8080
 
+@accessToken =
+@groupId =
+@inviteId =
+@inviteToken =
+@memberId =
+
+### Group service health
+GET {{baseUrl}}/api/v1/groups/health/
+
+### Create group
 POST {{baseUrl}}/api/v1/groups/
-Content-Type: application/json
 Authorization: Bearer {{accessToken}}
+Content-Type: application/json
 
 {
-  "title": "Demo Group",
-  "group_type": "GENERAL"
+  "title": "شام جمعه",
+  "description": "دورهمی دوستانه",
+  "group_type": "EVENT"
 }
 
-
-POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
-Content-Type: application/json
+### List my groups
+GET {{baseUrl}}/api/v1/groups/
 Authorization: Bearer {{accessToken}}
+
+### Group detail
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/
+Authorization: Bearer {{accessToken}}
+
+### Update group
+PATCH {{baseUrl}}/api/v1/groups/{{groupId}}/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "description": "دورهمی دوستانه - به‌روزرسانی"
+}
+
+### Create invite
+# If the response only includes invite_url, copy the token from the end of invite_url into @inviteToken.
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
 
 {
   "expires_in_hours": 48,
   "max_uses": 5
 }
+
+### Preview invite
+GET {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/
+
+### Accept invite
+POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
+Authorization: Bearer {{accessToken}}
+
+### Revoke invite
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/{{inviteId}}/revoke/
+Authorization: Bearer {{accessToken}}
+
+### List members
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/members/
+Authorization: Bearer {{accessToken}}
+
+### Remove member
+# Destructive action: run this after invite/member checks.
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/members/{{memberId}}/remove/
+Authorization: Bearer {{accessToken}}
+
+### Leave group
+# Destructive action: run this after other group checks.
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/leave/
+Authorization: Bearer {{accessToken}}
+
+### Archive group
+# Destructive action: run this last.
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/archive/
+Authorization: Bearer {{accessToken}}

@@ -1,76 +1,84 @@
+@baseUrl = http://localhost:8080
+
+@accessToken =
+@groupId =
+@expenseId =
+@payerUserId =
+@participantUserId1 =
+@participantUserId2 =
+@participantUserId3 =
+
+### Expense service health
+GET {{baseUrl}}/api/v1/expenses/health/
+
 ### Create equal expense
-POST http://localhost:8002/api/v1/groups/{{group_id}}/expenses/
-Authorization: Bearer {{access_token}}
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
   "title": "شام رستوران",
   "description": "شام جمعه",
-  "payer_user_id": "{{payer_user_id}}",
-  "base_amount_minor": 1200000,
+  "payer_user_id": "{{payerUserId}}",
+  "base_amount_minor": 900000,
   "currency": "IRR",
   "split_method": "EQUAL",
   "participant_user_ids": [
-    "{{participant_user_id_1}}",
-    "{{participant_user_id_2}}",
-    "{{participant_user_id_3}}"
+    "{{participantUserId1}}",
+    "{{participantUserId2}}",
+    "{{participantUserId3}}"
   ],
-  "tax_type": "PERCENTAGE",
-  "tax_percentage": "10.00",
-  "service_fee_type": "FIXED",
-  "service_fee_amount_minor": 50000,
-  "expense_date": "2026-06-03T12:00:00Z"
+  "tax_type": "NONE",
+  "service_fee_type": "NONE"
 }
 
 ### Create custom amount expense
-POST http://localhost:8002/api/v1/groups/{{group_id}}/expenses/
-Authorization: Bearer {{access_token}}
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
   "title": "خرید مشترک",
   "description": "خرید برای سفر",
-  "payer_user_id": "{{payer_user_id}}",
+  "payer_user_id": "{{payerUserId}}",
   "base_amount_minor": 1000000,
   "currency": "IRR",
   "split_method": "CUSTOM_AMOUNT",
   "participants": [
     {
-      "user_id": "{{participant_user_id_1}}",
+      "user_id": "{{participantUserId1}}",
       "base_share_minor": 400000
     },
     {
-      "user_id": "{{participant_user_id_2}}",
+      "user_id": "{{participantUserId2}}",
       "base_share_minor": 300000
     },
     {
-      "user_id": "{{participant_user_id_3}}",
+      "user_id": "{{participantUserId3}}",
       "base_share_minor": 300000
     }
   ],
-  "tax_type": "FIXED",
-  "tax_amount_minor": 100000,
-  "service_fee_type": "NONE",
-  "expense_date": "2026-06-03T12:00:00Z"
+  "tax_type": "NONE",
+  "service_fee_type": "NONE"
 }
 
 ### List group expenses
-GET http://localhost:8002/api/v1/groups/{{group_id}}/expenses/
-Authorization: Bearer {{access_token}}
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Authorization: Bearer {{accessToken}}
 
 ### Expense detail
-GET http://localhost:8002/api/v1/expenses/{{expense_id}}/
-Authorization: Bearer {{access_token}}
+GET {{baseUrl}}/api/v1/expenses/{{expenseId}}/
+Authorization: Bearer {{accessToken}}
 
 ### Update expense
-PATCH http://localhost:8002/api/v1/expenses/{{expense_id}}/
-Authorization: Bearer {{access_token}}
+PATCH {{baseUrl}}/api/v1/expenses/{{expenseId}}/
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
   "title": "شام رستوران - ویرایش شده"
 }
 
-### Soft delete expense
-DELETE http://localhost:8002/api/v1/expenses/{{expense_id}}/
-Authorization: Bearer {{access_token}}
+### Delete expense
+DELETE {{baseUrl}}/api/v1/expenses/{{expenseId}}/
+Authorization: Bearer {{accessToken}}

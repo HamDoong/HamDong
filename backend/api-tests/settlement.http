@@ -1,18 +1,96 @@
 @baseUrl = http://localhost:8080
 
+@accessToken =
+@groupId =
+@settlementId =
+@settlementPlanId =
+@planItemId =
+
+### Settlement service health
+GET {{baseUrl}}/api/v1/settlements/health/
+
+### Group balances
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
+Authorization: Bearer {{accessToken}}
+
+### My balance
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/me/
+Authorization: Bearer {{accessToken}}
+
+### Group debts
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/debts/
+Authorization: Bearer {{accessToken}}
+
+### Create manual settlement
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlements/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "receiver_user_id": "00000000-0000-0000-0000-000000000000",
+  "amount_minor": 300000,
+  "currency": "IRR",
+  "description": "پرداخت دستی"
+}
+
+### List settlements
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlements/
+Authorization: Bearer {{accessToken}}
+
+### Confirm settlement
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/confirm/
+Authorization: Bearer {{accessToken}}
+
+### Reject settlement
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/reject/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reason": "رسید نامعتبر است."
+}
+
+### Cancel settlement
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/cancel/
+Authorization: Bearer {{accessToken}}
+
+### Generate settlement plan
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {}
 
+### Get latest settlement plan
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/
+Authorization: Bearer {{accessToken}}
+
+### Activate settlement plan
 POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/activate/
 Authorization: Bearer {{accessToken}}
 
+### Cancel settlement plan
+POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/cancel/
+Authorization: Bearer {{accessToken}}
 
+### Report plan item paid
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{planItemId}}/report-paid/
 Authorization: Bearer {{accessToken}}
+Content-Type: application/json
 
+{
+  "description": "پرداخت انجام شد."
+}
 
-POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/confirm/
+### Confirm plan item
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{planItemId}}/confirm/
 Authorization: Bearer {{accessToken}}
+
+### Reject plan item
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{planItemId}}/reject/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reason": "پرداخت تأیید نشد."
+}

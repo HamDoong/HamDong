@@ -1,12 +1,21 @@
 @baseUrl = http://localhost:8080
 
+@accessToken =
+
+### Notification service health
+GET {{baseUrl}}/api/v1/notifications/health/
+
+### Send test SMS
+# This endpoint only works in local/debug environments.
 POST {{baseUrl}}/api/v1/notifications/sms/test/
 Content-Type: application/json
 
 {
-  "to": "+15555550123",
+  "phone_number": "09120000001",
   "message": "Test SMS"
 }
 
+### List messages
+# This endpoint only works in local/debug environments.
 GET {{baseUrl}}/api/v1/notifications/messages/
 Authorization: Bearer {{accessToken}}

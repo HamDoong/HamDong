@@ -59,8 +59,6 @@ class MemberSerializer(serializers.Serializer):
     role = serializers.CharField()
     joined_at = serializers.DateTimeField()
     phone_number = serializers.CharField()
-from rest_framework import serializers
 
-
-class PlaceholderSerializer(serializers.Serializer):
-    message = serializers.CharField(required=False)
+class MessageSerializer(serializers.Serializer):
+    message = serializers.CharField()
