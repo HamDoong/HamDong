@@ -3,19 +3,19 @@
 @accessToken =
 @phoneNumber = 09120000001
 
-### Health endpoint
+### Notification service health
 GET {{baseUrl}}/api/v1/notifications/health/
 
 ### Send test SMS
-# This endpoint is expected to work only in DEBUG/local environments.
+# This endpoint is intended for local/debug environments only.
 POST {{baseUrl}}/api/v1/notifications/sms/test/
 Content-Type: application/json
 
 {
   "phone_number": "{{phoneNumber}}",
-  "message": "HamDong notification test"
+  "message": "Test SMS"
 }
 
-### List notification messages
+### List messages
+# This endpoint is intended for local/debug environments only.
 GET {{baseUrl}}/api/v1/notifications/messages/
-Authorization: Bearer {{accessToken}}

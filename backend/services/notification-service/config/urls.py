@@ -5,7 +5,6 @@ from apps.notifications.api.views import HealthView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
-    path("api/v1/notifications/health/", HealthView.as_view(), name="notifications_health"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",

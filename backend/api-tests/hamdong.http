@@ -31,7 +31,7 @@
 @settlementPlanItemId =
 @manualSettlementId =
 
-### 0. Gateway health checks
+### 0) Health checks through the gateway
 GET {{baseUrl}}/api/v1/auth/health/
 
 ###
@@ -49,8 +49,8 @@ GET {{baseUrl}}/api/v1/settlements/health/
 ###
 GET {{baseUrl}}/api/v1/notifications/health/
 
-### 1. Request OTP for Ali
-# If DEBUG=true returns debug_otp, copy it manually into @aliOtp.
+### 1) Request OTP for Ali
+# If DEBUG=true returns debug_otp, copy it into @aliOtp manually.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
@@ -58,7 +58,8 @@ Content-Type: application/json
   "phone_number": "{{aliPhone}}"
 }
 
-### 2. Verify OTP for Ali
+### 2) Verify OTP for Ali
+# Copy access_token, refresh_token, and user.id from the response into @aliAccessToken, @aliRefreshToken, and @aliUserId.
 POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
@@ -67,8 +68,8 @@ Content-Type: application/json
   "code": "{{aliOtp}}"
 }
 
-### 3. Request OTP for Sara
-# If DEBUG=true returns debug_otp, copy it manually into @saraOtp.
+### 3) Request OTP for Sara
+# If DEBUG=true returns debug_otp, copy it into @saraOtp manually.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
@@ -76,7 +77,8 @@ Content-Type: application/json
   "phone_number": "{{saraPhone}}"
 }
 
-### 4. Verify OTP for Sara
+### 4) Verify OTP for Sara
+# Copy access_token, refresh_token, and user.id from the response into @saraAccessToken, @saraRefreshToken, and @saraUserId.
 POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
@@ -85,8 +87,8 @@ Content-Type: application/json
   "code": "{{saraOtp}}"
 }
 
-### 5. Request OTP for Reza
-# If DEBUG=true returns debug_otp, copy it manually into @rezaOtp.
+### 5) Request OTP for Reza
+# If DEBUG=true returns debug_otp, copy it into @rezaOtp manually.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
@@ -94,7 +96,8 @@ Content-Type: application/json
   "phone_number": "{{rezaPhone}}"
 }
 
-### 6. Verify OTP for Reza
+### 6) Verify OTP for Reza
+# Copy access_token, refresh_token, and user.id from the response into @rezaAccessToken, @rezaRefreshToken, and @rezaUserId.
 POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
@@ -103,19 +106,8 @@ Content-Type: application/json
   "code": "{{rezaOtp}}"
 }
 
-### 7. Get current users
-GET {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{aliAccessToken}}
-
-###
-GET {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{saraAccessToken}}
-
-###
-GET {{baseUrl}}/api/v1/users/me/
-Authorization: Bearer {{rezaAccessToken}}
-
-### 8. Ali creates a group
+### 7) Ali creates a group
+# Copy the created group id into @groupId.
 POST {{baseUrl}}/api/v1/groups/
 Authorization: Bearer {{aliAccessToken}}
 Content-Type: application/json
@@ -126,7 +118,9 @@ Content-Type: application/json
   "group_type": "EVENT"
 }
 
-### 9. Ali creates an invite
+### 8) Ali creates an invite
+# Copy invite_id into @inviteId.
+# If the response only includes invite_url, copy the token from the end of invite_url into @inviteToken.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
 Authorization: Bearer {{aliAccessToken}}
 Content-Type: application/json
@@ -136,41 +130,43 @@ Content-Type: application/json
   "max_uses": 5
 }
 
-### 10. Get invite detail
-# If the response only gives invite_url, copy the token from the end of invite_url into @inviteToken.
-GET {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/
-
-### 11. Sara accepts invite
+### 9) Sara accepts the invite
 POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
 Authorization: Bearer {{saraAccessToken}}
 
-### 12. Reza accepts invite
+### 10) Reza accepts the invite
 POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
 Authorization: Bearer {{rezaAccessToken}}
 
-### 13. Ali lists group members
+### 11) Ali lists group members
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/members/
 Authorization: Bearer {{aliAccessToken}}
 
-### 14. Optional receipt upload by Sara
-# Optional: add api-tests/fixtures/receipt.jpg before running this request.
-# If the fixture is missing, skip this request.
-POST {{baseUrl}}/api/v1/media/receipts/
-Authorization: Bearer {{saraAccessToken}}
-Content-Type: multipart/form-data; boundary=WebKitFormBoundary7MA4YWxkTrZu0gW
+### 12) Optional receipt upload by Sara
+# This repository snapshot does not include backend/api-tests/fixtures/receipt.jpg.
+# Add that fixture first, then uncomment the request below if you want to test media upload.
+#
+# POST {{baseUrl}}/api/v1/media/receipts/
+# Authorization: Bearer {{saraAccessToken}}
+# Content-Type: multipart/form-data; boundary=HamDongMediaBoundary
+#
+# --HamDongMediaBoundary
+# Content-Disposition: form-data; name="group_id"
+#
+# {{groupId}}
+# --HamDongMediaBoundary
+# Content-Disposition: form-data; name="file"; filename="receipt.jpg"
+# Content-Type: image/jpeg
+#
+# < ./fixtures/receipt.jpg
+# --HamDongMediaBoundary--
 
---WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="group_id"
-
-{{groupId}}
---WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="file"; filename="receipt.jpg"
-Content-Type: image/jpeg
-
-< ./fixtures/receipt.jpg
---WebKitFormBoundary7MA4YWxkTrZu0gW--
-
-### 15. Sara creates an equal split expense
+### 13) Sara creates an equal split expense
+# Expected shares:
+# - Ali: 300000
+# - Sara: 300000
+# - Reza: 300000
+# Copy the created expense id into @expenseId.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
 Authorization: Bearer {{saraAccessToken}}
 Content-Type: application/json
@@ -191,56 +187,71 @@ Content-Type: application/json
   "service_fee_type": "NONE"
 }
 
-### 16. Ali lists group expenses
+### 14) Ali lists group expenses
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
 Authorization: Bearer {{aliAccessToken}}
 
-### 17. Ali gets expense detail
+### 15) Ali gets expense detail
 GET {{baseUrl}}/api/v1/expenses/{{expenseId}}/
 Authorization: Bearer {{aliAccessToken}}
 
-### 18. Ali gets group balances
-# Wait a few seconds for RabbitMQ consumers to process events before running this request.
+### 16) Wait for async event consumers before checking balances
+# Wait a few seconds for RabbitMQ consumers to process events before running the next request.
+
+### 17) Ali gets group balances
+# Expected balances after the expense:
+# - Ali: -300000
+# - Sara: +600000
+# - Reza: -300000
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
 Authorization: Bearer {{aliAccessToken}}
 
-### 19. Ali gets group debts
+### 18) Ali gets group debts
 # Expected debts after the expense:
 # - Ali -> Sara: 300000
 # - Reza -> Sara: 300000
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/debts/
 Authorization: Bearer {{aliAccessToken}}
 
-### 20. Ali generates smart settlement plan
+### 19) Ali generates the smart settlement plan
+# Copy the settlement plan id into @settlementPlanId.
+# Copy one Ali->Sara plan item id into @settlementPlanItemId.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
 Authorization: Bearer {{aliAccessToken}}
 Content-Type: application/json
 
 {}
 
-### 21. Ali gets latest settlement plan
+### 20) Wait for async event consumers if needed
+# Wait a few seconds before reading or activating the plan when running the full demo.
+
+### 21) Ali gets the latest settlement plan
+# Expected settlement plan:
+# - Ali -> Sara: 300000
+# - Reza -> Sara: 300000
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/
 Authorization: Bearer {{aliAccessToken}}
 
-### 22. Ali activates settlement plan
+### 22) Ali activates the settlement plan
 POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/activate/
 Authorization: Bearer {{aliAccessToken}}
 
-### 23. Ali reports his plan item as paid
+### 23) Ali reports his plan item as paid
+# Copy manual_settlement_id into @manualSettlementId if you want to inspect the created manual settlement later.
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/report-paid/
 Authorization: Bearer {{aliAccessToken}}
 Content-Type: application/json
 
 {
-  "description": "پرداخت انجام شد"
+  "description": "پرداخت علی به سارا"
 }
 
-### 24. Sara confirms the plan item
+### 24) Sara confirms the plan item
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/confirm/
 Authorization: Bearer {{saraAccessToken}}
 
-### 25. Ali gets final balances
-# Expected balances after Ali pays and Sara confirms:
+### 25) Ali gets the final group balance
+# Expected final balances after Ali pays and Sara confirms:
 # - Ali: 0
 # - Sara: +300000
 # - Reza: -300000

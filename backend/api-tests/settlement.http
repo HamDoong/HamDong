@@ -8,18 +8,18 @@
 @settlementPlanId =
 @settlementPlanItemId =
 
-### Health endpoint
+### Settlement service health
 GET {{baseUrl}}/api/v1/settlements/health/
 
-### Get group balances
+### Group balances
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
 Authorization: Bearer {{accessToken}}
 
-### Get my balance
+### My balance
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/me/
 Authorization: Bearer {{accessToken}}
 
-### Get group debts
+### Group debts
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/debts/
 Authorization: Bearer {{accessToken}}
 
@@ -35,7 +35,7 @@ Content-Type: application/json
   "description": "پرداخت دستی"
 }
 
-### List group settlements
+### List settlements
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlements/
 Authorization: Bearer {{accessToken}}
 
@@ -49,7 +49,7 @@ Authorization: Bearer {{receiverAccessToken}}
 Content-Type: application/json
 
 {
-  "reason": "تأیید نشد"
+  "reason": "رسید نامعتبر است."
 }
 
 ### Cancel settlement
@@ -81,7 +81,7 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "description": "واریز انجام شد"
+  "description": "پرداخت انجام شد."
 }
 
 ### Confirm plan item
@@ -94,5 +94,5 @@ Authorization: Bearer {{receiverAccessToken}}
 Content-Type: application/json
 
 {
-  "reason": "مبلغ دریافت نشد"
+  "reason": "پرداخت تأیید نشد."
 }
