@@ -120,20 +120,20 @@
   direction: ltr;
 }
 
-.feature-showcase-section > :not(.feature-orb) {
+.feature-showcase-section > :not(.feature-wave-shape) {
   position: relative;
   z-index: 1;
 }
 
-.feature-orb {
+.feature-wave-shape {
   position: absolute;
-  top: 76%;
-  right: -11rem;
+  bottom: -3.5rem;
+  left: -8.5rem;
   z-index: 0;
-  width: 26rem;
-  height: 26rem;
+  width: clamp(22rem, 38vw, 36rem);
+  max-width: none;
   pointer-events: none;
-  opacity: 0.42;
+  user-select: none;
 }
 
 .balance-cluster,
@@ -144,8 +144,8 @@
 
 .balance-cluster {
   display: grid;
-  width: min(100%, 620px);
-  gap: 1rem;
+  width: min(100%, 706px);
+  gap: 1.35rem;
   grid-template-areas:
     "reminder"
     "balance";
@@ -163,12 +163,51 @@
 }
 
 .reminder-card {
+  position: relative;
   grid-area: reminder;
-  width: min(100%, 360px);
-  max-width: 360px;
+  width: min(100%, 218px);
+  max-width: 218px;
+  min-height: 170px;
   margin: 0 auto;
+  padding: 3.2rem 1.35rem 1.35rem;
   direction: rtl;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(255, 220, 220, 0.82);
+  border-radius: 22px;
+  box-shadow: 0 22px 52px rgba(239, 68, 68, 0.14);
+  backdrop-filter: blur(14px);
   z-index: 3;
+}
+
+.reminder-alert-badge {
+  position: absolute;
+  top: -1rem;
+  right: -0.85rem;
+  display: grid;
+  width: 3.2rem;
+  height: 3.2rem;
+  place-items: center;
+  color: #ffffff;
+  font-size: 1.55rem;
+  font-weight: 950;
+  background: linear-gradient(135deg, #ff3939, #ff6b55);
+  border-radius: 999px;
+  box-shadow: 0 16px 32px rgba(239, 68, 68, 0.28);
+}
+
+.reminder-bell-mark {
+  position: absolute;
+  top: 1.25rem;
+  right: 50%;
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  color: #ef4444;
+  background: #ffe9e9;
+  border-radius: 999px;
+  transform: translateX(50%);
 }
 
 .feature-copy {
@@ -180,10 +219,11 @@
   display: grid;
   place-items: center;
   justify-self: center;
+  transform: translate(calc(1.1rem + 75px), calc(1.25rem + 28px));
 }
 
 .high-five-image {
-  width: min(100%, 320px);
+  width: min(100%, 260px);
   object-fit: cover;
   border-radius: 30px;
   mix-blend-mode: multiply;
@@ -191,12 +231,12 @@
 
 @media (min-width: 1024px) {
   .feature-showcase-section {
-    grid-template-columns: minmax(430px, 1.12fr) minmax(220px, 0.62fr) minmax(360px, 0.88fr);
-    gap: clamp(2rem, 3.8vw, 4rem);
+    grid-template-columns: minmax(560px, 1.22fr) minmax(165px, 0.38fr) minmax(360px, 0.9fr);
+    gap: clamp(1.5rem, 3vw, 3rem);
   }
 
   .balance-cluster {
-    grid-template-columns: minmax(10.5rem, 12rem) minmax(0, 400px);
+    grid-template-columns: minmax(12rem, 13.7rem) 456px;
     grid-template-areas: "reminder balance";
     min-height: 455px;
     justify-self: start;
@@ -204,10 +244,11 @@
 
   .balance-panel {
     justify-self: stretch;
+    width: 423px;
   }
 
   .reminder-card {
-    width: 12rem;
+    width: 13.6rem;
     align-self: center;
     justify-self: start;
   }
@@ -217,22 +258,21 @@
   }
 
   .high-five-image {
-    width: min(100%, 300px);
+    width: min(100%, 170px);
   }
 }
 
 @media (max-width: 767px) {
   .feature-showcase-section {
     gap: 2rem;
-    padding-bottom: 5rem;
+    padding-bottom: 2.5rem;
   }
 
-  .feature-orb {
-    top: 84%;
-    right: -12rem;
+  .feature-wave-shape {
+    bottom: -2rem;
+    left: -11rem;
     width: 24rem;
-    height: 24rem;
-    opacity: 0.32;
+    opacity: 0.72;
   }
 
   .balance-cluster {
@@ -243,16 +283,22 @@
     max-width: 22rem;
   }
 
+  .high-five-card {
+    transform: none;
+  }
+
   .high-five-image {
-    width: min(78vw, 280px);
+    width: min(68vw, 220px);
   }
 }
 
 .hero-mockup {
   position: relative;
   justify-self: start;
-  width: min(100%, 620px);
-  min-height: 830px;
+  width: min(100%, 580px);
+  min-height: 760px;
+  transform: scale(0.94);
+  transform-origin: center top;
 }
 
 .hero-phone {
@@ -396,17 +442,18 @@
 @media (max-width: 1023px) {
   .hero-mockup {
     justify-self: center;
-    min-height: 800px;
+    min-height: 700px;
+    transform: scale(0.86);
   }
 }
 
 @media (max-width: 640px) {
   .hero-mockup {
     width: min(112%, 430px);
-    min-height: 770px;
+    min-height: 590px;
     margin-right: -6%;
-    margin-bottom: -38px;
-    transform: scale(0.86);
+    margin-bottom: -70px;
+    transform: scale(0.72);
     transform-origin: top center;
   }
 

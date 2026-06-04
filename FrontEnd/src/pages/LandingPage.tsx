@@ -118,6 +118,24 @@ const useCases = [
   'کلاس‌ها و دوره‌های آموزشی',
 ];
 
+const howItWorks = [
+  {
+    icon: UsersRound,
+    title: 'گروه بساز',
+    description: 'اعضا را اضافه کن و سهم هر نفر را از همان ابتدا شفاف نگه دار.',
+  },
+  {
+    icon: ReceiptText,
+    title: 'هزینه ثبت کن',
+    description: 'خرج‌های سفر، خانه یا پروژه را سریع وارد کن و محاسبه را بسپار به هم‌هزینه.',
+  },
+  {
+    icon: CreditCard,
+    title: 'تسویه کن',
+    description: 'در پایان، دقیق ببین چه کسی چقدر بدهکار یا طلبکار است.',
+  },
+];
+
 function Logo() {
   return (
     <div
@@ -271,8 +289,8 @@ function HeroMockup() {
 
 function FeatureStrip() {
   return (
-    <section className="relative z-10 mx-auto max-w-6xl px-5 pb-8 sm:px-8 lg:px-10">
-      <div className="grid gap-6 rounded-[28px] border border-white/80 bg-white/86 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur md:grid-cols-2 lg:grid-cols-4 lg:p-8">
+    <section className="relative z-10 mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:px-10">
+      <div className="grid gap-5 rounded-[26px] border border-white/80 bg-white/82 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)] backdrop-blur md:grid-cols-2 lg:grid-cols-4 lg:p-7">
         {featureItems.map((item) => {
           const Icon = item.icon;
 
@@ -299,23 +317,65 @@ function FeatureStrip() {
   );
 }
 
+function HowItWorks() {
+  return (
+    <section
+      id="how-it-works"
+      className="relative z-10 mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:px-10"
+    >
+      <div className="mb-8 text-center">
+        <p className="text-sm font-extrabold text-primary">از ثبت خرج تا تسویه</p>
+        <h2 className="mt-3 text-3xl font-black leading-[1.45] text-slate-950 sm:text-4xl">
+          آخر سفر دنبال حساب‌کتاب دستی نرو
+        </h2>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {howItWorks.map((item, index) => {
+          const Icon = item.icon;
+
+          return (
+            <article
+              key={item.title}
+              className="rounded-[24px] border border-white/80 bg-white/84 p-6 text-right shadow-[0_18px_44px_rgba(15,23,42,0.06)] backdrop-blur"
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <span className="grid h-12 w-12 place-items-center rounded-[18px] bg-emerald-50 text-primary">
+                  <Icon className="h-6 w-6" strokeWidth={2.4} />
+                </span>
+                <span className="text-3xl font-black text-slate-200">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+              </div>
+              <h3 className="text-xl font-black text-slate-950">{item.title}</h3>
+              <p className="mt-3 text-sm font-semibold leading-7 text-slate-500">
+                {item.description}
+              </p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function BalancePanel() {
   return (
-    <div className="balance-panel relative mx-auto w-full max-w-[430px] rounded-[30px] bg-gradient-to-br from-orange-400 via-orange-200 to-white p-5 shadow-[0_24px_70px_rgba(244,126,24,0.22)]">
+    <div className="balance-panel relative mx-auto w-full max-w-[456px] rounded-[28px] border border-orange-200/70 bg-gradient-to-br from-orange-500 via-orange-300 to-orange-50 p-5 shadow-[0_24px_58px_rgba(249,115,22,0.18)]">
       <h3 className="mb-5 text-center text-lg font-black text-slate-950">موجودی‌ها</h3>
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {balances.map((balance) => (
           <div
             key={balance.label}
-            className="flex items-center justify-between gap-3 rounded-[22px] bg-white px-4 py-3 shadow-[0_10px_26px_rgba(15,23,42,0.07)]"
+            className="flex min-h-[62px] items-center justify-between gap-3 rounded-[18px] bg-white px-4 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
           >
             <img
               src={balance.avatar.src}
               alt={balance.avatar.alt}
-              className="h-12 w-12 rounded-full object-cover"
+              className="h-11 w-11 rounded-full object-cover"
               loading="lazy"
             />
-            <p className="min-w-0 flex-1 text-right text-sm font-bold text-slate-700">
+            <p className="min-w-0 flex-1 text-right text-sm font-extrabold leading-6 text-slate-700">
               {balance.label}
             </p>
             <p className={`shrink-0 text-sm font-black ${balance.tone}`}>
@@ -326,7 +386,7 @@ function BalancePanel() {
       </div>
       <button
         type="button"
-        className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-l from-red-500 to-orange-500 px-5 text-base font-extrabold text-white shadow-[0_16px_32px_rgba(239,68,68,0.28)]"
+        className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-l from-red-500 to-orange-500 px-5 text-base font-extrabold text-white shadow-[0_16px_32px_rgba(239,68,68,0.28)]"
       >
         <CreditCard className="h-6 w-6" />
         تسویه حساب‌ها (2,100,000 تومان)
@@ -351,17 +411,11 @@ export function LandingPage({ onStart }: LandingPageProps) {
           <a className="inline-flex h-10 items-center rounded-full bg-emerald-50 px-4 text-primary" href="#home">
             خانه
           </a>
+          <a className="inline-flex h-10 items-center rounded-full px-4 transition hover:bg-white hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40" href="#how-it-works">
+            چطور کار می‌کند
+          </a>
           <a className="inline-flex h-10 items-center rounded-full px-4 transition hover:bg-white hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40" href="#features">
             امکانات
-          </a>
-          <a className="inline-flex h-10 items-center rounded-full px-4 transition hover:bg-white hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40" href="#pricing">
-            قیمت‌ها
-          </a>
-          <a className="inline-flex h-10 items-center rounded-full px-4 transition hover:bg-white hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40" href="#blog">
-            وبلاگ
-          </a>
-          <a className="inline-flex h-10 items-center rounded-full px-4 transition hover:bg-white hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40" href="#about">
-            درباره ما
           </a>
         </nav>
 
@@ -375,7 +429,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
           </button>
           <button
             type="button"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-primary-gradient px-4 text-sm font-extrabold text-white shadow-button transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:px-6"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-emerald-200/80 bg-white/70 px-4 text-sm font-extrabold text-primary shadow-[0_12px_30px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:px-6"
           >
             <Download className="h-5 w-5" />
             دانلود اپلیکیشن
@@ -385,53 +439,53 @@ export function LandingPage({ onStart }: LandingPageProps) {
 
       <section
         id="home"
-        className="relative z-10 mx-auto grid max-w-7xl items-center gap-8 px-5 pb-6 pt-6 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:px-10 lg:pb-10"
+        className="relative z-10 mx-auto grid max-w-7xl items-center gap-5 px-5 pb-4 pt-4 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:gap-8 lg:px-10 lg:pb-6"
       >
         <div className="max-w-2xl justify-self-end text-center lg:text-right">
-          <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-orange-50 px-5 py-3 text-sm font-extrabold text-orange-600 shadow-[0_10px_30px_rgba(249,115,22,0.08)] lg:mx-0">
+          <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-orange-50 px-5 py-2.5 text-sm font-extrabold text-orange-600 shadow-[0_10px_30px_rgba(249,115,22,0.08)] lg:mx-0">
             <Sparkles className="h-4 w-4" fill="currentColor" />
             مدیریت هزینه‌ها گروهی، ساده و شفاف
           </div>
 
-          <h1 className="mt-9 text-4xl font-black leading-[1.35] text-slate-950 sm:text-6xl lg:text-7xl">
+          <h1 className="mt-7 text-[2.65rem] font-black leading-[1.32] text-slate-950 sm:text-5xl lg:text-6xl">
             هزینه‌ها را
             <span className="block text-primary">با هم تقسیم کنید</span>
           </h1>
-          <p className="mx-auto mt-7 max-w-[20rem] text-base font-semibold leading-9 text-slate-500 sm:max-w-xl sm:text-lg sm:leading-10 lg:mx-0">
+          <p className="mx-auto mt-5 max-w-[20rem] text-base font-semibold leading-8 text-slate-500 sm:max-w-xl sm:text-lg sm:leading-9 lg:mx-0">
             با هم‌هزینه، هزینه‌های گروهی سفر، زندگی مشترک یا هر پروژه‌ای را
             با سادگی مدیریت کنید.
           </p>
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start">
             <button
               type="button"
               onClick={onStart}
-              className="inline-flex h-16 min-w-[210px] items-center justify-center gap-3 rounded-[24px] bg-primary-gradient px-7 text-lg font-extrabold text-white shadow-button transition hover:-translate-y-1"
+              className="inline-flex h-14 min-w-[190px] items-center justify-center gap-3 rounded-[20px] bg-primary-gradient px-6 text-base font-extrabold text-white shadow-button transition hover:-translate-y-1"
             >
               شروع رایگان
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-slate-950">
-                <ArrowLeft className="h-6 w-6" />
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-slate-950">
+                <ArrowLeft className="h-5 w-5" />
               </span>
             </button>
             <button
               type="button"
-              className="inline-flex h-16 min-w-[210px] items-center justify-center gap-4 rounded-[24px] bg-white px-7 text-lg font-extrabold text-slate-950 shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-1"
+              className="inline-flex h-14 min-w-[178px] items-center justify-center gap-3 rounded-[20px] bg-white/82 px-6 text-base font-extrabold text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.06)] ring-1 ring-white/80 transition hover:-translate-y-1"
             >
               تماشای ویدیو
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-white shadow-[0_10px_22px_rgba(15,23,42,0.09)]">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-[0_10px_22px_rgba(15,23,42,0.08)]">
                 <Play className="h-5 w-5 fill-slate-950" />
               </span>
             </button>
           </div>
 
-          <div className="mt-11 flex flex-col items-center justify-center gap-6 sm:flex-row lg:justify-start">
+          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
             <AvatarStack />
             <p className="text-base font-semibold leading-8 text-slate-500">
               <span className="font-black text-orange-500">+12K</span> کاربر فعال
               <span className="block">به ما اعتماد کرده‌اند</span>
             </p>
-            <div className="grid h-16 w-16 place-items-center rounded-full bg-white text-primary shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
-              <Heart className="h-7 w-7" fill="currentColor" />
+            <div className="hidden h-14 w-14 place-items-center rounded-full bg-white text-primary shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:grid">
+              <Heart className="h-6 w-6" fill="currentColor" />
             </div>
           </div>
         </div>
@@ -439,23 +493,25 @@ export function LandingPage({ onStart }: LandingPageProps) {
         <HeroMockup />
       </section>
 
+      <HowItWorks />
       <FeatureStrip />
 
       <section
         id="features"
         className="feature-showcase-section relative z-10 mx-auto max-w-7xl px-5 pb-24 pt-10 sm:px-8 lg:px-10"
       >
-        <div className="feature-orb rounded-full bg-gradient-to-br from-emerald-500 to-emerald-300" />
+        <img
+          src="/landing/green-side-wave.svg"
+          alt=""
+          aria-hidden="true"
+          className="feature-wave-shape"
+        />
 
         <div className="balance-cluster order-3 lg:order-1">
-          <div className="reminder-card rounded-[24px] bg-white/92 p-5 text-right shadow-[0_24px_60px_rgba(239,68,68,0.16)]">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="grid h-11 w-11 place-items-center rounded-full bg-red-100 text-red-500">
-                <Bell className="h-5 w-5" />
-              </div>
-              <span className="grid h-11 w-11 place-items-center rounded-full bg-red-500 text-xl font-black text-white">
-                !
-              </span>
+          <div className="reminder-card">
+            <span className="reminder-alert-badge">!</span>
+            <div className="reminder-bell-mark">
+              <Bell className="h-5 w-5" />
             </div>
             <h3 className="text-base font-black text-red-500">یادآوری پرداخت</h3>
             <p className="mt-2 text-sm font-semibold leading-7 text-slate-500">

@@ -1,0 +1,13 @@
+<svg width="531" height="534" viewBox="0 0 531 534" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path
+    d="M531 534H0V0C68.8855 10.2919 216.116 77.8476 253.957 265.735C291.797 453.622 454.419 522.864 531 534Z"
+    fill="url(#greenWaveGradient)"
+  />
+  <defs>
+    <linearGradient id="greenWaveGradient" x1="20" y1="514" x2="514" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00915F"/>
+      <stop offset="0.48" stop-color="#04d689"/>
+      <stop offset="1" stop-color="#A7F3D0"/>
+    </linearGradient>
+  </defs>
+</svg>
