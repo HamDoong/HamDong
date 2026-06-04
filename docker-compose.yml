@@ -4,7 +4,7 @@ services:
     ports:
     - 8080:80
     volumes:
-    - ./backend/api-gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    - ./Backend/api-gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
     - identity-service
     - group-service
@@ -14,8 +14,8 @@ services:
     - notification-service
   
   identity-service:
-    build: ./backend/services/identity-service
-    env_file: ./backend/.env
+    build: ./Backend/services/identity-service
+    env_file: ./Backend/.env
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -36,7 +36,7 @@ services:
     ports:
     - 8001:8000
     volumes:
-    - ./backend/services/identity-service:/app
+    - ./Backend/services/identity-service:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,8 +46,8 @@ services:
         condition: service_started
   
   group-service:
-    build: ./backend/services/group-service
-    env_file: ./backend/.env
+    build: ./Backend/services/group-service
+    env_file: ./Backend/.env
     command:
     - python
     - manage.py
@@ -73,7 +73,7 @@ services:
     ports:
     - 8002:8000
     volumes:
-    - ./backend/services/group-service:/app
+    - ./Backend/services/group-service:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,8 +83,8 @@ services:
         condition: service_started
   
   group-consumer:
-    build: ./backend/services/group-service
-    env_file: ./backend/.env
+    build: ./Backend/services/group-service
+    env_file: ./Backend/.env
     command:
     - python
     - manage.py
@@ -114,8 +114,8 @@ services:
         condition: service_started
   
   settlement-service:
-    build: ./backend/services/settlement-service
-    env_file: ./backend/.env
+    build: ./Backend/services/settlement-service
+    env_file: ./Backend/.env
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -161,7 +161,7 @@ services:
     ports:
     - 8004:8000
     volumes:
-    - ./backend/services/settlement-service:/app
+    - ./Backend/services/settlement-service:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,8 +171,8 @@ services:
         condition: service_started
   
   settlement-consumer:
-    build: ./backend/services/settlement-service
-    env_file: ./backend/.env
+    build: ./Backend/services/settlement-service
+    env_file: ./Backend/.env
     command:
     - python
     - manage.py
@@ -228,8 +228,8 @@ services:
         condition: service_started
   
   settlement-outbox-dispatcher:
-    build: ./backend/services/settlement-service
-    env_file: ./backend/.env
+    build: ./Backend/services/settlement-service
+    env_file: ./Backend/.env
     command:
     - sh
     - -c
@@ -262,8 +262,8 @@ services:
         condition: service_started
   
   settlement-reminder-scheduler:
-    build: ./backend/services/settlement-service
-    env_file: ./backend/.env
+    build: ./Backend/services/settlement-service
+    env_file: ./Backend/.env
     command:
     - sh
     - -c
@@ -300,8 +300,8 @@ services:
         condition: service_started
   
   media-service:
-    build: ./backend/services/media-service
-    env_file: ./backend/.env
+    build: ./Backend/services/media-service
+    env_file: ./Backend/.env
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -338,7 +338,7 @@ services:
     ports:
     - 8005:8000
     volumes:
-    - ./backend/services/media-service:/app
+    - ./Backend/services/media-service:/app
     - media_uploads:/media/uploads
     depends_on:
       postgres:
@@ -349,8 +349,8 @@ services:
         condition: service_started
 
   media-consumer:
-    build: ./backend/services/media-service
-    env_file: ./backend/.env
+    build: ./Backend/services/media-service
+    env_file: ./Backend/.env
     command:
     - python
     - manage.py
@@ -398,8 +398,8 @@ services:
         condition: service_started
   
   notification-service:
-    build: ./backend/services/notification-service
-    env_file: ./backend/.env
+    build: ./Backend/services/notification-service
+    env_file: ./Backend/.env
     entrypoint:
     - sh
     - -c
@@ -444,7 +444,7 @@ services:
     ports:
     - 8006:8000
     volumes:
-    - ./backend/services/notification-service:/app
+    - ./Backend/services/notification-service:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -454,8 +454,8 @@ services:
         condition: service_started
   
   notification-consumer:
-    build: ./backend/services/notification-service
-    env_file: ./backend/.env
+    build: ./Backend/services/notification-service
+    env_file: ./Backend/.env
     entrypoint:
     - sh
     - -c
@@ -506,8 +506,8 @@ services:
         condition: service_started
   
   notification-reminder-consumer:
-    build: ./backend/services/notification-service
-    env_file: ./backend/.env
+    build: ./Backend/services/notification-service
+    env_file: ./Backend/.env
     entrypoint:
     - sh
     - -c
@@ -556,8 +556,8 @@ services:
         condition: service_started
   
   expense-service:
-    build: ./backend/services/expense-service
-    env_file: ./backend/.env
+    build: ./Backend/services/expense-service
+    env_file: ./Backend/.env
     command:
     - python
     - manage.py
@@ -583,7 +583,7 @@ services:
     ports:
     - 8003:8000
     volumes:
-    - ./backend/services/expense-service:/app
+    - ./Backend/services/expense-service:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -593,8 +593,8 @@ services:
         condition: service_started
   
   expense-consumer:
-    build: ./backend/services/expense-service
-    env_file: ./backend/.env
+    build: ./Backend/services/expense-service
+    env_file: ./Backend/.env
     command:
     - python
     - manage.py
@@ -629,8 +629,8 @@ services:
         condition: service_started
   
   identity-outbox-dispatcher:
-    build: ./backend/services/identity-service
-    env_file: ./backend/.env
+    build: ./Backend/services/identity-service
+    env_file: ./Backend/.env
     command:
     - sh
     - -c
@@ -660,8 +660,8 @@ services:
         condition: service_started
   
   group-outbox-dispatcher:
-    build: ./backend/services/group-service
-    env_file: ./backend/.env
+    build: ./Backend/services/group-service
+    env_file: ./Backend/.env
     command:
     - sh
     - -c
@@ -691,8 +691,8 @@ services:
         condition: service_started
   
   expense-outbox-dispatcher:
-    build: ./backend/services/expense-service
-    env_file: ./backend/.env
+    build: ./Backend/services/expense-service
+    env_file: ./Backend/.env
     command:
     - sh
     - -c
@@ -722,8 +722,8 @@ services:
         condition: service_started
   
   media-outbox-dispatcher:
-    build: ./backend/services/media-service
-    env_file: ./backend/.env
+    build: ./Backend/services/media-service
+    env_file: ./Backend/.env
     command:
     - sh
     - -c
@@ -753,8 +753,8 @@ services:
         condition: service_started
   
   notification-outbox-dispatcher:
-    build: ./backend/services/notification-service
-    env_file: ./backend/.env
+    build: ./Backend/services/notification-service
+    env_file: ./Backend/.env
     entrypoint:
     - sh
     - -c
@@ -786,7 +786,7 @@ services:
   
   postgres:
     image: postgres:16-alpine
-    env_file: ./backend/.env
+    env_file: ./Backend/.env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -802,7 +802,7 @@ services:
     - 5432:5432
     volumes:
     - postgres_data:/var/lib/postgresql/data
-    - ./backend/infra/postgres/init:/docker-entrypoint-initdb.d
+    - ./Backend/infra/postgres/init:/docker-entrypoint-initdb.d
   
   redis:
     image: redis:7-alpine
