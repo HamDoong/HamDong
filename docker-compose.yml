@@ -16,6 +16,7 @@ services:
   identity-service:
     build: ./Backend/services/identity-service
     env_file: ./Backend/.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -48,11 +49,7 @@ services:
   group-service:
     build: ./Backend/services/group-service
     env_file: ./Backend/.env
-    command:
-    - python
-    - manage.py
-    - runserver
-    - 0.0.0.0:8000
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -116,6 +113,7 @@ services:
   settlement-service:
     build: ./Backend/services/settlement-service
     env_file: ./Backend/.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -230,10 +228,7 @@ services:
   settlement-outbox-dispatcher:
     build: ./Backend/services/settlement-service
     env_file: ./Backend/.env
-    command:
-    - sh
-    - -c
-    - while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -264,10 +259,7 @@ services:
   settlement-reminder-scheduler:
     build: ./Backend/services/settlement-service
     env_file: ./Backend/.env
-    command:
-    - sh
-    - -c
-    - while true; do python manage.py run_reminder_scheduler; sleep ${REMINDER_SCHEDULER_INTERVAL_SECONDS:-3600}; done
+    command: ["python", "manage.py", "run_reminder_scheduler_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -302,6 +294,7 @@ services:
   media-service:
     build: ./Backend/services/media-service
     env_file: ./Backend/.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -400,11 +393,7 @@ services:
   notification-service:
     build: ./Backend/services/notification-service
     env_file: ./Backend/.env
-    entrypoint:
-    - sh
-    - -c
-    command:
-    - python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -504,13 +493,7 @@ services:
   notification-reminder-consumer:
     build: ./Backend/services/notification-service
     env_file: ./Backend/.env
-    entrypoint:
-    - sh
-    - -c
-    command:
-    - python
-    - manage.py
-    - consume_notification_events
+    command: ["python", "manage.py", "consume_notification_events"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -627,10 +610,7 @@ services:
   identity-outbox-dispatcher:
     build: ./Backend/services/identity-service
     env_file: ./Backend/.env
-    command:
-    - sh
-    - -c
-    - while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -658,10 +638,7 @@ services:
   group-outbox-dispatcher:
     build: ./Backend/services/group-service
     env_file: ./Backend/.env
-    command:
-    - sh
-    - -c
-    - while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -689,10 +666,7 @@ services:
   expense-outbox-dispatcher:
     build: ./Backend/services/expense-service
     env_file: ./Backend/.env
-    command:
-    - sh
-    - -c
-    - while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -720,10 +694,7 @@ services:
   media-outbox-dispatcher:
     build: ./Backend/services/media-service
     env_file: ./Backend/.env
-    command:
-    - sh
-    - -c
-    - while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -751,11 +722,7 @@ services:
   notification-outbox-dispatcher:
     build: ./Backend/services/notification-service
     env_file: ./Backend/.env
-    entrypoint:
-    - sh
-    - -c
-    command:
-    - while true; do python manage.py dispatch_outbox; sleep ${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}; done
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}

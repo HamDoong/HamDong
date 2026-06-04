@@ -121,3 +121,19 @@ EVENT_OUTBOX_POLL_INTERVAL_SECONDS = int(os.getenv("EVENT_OUTBOX_POLL_INTERVAL_S
 EVENT_MAX_RETRY_COUNT = int(os.getenv("EVENT_MAX_RETRY_COUNT", "5"))
 EVENT_DLQ_SUFFIX = os.getenv("EVENT_DLQ_SUFFIX", ".dlq")
 EVENT_RETRY_DELAY_SECONDS = os.getenv("EVENT_RETRY_DELAY_SECONDS", "10,30,60")
+
+
+EXPENSE_IDENTITY_QUEUE = os.getenv(
+    "EXPENSE_IDENTITY_QUEUE",
+    "expense.identity.user_events",
+)
+
+EXPENSE_GROUP_QUEUE = os.getenv(
+    "EXPENSE_GROUP_QUEUE",
+    "expense.group.events",
+)
+
+EXPENSE_RABBITMQ_EXCHANGE = os.getenv(
+    "EXPENSE_RABBITMQ_EXCHANGE",
+    "hamdong.expense",
+)
