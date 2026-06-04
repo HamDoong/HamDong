@@ -1,14 +1,74 @@
 # Database
 
-Each service owns its own PostgreSQL database. This isolates schemas and prevents cross-service coupling.
+## Overview
 
-Key points
-- identity_db: users, refresh tokens, OTP audit logs
-- group_db: groups, invites, memberships
-- expense_db: expenses, participants
-- media_db: media files metadata
-- settlement_db: debts, settlement plans, plan items, outbox/inbox
-- notification_db: notification jobs, provider logs
+HamDong uses one PostgreSQL database per service. This keeps schemas isolated and forces all cross-service synchronization through APIs or events instead of direct table reads.
 
-Design rationale
-- Service-per-database promotes autonomy, easier migrations, and clearer ownership.
+## Databases
+
+- `identity_db`
+- `group_db`
+- `expense_db`
+- `media_db`
+- `settlement_db`
+- `notification_db`
+
+## Why One Database Per Service?
+
+- bounded contexts keep ownership clear
+- migrations stay local to each service
+- accidental cross-service coupling is reduced
+- event projections become explicit
+- service failure domains are cleaner
+
+## Main Data by Service
+
+### identity-service
+- user records
+- refresh tokens
+- OTP state / audit metadata
+- outbox messages
+
+### group-service
+- groups
+- members
+- invite records
+- user projections
+- outbox / inbox
+
+### expense-service
+- expenses
+- expense participants
+- user/group/member projections
+- outbox / inbox
+
+### media-service
+- media file metadata
+- user/group projections
+- outbox / inbox
+
+### settlement-service
+- user/group/member/expense projections
+- debt ledger entries
+- group balance snapshots
+- manual settlements
+- settlement plans and items
+- reminder dispatch logs
+- outbox / inbox / processed-event compatibility
+
+### notification-service
+- notification jobs
+- delivery/provider logs
+- inbox / outbox
+
+## Data Consistency
+
+HamDong uses eventual consistency for projections:
+
+- source services own their write models
+- downstream services build read/write projections from RabbitMQ events
+- retry and duplicate handling are explicit through outbox/inbox tables
+
+## Notes for Local Delivery
+
+The local stack uses a shared PostgreSQL container with separate logical databases and persistent Docker volumes.

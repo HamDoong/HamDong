@@ -36,6 +36,7 @@ Content-Type: application/json
 
 ### Logout
 POST {{baseUrl}}/api/v1/auth/logout/
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {

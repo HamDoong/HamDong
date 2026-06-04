@@ -58,8 +58,7 @@ Content-Type: application/json
       "base_share_minor": 300000
     }
   ],
-  "tax_type": "FIXED",
-  "tax_amount_minor": 100000,
+  "tax_type": "NONE",
   "service_fee_type": "NONE"
 }
 
@@ -77,11 +76,8 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "title": "شام رستوران - ویرایش شده",
-  "tax_type": "PERCENTAGE",
-  "tax_percentage": 10,
-  "service_fee_type": "FIXED",
-  "service_fee_amount_minor": 50000
+  "title": "شام رستوران - ویرایش",
+  "description": "به‌روزرسانی توضیحات"
 }
 
 ### Delete expense

@@ -46,11 +46,6 @@ Authorization: Bearer {{receiverAccessToken}}
 ### Reject settlement
 POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/reject/
 Authorization: Bearer {{receiverAccessToken}}
-Content-Type: application/json
-
-{
-  "reason": "تأیید نشد"
-}
 
 ### Cancel settlement
 POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/cancel/
@@ -59,9 +54,6 @@ Authorization: Bearer {{accessToken}}
 ### Generate settlement plan
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
 Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{}
 
 ### Get latest settlement plan
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/
@@ -78,11 +70,6 @@ Authorization: Bearer {{accessToken}}
 ### Report plan item paid
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/report-paid/
 Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{
-  "description": "واریز انجام شد"
-}
 
 ### Confirm plan item
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/confirm/
@@ -91,8 +78,3 @@ Authorization: Bearer {{receiverAccessToken}}
 ### Reject plan item
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/reject/
 Authorization: Bearer {{receiverAccessToken}}
-Content-Type: application/json
-
-{
-  "reason": "مبلغ دریافت نشد"
-}

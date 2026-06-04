@@ -1,17 +1,73 @@
 # Security
 
-This document outlines security practices used across services.
+## JWT with RS256
 
-- JWT with RS256: Services validate access tokens using RS256 public keys served by `identity-service` JWKS. Public key validation ensures tokens are verifiable without sharing private keys.
-- Refresh token hashing: refresh tokens are hashed in the DB to prevent theft of raw tokens.
-- OTP hashing: OTP values are not stored in plaintext; hashed or ephemeral storage is used. Raw OTPs are never logged.
-- OTP expiration and rate limits: OTP lifetime and request/verify rate limits are enforced to prevent abuse.
-- Invite tokens: raw invite token is not stored; the server stores a derived hash and compares safely.
-- File validation: uploaded files are validated by extension and content type; stored file names are randomized and checksums recorded.
-- Group permissions: owner/admin/member permissions enforced in APIs; membership required to access group resources.
-- No direct cross-service DB access: services interact via events and APIs only.
-- Environment secrets: store in `.env` and CI secrets; do not commit to git.
-- Production settings: `DEBUG=false`, restricted CORS, and Swagger/docs access can be limited in production.
-- Phone masking: logs should mask phone numbers to avoid leaking PII.
-- Event idempotency: Inbox/ProcessedEvent tables prevent duplicate processing.
-- Outbox/Inbox reliability: Outbox ensures messages are persisted in the producer DB before publishing.
+- identity-service is the only JWT issuer and signer.
+- The private key stays only inside identity-service.
+- Verifier services use the public key / JWKS and validate:
+  - RS256 signature
+  - issuer
+  - audience
+  - token type
+  - `sub`
+  - `jti`
+  - `iat`
+  - `exp`
+
+## Refresh Token Hashing
+
+- refresh tokens are stored hashed
+- raw refresh tokens are not stored in the database
+- rotation revokes the previous token
+- logout revokes active refresh tokens
+
+## OTP Security
+
+- OTP values are stored hashed or in ephemeral secure form
+- OTP has expiration
+- OTP request/verify rate limits are configurable
+- raw OTP values are not stored in DB
+- raw OTP values are not logged
+- `debug_otp` is intended only for local `DEBUG=true` use
+
+## OTP Expiration and Rate Limit
+
+Key settings in `.env.example`:
+
+- `OTP_LENGTH`
+- `OTP_TTL_SECONDS`
+- `OTP_RESEND_COOLDOWN_SECONDS`
+- `OTP_MAX_VERIFY_ATTEMPTS`
+- `OTP_MAX_REQUESTS_PER_WINDOW`
+- `OTP_RATE_LIMIT_WINDOW_SECONDS`
+
+## Invite Token Hashing
+
+Invite handling uses token protection / hashing so that raw invite secrets are not treated like normal IDs.
+
+## File Validation
+
+Media upload security includes:
+
+- content type validation
+- max file size limits
+- randomized stored file name
+- checksum / integrity metadata where applicable
+- access control through authenticated membership
+
+## Group Membership Permissions
+
+Group, expense, media, and settlement endpoints check authenticated membership/role before allowing access to sensitive group data.
+
+## Cross-service Data Access
+
+- services do not read each other’s databases directly
+- cross-service data is exchanged through HTTP or RabbitMQ events
+- projections are stored locally per service
+
+## Operational Security
+
+- production should run with `DEBUG=false`
+- secrets should be kept in environment files or secret managers, not committed real values
+- phone numbers are masked in logs where applicable
+- SMS delivery logs should avoid leaking sensitive data

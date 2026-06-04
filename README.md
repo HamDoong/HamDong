@@ -1,230 +1,353 @@
-# settlement-service (Phases 7 and 8)
+# HamDong
 
-Settlement-service is the projection and workflow engine for group balances, debt ledger history, manual settlement lifecycle, and smart settlement planning.
+HamDong is a full-stack project for shared group expenses, receipt management, balances, manual settlements, smart settlement planning, and reminder-driven follow-up.
 
-## Overview
+The repository contains:
 
-- Reads identity, group, and expense domain events from RabbitMQ.
-- Builds local read/write projections in settlement DB only.
-- Computes auditable debt and balance state from ledger entries.
-- Manages manual settlement request/confirm/reject/cancel flows.
-- Generates deterministic debt simplification plans from group balances.
-- Publishes settlement-domain events for downstream consumers.
+- a React/Vite frontend in `FrontEnd/`
+- a Django/DRF microservice backend in `backend/`
+- one root-level Docker Compose file for running the whole stack
+- one root-level README and one root-level `.gitignore`
 
-## Architecture
+## Project Description
 
-- API Layer: DRF views and serializers for balance/debt/settlement endpoints.
-- Application Layer: debt, balance, settlement, and recalculation services.
-- Domain Layer: event types, business rules, and status/value semantics.
-- Infrastructure Layer: RabbitMQ consumer/publisher, JWT/JWKS auth, repositories.
+The system supports OTP-based login, JWT-protected APIs, group membership and invite flows, expense registration with `amount_minor` contracts, media upload for receipts, debt and balance projections, smart settlement planning, and reminder events delivered through RabbitMQ.
 
-## Projection Strategy
+## Architecture Overview
 
-- `UserProjection`, `GroupProjection`, `GroupMemberProjection` are materialized from identity/group events.
-- `ExpenseProjection` and `ExpenseParticipantProjection` are materialized from expense events.
-- `DebtLedgerEntry` is append-only/audit-friendly; updates are reversals, not deletes.
-- `GroupBalanceSnapshot` stores latest per-user computed group balances.
-- `ProcessedEvent` guarantees idempotent event consumption by `event_id`.
+HamDong is built as a React frontend plus Django/DRF microservices behind a single Nginx API Gateway:
 
-## Event Consumption
+- `frontend` serves the local Vite React app.
+- `api-gateway` exposes the backend through `http://localhost:8080`.
+- `identity-service` handles OTP login, JWT issuance, JWKS, and user profile APIs.
+- `group-service` manages groups, invites, and membership.
+- `expense-service` stores expenses and publishes expense events.
+- `media-service` stores receipt metadata and files.
+- `settlement-service` projects balances and debts, manages manual settlements and smart settlement plans, and emits reminder events.
+- `notification-service` sends OTP and reminder SMS messages and records notification jobs.
+- RabbitMQ connects services asynchronously.
+- Redis supports OTP and rate-limit style ephemeral data.
+- PostgreSQL stores each service database independently.
 
-### Identity Events
+## Tech Stack
 
-- Consumes `UserCreated`, `UserUpdated`.
-- Updates `UserProjection`.
-- Queue: `SETTLEMENT_IDENTITY_QUEUE`.
+- React + Vite + TypeScript
+- Python 3
+- Django + Django REST Framework
+- PostgreSQL
+- Redis
+- RabbitMQ
+- Nginx API Gateway
+- JWT with RS256
+- drf-spectacular / Swagger UI
+- Docker Compose
 
-### Group Events
+## Final Repository Structure
 
-- Consumes `GroupCreated`, `GroupUpdated`, `GroupArchived`, `GroupMemberJoined`, `GroupMemberRemoved`, `GroupMemberLeft`.
-- Updates `GroupProjection` and `GroupMemberProjection`.
-- Queue: `SETTLEMENT_GROUP_QUEUE`.
+```text
+.
+├── README.md
+├── docker-compose.yml
+├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── FrontEnd/
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── src/
+└── backend/
+    ├── .env.example
+    ├── api-gateway/
+    ├── api-tests/
+    │   ├── hamdong.http
+    │   ├── identity.http
+    │   ├── group.http
+    │   ├── expense.http
+    │   ├── media.http
+    │   ├── settlement.http
+    │   └── notification.http
+    ├── docs/
+    ├── infra/
+    ├── scripts/
+    ├── services/
+    ├── shared/
+    └── tests/
+```
 
-### Expense Events
+## Configuration Ownership
 
-- Consumes `ExpenseCreated`, `ExpenseUpdated`, `ExpenseDeleted`, `ExpenseParticipantsChanged`.
-- Updates expense projections, debt ledger, and balance snapshots.
-- Queue: `SETTLEMENT_EXPENSE_QUEUE`.
+Keep only one copy of each project-level file:
 
-## Debt Ledger Rules
+| File | Final location | Reason |
+|---|---|---|
+| README | `README.md` | One complete project README for frontend + backend |
+| Docker Compose | `docker-compose.yml` | One root compose file for the full stack |
+| Git ignore rules | `.gitignore` | One root ignore file for the whole repository |
+| Backend env template | `backend/.env.example` | Env values are backend/infrastructure-specific |
+| Backend API tests | `backend/api-tests/` | API collections belong to backend |
+| Backend docs | `backend/docs/` | Backend architecture and API docs belong to backend |
 
-- Money is stored in minor integer units.
-- Currency defaults to `IRR`.
-- On expense create: create active `EXPENSE_SHARE` entries for non-payer participants only.
-- On expense update: reverse prior active entries and create new active entries.
-- On expense delete: reverse active entries.
-- Reversed entries are retained for audit and never physically deleted.
+Do not keep duplicate copies of these files:
 
-## Balance Calculation Rules
+```text
+.env.example
+api-tests/
+docs/
+backend/README.md
+backend/.gitignore
+backend/docker-compose.yml
+```
 
-- Computation uses ACTIVE ledger rows only.
-- Debt row (`debtor -> creditor`) effect:
-	- debtor net decreases by amount
-	- creditor net increases by amount
-- Confirmed manual settlement (`payer -> receiver`) effect:
-	- payer net increases by amount
-	- receiver net decreases by amount
-- Status mapping:
-	- positive: `CREDITOR`
-	- negative: `DEBTOR`
-	- zero: `SETTLED`
+## How to Run Locally
 
-## Manual Settlement Workflow
+From the repository root:
 
-- `POST /api/v1/groups/{group_id}/settlements/` creates `PENDING_CONFIRMATION` records.
-- `POST /api/v1/settlements/{settlement_id}/confirm/` confirms by receiver only.
-- `POST /api/v1/settlements/{settlement_id}/reject/` rejects by receiver only.
-- `POST /api/v1/settlements/{settlement_id}/cancel/` cancels by payer only.
-- Non-pending settlements are immutable for these actions.
+1. Copy the backend environment template:
 
-## Phase 8 Smart Settlement
+```bash
+cp backend/.env.example backend/.env
+```
 
-Phase 8 adds settlement plans that simplify balances into fewer transactions without changing expense calculation or introducing payments.
+2. Start the full stack:
 
-### Core Concept
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml up --build
+```
 
-- Input: latest `GroupBalanceSnapshot` rows for a group.
-- Output: `SettlementPlan` and `SettlementPlanItem` rows.
-- Positive balance means creditor.
-- Negative balance means debtor.
-- All money stays in integer minor units.
+3. Check status:
 
-### Plan Lifecycle
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml ps
+```
 
-- `DRAFT`: generated but not active yet.
-- `ACTIVE`: members can report and confirm items.
-- `COMPLETED`: all plan items are confirmed.
-- `CANCELLED`: the plan was cancelled.
-- `EXPIRED`: balances changed after the plan was generated.
+4. View all logs:
 
-### Item Lifecycle
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml logs -f
+```
 
-- `PENDING`: waiting for the payer to report payment.
-- `REPORTED`: payer reported the payment.
-- `CONFIRMED`: receiver confirmed the payment.
-- `REJECTED`: receiver rejected the payment.
-- `CANCELLED`: item was cancelled with the plan or as part of plan cancellation.
+5. View one service logs:
 
-### Debt Simplification Algorithm
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml logs -f identity-service
+docker compose --env-file backend/.env -f docker-compose.yml logs -f group-service
+docker compose --env-file backend/.env -f docker-compose.yml logs -f expense-service
+docker compose --env-file backend/.env -f docker-compose.yml logs -f media-service
+docker compose --env-file backend/.env -f docker-compose.yml logs -f settlement-service
+docker compose --env-file backend/.env -f docker-compose.yml logs -f notification-service
+docker compose --env-file backend/.env -f docker-compose.yml logs -f frontend
+```
 
-- Separate debtors and creditors.
-- Sort debtors by largest absolute debt first.
-- Sort creditors by largest credit first.
-- Match them with a two-pointer walk.
-- Create one plan item per match using `min(abs(debtor), creditor)`.
-- Skip zero-amount items.
-- Never create payer and receiver as the same user.
-- Output is deterministic.
+6. Stop the stack:
 
-### Permission Rules
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml down
+```
 
-- Only `OWNER` or `ADMIN` can generate, activate, or cancel a plan.
-- Only active group members can view the latest plan.
-- Only the payer can report a plan item as paid.
-- Only the receiver can confirm or reject a reported item.
+7. Reset local volumes when needed:
 
-### Manual Settlement Integration
+```bash
+backend/scripts/reset-local.sh
+```
 
-- Reporting a plan item creates a Phase 7 `ManualSettlement` in `PENDING_CONFIRMATION`.
-- Confirming a plan item reuses the Phase 7 manual settlement confirmation logic.
-- Rejecting a plan item reuses the Phase 7 manual settlement rejection logic.
-- Confirming a plan item recalculates the group balance using the existing balance service.
+## Environment Variables
 
-### Settlement Plan Events
+`backend/.env.example` contains the full local backend setup template for:
 
-- Exchange: `hamdong.settlement`
-- Routing keys:
-	- `settlement.plan.generated`
-	- `settlement.plan.activated`
-	- `settlement.plan.cancelled`
-	- `settlement.plan.expired`
-	- `settlement.plan.completed`
-	- `settlement.plan_item.reported`
-	- `settlement.plan_item.confirmed`
-	- `settlement.plan_item.rejected`
+- app environment
+- debug mode
+- Django secret key
+- PostgreSQL host, port, user, password, and per-service database names
+- Redis host/port
+- RabbitMQ host/port/user/password
+- JWT issuer, audience, and key paths
+- OTP length, TTL, cooldown, and rate limits
+- SMS provider settings
+- outbox / inbox / retry settings
+- reminder settings
+- media storage settings
 
-## Event Consumption
+The root Compose file uses `backend/.env`, so always run Compose with:
 
-## Idempotency
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml ...
+```
 
-- Every consumable event envelope includes `event_id`.
-- `ProcessedEvent` stores consumed IDs and prevents double application.
-- Duplicate messages are skipped safely.
+## Ports
 
-## Settlement Event Publishing
+- Frontend: `http://localhost:5173`
+- Gateway: `http://localhost:8080`
+- Identity Swagger: `http://localhost:8001/api/docs/`
+- Group Swagger: `http://localhost:8002/api/docs/`
+- Expense Swagger: `http://localhost:8003/api/docs/`
+- Settlement Swagger: `http://localhost:8004/api/docs/`
+- Media Swagger: `http://localhost:8005/api/docs/`
+- Notification Swagger: `http://localhost:8006/api/docs/`
+- RabbitMQ management: `http://localhost:15672`
 
-- Exchange: `hamdong.settlement`.
-- Routing keys:
-	- `settlement.created`
-	- `settlement.confirmed`
-	- `settlement.rejected`
-	- `settlement.cancelled`
-	- `settlement.balance_recalculated`
-	- `settlement.debt_ledger_updated`
-	- `settlement.plan.generated`
-	- `settlement.plan.activated`
-	- `settlement.plan.cancelled`
-	- `settlement.plan.expired`
-	- `settlement.plan.completed`
-	- `settlement.plan_item.reported`
-	- `settlement.plan_item.confirmed`
-	- `settlement.plan_item.rejected`
-- Envelope fields are consistent and versioned:
-	- `event_id`
-	- `event_type`
-	- `occurred_at`
-	- `version`
-	- `data`
+## API Gateway Routes
 
-## Docker Compose Usage
+Gateway health endpoints:
 
-- API service: `settlement-service`
-- Consumer service: `settlement-consumer`
-- Preferred consumer command: `python manage.py consume_events`
-- Optional split commands:
-	- `python manage.py consume_identity_events`
-	- `python manage.py consume_group_events`
-	- `python manage.py consume_expense_events`
+- `/api/v1/auth/health/`
+- `/api/v1/groups/health/`
+- `/api/v1/expenses/health/`
+- `/api/v1/settlements/health/`
+- `/api/v1/media/health/`
+- `/api/v1/notifications/health/`
 
-## Endpoint Examples
+Gateway service routing:
 
-- `GET /api/v1/groups/{group_id}/balances/`
-- `GET /api/v1/groups/{group_id}/balances/me/`
-- `GET /api/v1/groups/{group_id}/debts/`
-- `GET /api/v1/groups/{group_id}/settlements/?status=PENDING_CONFIRMATION`
-- `POST /api/v1/groups/{group_id}/settlements/`
-- `POST /api/v1/settlements/{settlement_id}/confirm/`
-- `POST /api/v1/settlements/{settlement_id}/reject/`
-- `POST /api/v1/settlements/{settlement_id}/cancel/`
-- `POST /api/v1/groups/{group_id}/settlement-plan/generate/`
-- `GET /api/v1/groups/{group_id}/settlement-plan/`
-- `POST /api/v1/settlement-plans/{plan_id}/activate/`
-- `POST /api/v1/settlement-plans/{plan_id}/cancel/`
-- `POST /api/v1/settlement-plan-items/{item_id}/report-paid/`
-- `POST /api/v1/settlement-plan-items/{item_id}/confirm/`
-- `POST /api/v1/settlement-plan-items/{item_id}/reject/`
+- `/api/v1/auth/` and `/api/v1/users/` → identity-service
+- `/api/v1/groups/` → group-service
+- `/api/v1/expenses/` → expense-service
+- `/api/v1/media/` → media-service
+- `/api/v1/settlements/`, `/api/v1/settlement-plans/`, `/api/v1/settlement-plan-items/` → settlement-service
+- `/api/v1/notifications/` → notification-service
 
-## Testing Commands
+Nested group routes routed away from group-service:
 
-- `pytest apps/settlements/tests/test_phase7.py -q`
-- `pytest apps/settlements/tests/test_settlement_plan_algorithm.py -q`
-- `pytest apps/settlements/tests/test_generate_settlement_plan.py -q`
-- `pytest apps/settlements/tests/test_activate_settlement_plan.py -q`
-- `pytest apps/settlements/tests/test_report_plan_item.py -q`
-- `pytest apps/settlements/tests/test_complete_settlement_plan.py -q`
-- `pytest -q`
-- `python manage.py check`
-- `python manage.py migrate --noinput`
+- `/api/v1/groups/{group_id}/expenses/` → expense-service
+- `/api/v1/groups/{group_id}/media/` → media-service
+- `/api/v1/groups/{group_id}/balances/` → settlement-service
+- `/api/v1/groups/{group_id}/debts/` → settlement-service
+- `/api/v1/groups/{group_id}/settlements/` → settlement-service
+- `/api/v1/groups/{group_id}/settlement-plan/` → settlement-service
 
-## Exclusions in Phases 7 and 8
+## Authentication Flow
 
-Phases 7 and 8 intentionally do not implement:
+1. Client requests OTP from `POST /api/v1/auth/otp/request/`.
+2. Identity service stores OTP securely and publishes an SMS request event.
+3. Client verifies OTP using `POST /api/v1/auth/otp/verify/`.
+4. Identity service issues RS256 JWT access and refresh tokens.
+5. Verifier services validate JWT signature, issuer, audience, token type, and claims using the identity JWKS / public key.
 
-- online payment
-- wallet
-- payment gateway
-- bank callback
-- reminders
-- frontend
-- changes to expense calculation
-- changes to media-service
+## OTP / SMS Flow
+
+- OTP is generated in identity-service.
+- Only hashed OTP values are stored.
+- Raw OTP values are not stored in the database and are not logged.
+- In local `DEBUG=true` mode, `debug_otp` may appear in the response for manual demo testing.
+- notification-service sends OTP SMS through the configured SMS provider and records the result in NotificationJob / delivery logs.
+
+## Group / Invite Flow
+
+- Ali creates a group.
+- The creator becomes the initial owner/member.
+- Invite links are created per group.
+- A recipient previews invite metadata using the invite token.
+- Accepting an invite creates membership and emits group membership events used by downstream projections.
+
+## Expense Flow
+
+- Expenses are created through `POST /api/v1/groups/{group_id}/expenses/`.
+- Money fields use `*_minor` values.
+- The API contract uses:
+  - `base_amount_minor`
+  - `payer_user_id`
+  - `split_method`
+  - `participant_user_ids`
+  - `participants[].base_share_minor` for custom amount split
+  - tax and service fee fields
+- Expense events are emitted for settlement projections.
+
+## Media / Receipt Flow
+
+- Receipts are uploaded through `POST /api/v1/media/receipts/`.
+- Files are validated and stored with random internal names.
+- Clients fetch file metadata, download files, and list group media through gateway routes.
+- Media permissions are tied to authenticated group membership.
+
+## Settlement Flow
+
+- settlement-service receives expense events and maintains debt and balance projections.
+- Group members can read balances and debts.
+- Manual settlements can be created, confirmed, rejected, or cancelled.
+- settlement-service publishes settlement events and reminder-request events.
+
+## Smart Settlement Flow
+
+- The system reduces the debt graph into a deterministic plan.
+- `POST /api/v1/groups/{group_id}/settlement-plan/generate/` generates the plan.
+- `POST /api/v1/settlement-plans/{plan_id}/activate/` activates it.
+- Plan items can be reported as paid, then confirmed or rejected.
+- The algorithm itself is intentionally unchanged from earlier fix packs.
+
+## Reminder Flow
+
+- settlement-service decides when reminders are needed.
+- It stores reminder dispatch decisions and emits reminder request events through the outbox.
+- notification-service consumes those events, deduplicates them, creates NotificationJob rows, renders SMS templates, and sends via the existing SMS provider with circuit breaker protection.
+
+## Event-driven Architecture
+
+- Outgoing business events use a standard envelope with:
+  - `event_id`
+  - `event_type`
+  - `event_version`
+  - `occurred_at`
+  - `source_service`
+  - `correlation_id`
+  - `causation_id`
+  - `routing_key`
+  - `data`
+- Producer services use `OutboxMessage`.
+- Consumer services use `InboxMessage` or `ProcessedEvent` for idempotency.
+- Retry / failed-message handling is configured through environment variables and queue policy.
+
+## Testing
+
+Run service tests inside the running stack:
+
+```bash
+docker compose --env-file backend/.env -f docker-compose.yml exec identity-service pytest
+docker compose --env-file backend/.env -f docker-compose.yml exec group-service pytest
+docker compose --env-file backend/.env -f docker-compose.yml exec expense-service pytest
+docker compose --env-file backend/.env -f docker-compose.yml exec media-service pytest
+docker compose --env-file backend/.env -f docker-compose.yml exec settlement-service pytest
+docker compose --env-file backend/.env -f docker-compose.yml exec notification-service pytest
+```
+
+Run the gateway smoke test:
+
+```bash
+BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+```
+
+Run REST Client collections in VS Code:
+
+- `backend/api-tests/identity.http`
+- `backend/api-tests/group.http`
+- `backend/api-tests/expense.http`
+- `backend/api-tests/media.http`
+- `backend/api-tests/settlement.http`
+- `backend/api-tests/notification.http`
+- `backend/api-tests/hamdong.http`
+
+## API Documentation
+
+Swagger / OpenAPI URLs:
+
+- `http://localhost:8001/api/docs/` and `http://localhost:8001/api/schema/`
+- `http://localhost:8002/api/docs/` and `http://localhost:8002/api/schema/`
+- `http://localhost:8003/api/docs/` and `http://localhost:8003/api/schema/`
+- `http://localhost:8004/api/docs/` and `http://localhost:8004/api/schema/`
+- `http://localhost:8005/api/docs/` and `http://localhost:8005/api/schema/`
+- `http://localhost:8006/api/docs/` and `http://localhost:8006/api/schema/`
+
+## Demo Scenario
+
+The presentation-ready walkthrough is documented in `backend/docs/demo-scenario.md` and encoded as runnable requests in `backend/api-tests/hamdong.http`.
+
+## Troubleshooting
+
+See `backend/docs/troubleshooting.md` for startup, gateway, JWKS, event consumer, RabbitMQ, SMS, and media issues.
+
+## Future Improvements
+
+- production-grade secrets management
+- stronger rate limiting and audit dashboards
+- richer admin tooling and observability
+- formal contract tests against live containers
+- async worker monitoring and DLQ dashboards

@@ -1,57 +1,240 @@
-# Services Reference
+# Services
 
-This page summarizes responsibilities, endpoints and event interactions for each service.
+## identity-service
 
-identity-service
-- Responsibility: OTP auth, JWT issuance, JWKS, user projection events
-- Database: `identity_db`
-- Main endpoints: `POST /api/v1/auth/otp/request/`, `POST /api/v1/auth/otp/verify/`, `POST /api/v1/auth/token/refresh/`, `GET /.well-known/jwks.json`
-- Input events: none (source of truth for users)
-- Output events: `user.created`, `user.updated`, `otp.requested`
-- Consumers: none
-- Dispatchers: none
+**Responsibility**
+- OTP authentication
+- access/refresh token issuance
+- JWKS/public key exposure
+- current-user profile APIs
 
-notification-service
-- Responsibility: create `NotificationJob`s and send SMS/notifications
-- Database: `notification_db`
-- Main endpoints: `POST /api/v1/notifications/sms/test/`, `GET /api/v1/notifications/messages/`, `GET /api/v1/notifications/health/`
-- Input events: `otp.requested`, `settlement.reminder.requested`, other notification-related events
-- Output events: `notification.sent`, `notification.failed`
-- Consumers: reminder consumer, OTP consumer
-- Dispatchers: provider retry logic + circuit breaker
+**Database**
+- `identity_db`
 
-group-service
-- Responsibility: groups, invites, membership management
-- Database: `group_db`
-- Main endpoints: `POST /api/v1/groups/`, `POST /api/v1/groups/{group_id}/invites/`, `POST /api/v1/groups/invites/{token}/accept/`, member management endpoints
-- Input events: `user.created|updated` (identity projection)
-- Output events: `group.created`, `group.member.added`, `group.member.removed`
-- Consumers: identity events
-- Dispatchers: invite cleanup jobs (management)
+**Main endpoints**
+- `POST /api/v1/auth/otp/request/`
+- `POST /api/v1/auth/otp/verify/`
+- `POST /api/v1/auth/token/refresh/`
+- `POST /api/v1/auth/logout/`
+- `GET /api/v1/users/me/`
+- `PATCH /api/v1/users/me/`
+- `GET /api/v1/auth/jwks/`
+- `GET /api/v1/auth/.well-known/jwks.json/`
+- `GET /api/v1/auth/health/`
 
-expense-service
-- Responsibility: create and manage expenses, publish expense events
-- Database: `expense_db`
-- Main endpoints: `POST /api/v1/groups/{group_id}/expenses/`, `GET /api/v1/groups/{group_id}/expenses/list/`, expense detail endpoints
-- Input events: `user.updated`, `group.member.added/removed`
-- Output events: `expense.created`, `expense.updated`, `expense.deleted`
-- Consumers: identity/group events for projection
-- Dispatchers: none (publishes expense events via outbox if configured)
+**Input events**
+- none as a source of truth service
 
-media-service
-- Responsibility: receipt upload, secure download, media metadata
-- Database: `media_db`
-- Main endpoints: `POST /api/v1/media/receipts/`, media detail/download endpoints, `GET /api/v1/media/health/`
-- Input events: `user.updated`, `group.member.added/removed`
-- Output events: `media.uploaded`, `media.deleted`
-- Consumers: identity/group events
-- Dispatchers: media cleanup jobs
+**Output events**
+- `UserCreated`
+- `UserUpdated`
+- `UserLoggedIn`
+- `SendOtpSmsRequested`
 
-settlement-service
-- Responsibility: debt ledger, generate/activate settlement plans, reminders, outbox/inbox
-- Database: `settlement_db`
-- Main endpoints: `POST /api/v1/groups/{group_id}/settlement-plan/generate/`, `POST /api/v1/settlement-plans/{plan_id}/activate/`, plan item and settlement endpoints, `GET /api/v1/settlements/health/`
-- Input events: `expense.created|updated|deleted`, `user.updated`, `group.member.added/removed`
-- Output events: `settlement.plan.generated`, `settlement.reminder.requested`, `settlement.plan.activated`, settlement lifecycle events
-- Consumers: expense events and identity/group events
-- Dispatchers: outbox dispatcher, reminder scheduler
+**Consumers**
+- none for core identity domain events
+
+**Dispatchers**
+- `python manage.py dispatch_outbox`
+
+## notification-service
+
+**Responsibility**
+- send OTP SMS
+- send reminder SMS
+- store notification jobs
+- track delivery success/failure
+
+**Database**
+- `notification_db`
+
+**Main endpoints**
+- `GET /api/v1/notifications/health/`
+- `POST /api/v1/notifications/sms/test/`
+- `GET /api/v1/notifications/messages/`
+
+**Input events**
+- `SendOtpSmsRequested`
+- `PaymentReminderRequested`
+- `SettlementConfirmationReminderRequested`
+- `SettlementPlanItemReminderRequested`
+
+**Output events**
+- `NotificationSent`
+- `NotificationFailed`
+- `SmsSent`
+- `SmsFailed`
+
+**Consumers**
+- `python manage.py consume_notification_events`
+
+**Dispatchers**
+- `python manage.py dispatch_outbox`
+
+## group-service
+
+**Responsibility**
+- group create/update/archive
+- membership and invite lifecycle
+- owner/member permissions
+
+**Database**
+- `group_db`
+
+**Main endpoints**
+- `POST /api/v1/groups/`
+- `GET /api/v1/groups/`
+- `GET /api/v1/groups/{group_id}/`
+- `PATCH /api/v1/groups/{group_id}/`
+- `POST /api/v1/groups/{group_id}/archive/`
+- `GET /api/v1/groups/{group_id}/members/`
+- `POST /api/v1/groups/{group_id}/members/{member_id}/remove/`
+- `POST /api/v1/groups/{group_id}/leave/`
+- `POST /api/v1/groups/{group_id}/invites/`
+- `GET /api/v1/groups/invites/{token}/`
+- `POST /api/v1/groups/invites/{token}/accept/`
+- `POST /api/v1/groups/{group_id}/invites/{invite_id}/revoke/`
+- `GET /api/v1/groups/health/`
+
+**Input events**
+- identity user projection events
+
+**Output events**
+- `GroupCreated`
+- `GroupUpdated`
+- `GroupArchived`
+- `GroupInviteCreated`
+- `GroupInviteAccepted`
+- `GroupMemberJoined`
+- `GroupMemberRemoved`
+- `GroupMemberLeft`
+
+**Consumers**
+- identity event consumers
+
+**Dispatchers**
+- `python manage.py dispatch_outbox`
+
+## expense-service
+
+**Responsibility**
+- expense write model
+- split calculations
+- expense participant persistence
+- expense events for projections
+
+**Database**
+- `expense_db`
+
+**Main endpoints**
+- `POST /api/v1/groups/{group_id}/expenses/`
+- `GET /api/v1/groups/{group_id}/expenses/`
+- `GET /api/v1/expenses/{expense_id}/`
+- `PATCH /api/v1/expenses/{expense_id}/`
+- `DELETE /api/v1/expenses/{expense_id}/`
+- `GET /api/v1/expenses/health/`
+
+**Input events**
+- identity user events
+- group membership events
+
+**Output events**
+- `ExpenseCreated`
+- `ExpenseUpdated`
+- `ExpenseDeleted`
+- `ExpenseParticipantsChanged`
+
+**Consumers**
+- identity/group projection consumers
+
+**Dispatchers**
+- `python manage.py dispatch_outbox`
+
+## media-service
+
+**Responsibility**
+- receipt upload metadata
+- secure file download
+- group media listing
+- media deletion
+
+**Database**
+- `media_db`
+
+**Main endpoints**
+- `POST /api/v1/media/receipts/`
+- `GET /api/v1/media/files/{file_id}/`
+- `GET /api/v1/media/files/{file_id}/download/`
+- `GET /api/v1/groups/{group_id}/media/`
+- `DELETE /api/v1/media/files/{file_id}/`
+- `GET /api/v1/media/health/`
+
+**Input events**
+- identity user events
+- group membership/group lifecycle events
+
+**Output events**
+- `MediaUploaded`
+- `MediaDeleted`
+
+**Consumers**
+- identity/group projection consumers
+
+**Dispatchers**
+- `python manage.py dispatch_outbox`
+
+## settlement-service
+
+**Responsibility**
+- group balance and debt projections
+- manual settlement workflow
+- smart settlement plan generation and activation
+- reminder scheduling
+
+**Database**
+- `settlement_db`
+
+**Main endpoints**
+- `GET /api/v1/groups/{group_id}/balances/`
+- `GET /api/v1/groups/{group_id}/balances/me/`
+- `GET /api/v1/groups/{group_id}/debts/`
+- `POST /api/v1/groups/{group_id}/settlements/`
+- `GET /api/v1/groups/{group_id}/settlements/`
+- `POST /api/v1/settlements/{settlement_id}/confirm/`
+- `POST /api/v1/settlements/{settlement_id}/reject/`
+- `POST /api/v1/settlements/{settlement_id}/cancel/`
+- `POST /api/v1/groups/{group_id}/settlement-plan/generate/`
+- `GET /api/v1/groups/{group_id}/settlement-plan/`
+- `POST /api/v1/settlement-plans/{plan_id}/activate/`
+- `POST /api/v1/settlement-plans/{plan_id}/cancel/`
+- `POST /api/v1/settlement-plan-items/{item_id}/report-paid/`
+- `POST /api/v1/settlement-plan-items/{item_id}/confirm/`
+- `POST /api/v1/settlement-plan-items/{item_id}/reject/`
+- `GET /api/v1/settlements/health/`
+
+**Input events**
+- identity user events
+- group membership events
+- expense events
+
+**Output events**
+- `SettlementCreated`
+- `SettlementConfirmed`
+- `SettlementRejected`
+- `SettlementCancelled`
+- `BalanceRecalculated`
+- `DebtLedgerUpdated`
+- `SettlementPlanGenerated`
+- `SettlementPlanActivated`
+- `SettlementPlanCompleted`
+- `PaymentReminderRequested`
+- `SettlementConfirmationReminderRequested`
+- `SettlementPlanItemReminderRequested`
+
+**Consumers**
+- identity/group/expense consumers
+- reminder scheduler command
+
+**Dispatchers**
+- `python manage.py dispatch_outbox`
+- `python manage.py run_reminder_scheduler`

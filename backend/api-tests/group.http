@@ -39,6 +39,7 @@ Content-Type: application/json
 }
 
 ### Create invite
+# If the API returns invite_url instead of inviteToken, copy the token from the end of invite_url into @inviteToken.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -72,6 +73,5 @@ POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/{{inviteId}}/revoke/
 Authorization: Bearer {{accessToken}}
 
 ### Archive group
-# Keep this destructive step last if you execute the whole file top-to-bottom.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/archive/
 Authorization: Bearer {{accessToken}}

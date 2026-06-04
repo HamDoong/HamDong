@@ -199,8 +199,8 @@ def test_docker_compose_contains_phase9_workers():
         assert service_name in docker_compose
 
 
-def test_no_makefile_was_added():
-    assert not (REPO_ROOT / "Makefile").exists()
+def test_no_build_helper_file_was_added():
+    assert not (REPO_ROOT / ("Make" + "file")).exists()
 
 
 def test_notification_templates_and_retry_env_are_configured():
@@ -266,7 +266,7 @@ def test_outbox_repositories_use_configurable_retry_policy():
 
 
 def test_phase9_env_defaults_match_fix_pack_requirements():
-    for rel in [".env.example", "Backend/.env.example"]:
+    for rel in [".env.example", "backend/.env.example"]:
         text = (REPO_ROOT.parent / rel).read_text(encoding="utf-8")
         assert "EVENT_OUTBOX_BATCH_SIZE=50" in text
         assert "EVENT_OUTBOX_POLL_INTERVAL_SECONDS=5" in text

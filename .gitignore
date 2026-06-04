@@ -86,3 +86,32 @@ coverage/
 *.tmp
 *.temp
 
+# HamDong local backend artifacts
+backend/.env
+backend/media/
+backend/media-uploads/
+backend/postgres-data/
+backend/rabbitmq-data/
+backend/redis-data/
+
+# Runtime / process artifacts
+*.pid
+*.pid.lock
+*.seed
+
+# Frontend local artifacts
+FrontEnd/node_modules/
+FrontEnd/dist/
+FrontEnd/.vite/
+FrontEnd/.env
+FrontEnd/.env.local
+FrontEnd/.env.*.local
+
+# Backend local artifacts
+backend/**/.env
+backend/**/media/
+backend/**/staticfiles/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/.pytest_cache/
+backend/**/.ruff_cache/
