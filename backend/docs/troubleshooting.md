@@ -1,71 +1,106 @@
 # Troubleshooting
 
-## Docker Compose does not start
+## Docker Compose Fails
 
-- Run `docker compose -f backend/docker-compose.yml config` first.
-- Check `backend/.env` exists and has valid values.
-- Confirm ports `8080`, `8001-8006`, `5432`, `6379`, and `15672` are free.
+Validate the compose file:
 
-## A service keeps restarting
+```bash
+docker compose -f backend/docker-compose.yml config
+```
 
-- Inspect logs:
-  ```bash
-  docker compose -f backend/docker-compose.yml logs -f <service-name>
-  ```
-- Verify Postgres, Redis, and RabbitMQ are healthy.
-- Confirm service migrations have been applied inside the container if startup depends on schema state.
+Check Docker is running and ports are available.
 
-## Gateway health check fails
+## Gateway Returns 502
 
-Run:
+Check that the target service is running:
+
+```bash
+docker compose -f backend/docker-compose.yml ps
+docker compose -f backend/docker-compose.yml logs -f api-gateway
+```
+
+Then inspect the service log, for example:
+
+```bash
+docker compose -f backend/docker-compose.yml logs -f expense-service
+```
+
+## Health Endpoint Fails
+
+Run the smoke test and inspect the failing service:
 
 ```bash
 BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+docker compose -f backend/docker-compose.yml logs -f identity-service
 ```
 
-If one health endpoint fails:
-- inspect gateway logs
-- inspect the target service logs
-- verify `api-gateway/nginx.conf` matches service names from `backend/docker-compose.yml`
+## RabbitMQ Is Not Ready
 
-## JWT / JWKS errors
-
-- confirm identity-service is up
-- confirm `IDENTITY_JWKS_URL` points to the identity service
-- confirm the public key path exists where configured
-- verify `JWT_ISSUER` and `JWT_AUDIENCE` match across services
-
-## OTP problems
-
-- verify Redis is running
-- check OTP TTL/cooldown values
-- in local debug mode, copy `debug_otp` manually into REST Client variables
-- ensure production deployments keep `DEBUG=false`
-
-## Event / Consumer delays
-
-- after expense creation, wait a few seconds before reading balances or debts
-- inspect outbox dispatcher logs
-- inspect settlement and notification consumer logs
-- verify RabbitMQ connectivity and queue bindings
-
-## Media upload issues
-
-- confirm the file is below `MEDIA_MAX_FILE_SIZE_BYTES`
-- confirm allowed content type / validation rules
-- ensure the optional REST Client fixture file exists before testing upload
-
-## SMS / Reminder issues
-
-- check notification-service logs
-- verify `SMS_PROVIDER`, `SMS_API_KEY`, and `SMS_SENDER`
-- inspect `NotificationJob` status and last error fields
-- verify reminder thresholds and scheduler settings in `.env`
-
-## Local reset
-
-Use the reset script if you intentionally want to destroy local volumes:
+Check RabbitMQ logs and management port:
 
 ```bash
-backend/scripts/reset-local.sh
+docker compose -f backend/docker-compose.yml logs -f rabbitmq
 ```
+
+Open `http://localhost:15672`.
+
+## PostgreSQL Connection Fails
+
+Check PostgreSQL health and credentials:
+
+```bash
+docker compose -f backend/docker-compose.yml logs -f postgres
+docker compose -f backend/docker-compose.yml ps postgres
+```
+
+## Redis Connection Fails
+
+Check Redis status:
+
+```bash
+docker compose -f backend/docker-compose.yml logs -f redis
+```
+
+## Migrations Fail
+
+Run migrations inside the affected service container:
+
+```bash
+docker compose -f backend/docker-compose.yml exec identity-service python manage.py migrate
+```
+
+Repeat with the relevant service name.
+
+## JWT Public Key Not Found
+
+Verify `JWT_PUBLIC_KEY_PATH`, `JWT_PRIVATE_KEY_PATH`, and `IDENTITY_JWKS_URL` in `backend/.env`.
+
+## OTP Not Received in Fake Provider
+
+In local debug mode, check the OTP request response for `debug_otp`. Also inspect notification-service logs.
+
+## Event Consumers Are Delayed
+
+Expense and settlement projections are asynchronous. Wait a few seconds and check consumer logs:
+
+```bash
+docker compose -f backend/docker-compose.yml logs -f settlement-consumer
+```
+
+## Balance Not Updated Yet
+
+Confirm the expense event was created and consumers are running. Then rerun the balance request.
+
+## Media Upload Fails
+
+Verify the file exists, file size is within `MEDIA_MAX_FILE_SIZE_BYTES`, and the media volume is writable.
+
+## Swagger Not Opening
+
+Check service logs and open the direct service URL, for example:
+
+```bash
+docker compose -f backend/docker-compose.yml logs -f group-service
+```
+
+Then visit `http://localhost:8002/api/docs/`.

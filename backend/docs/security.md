@@ -2,72 +2,52 @@
 
 ## JWT with RS256
 
-- identity-service is the only JWT issuer and signer.
-- The private key stays only inside identity-service.
-- Verifier services use the public key / JWKS and validate:
-  - RS256 signature
-  - issuer
-  - audience
-  - token type
-  - `sub`
-  - `jti`
-  - `iat`
-  - `exp`
+identity-service signs access and refresh tokens with RS256. Protected services verify access tokens with a public key or JWKS.
+
+## Key Ownership
+
+The private key belongs only to identity-service. Verifier services use the public key path or JWKS URL.
+
+## Access Token Claims
+
+Access tokens include `sub`, `phone_number`, `role`, `type`, `jti`, `iat`, `exp`, `iss`, and `aud`. Protected services validate issuer, audience, expiration, issued-at, token type, subject, and JWT ID.
 
 ## Refresh Token Hashing
 
-- refresh tokens are stored hashed
-- raw refresh tokens are not stored in the database
-- rotation revokes the previous token
-- logout revokes active refresh tokens
+Refresh tokens are stored as hashes. Rotation revokes the old token, and logout revokes the active refresh token.
 
-## OTP Security
+## OTP Hashing and Expiration
 
-- OTP values are stored hashed or in ephemeral secure form
-- OTP has expiration
-- OTP request/verify rate limits are configurable
-- raw OTP values are not stored in DB
-- raw OTP values are not logged
-- `debug_otp` is intended only for local `DEBUG=true` use
+Raw OTP values are not stored. OTP values are hashed and expire after the configured TTL. Resend cooldown and rate-limit settings reduce abuse.
 
-## OTP Expiration and Rate Limit
+## OTP Logging
 
-Key settings in `.env.example`:
-
-- `OTP_LENGTH`
-- `OTP_TTL_SECONDS`
-- `OTP_RESEND_COOLDOWN_SECONDS`
-- `OTP_MAX_VERIFY_ATTEMPTS`
-- `OTP_MAX_REQUESTS_PER_WINDOW`
-- `OTP_RATE_LIMIT_WINDOW_SECONDS`
+Raw OTP values are not logged. In local debug mode, `debug_otp` can be returned for manual testing. Production should run with `DEBUG=false`.
 
 ## Invite Token Hashing
 
-Invite handling uses token protection / hashing so that raw invite secrets are not treated like normal IDs.
+Group invite tokens are stored in hashed form where implemented, limiting exposure if storage is inspected.
 
 ## File Validation
 
-Media upload security includes:
+media-service validates uploaded receipt files, stores random filenames, and tracks checksums for integrity and traceability.
 
-- content type validation
-- max file size limits
-- randomized stored file name
-- checksum / integrity metadata where applicable
-- access control through authenticated membership
+## Group Permissions
 
-## Group Membership Permissions
+Protected group, expense, media, and settlement endpoints require an authenticated user and group membership where appropriate.
 
-Group, expense, media, and settlement endpoints check authenticated membership/role before allowing access to sensitive group data.
+## No Direct Cross-service Database Access
 
-## Cross-service Data Access
+Services use events and local projections rather than reading another service database.
 
-- services do not read each other’s databases directly
-- cross-service data is exchanged through HTTP or RabbitMQ events
-- projections are stored locally per service
+## Environment Secrets
 
-## Operational Security
+Secrets belong in local `.env` files or deployment secret stores. `.env.example` files contain placeholders only.
 
-- production should run with `DEBUG=false`
-- secrets should be kept in environment files or secret managers, not committed real values
-- phone numbers are masked in logs where applicable
-- SMS delivery logs should avoid leaking sensitive data
+## Phone Masking
+
+Phone numbers should be masked in logs and notification records where possible.
+
+## Swagger in Production
+
+Swagger and schema endpoints are helpful for development and academic review. Production deployments should restrict them or disable public access.

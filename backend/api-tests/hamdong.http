@@ -133,7 +133,7 @@ Authorization: Bearer {{saraAccessToken}}
 POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
 Authorization: Bearer {{rezaAccessToken}}
 
-### 11. Ali lists group members
+### 11. List members
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/members/
 Authorization: Bearer {{aliAccessToken}}
 
@@ -176,7 +176,7 @@ Content-Type: application/json
   "service_fee_type": "NONE"
 }
 
-### 14. Ali lists group expenses
+### 14. List expenses
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
 Authorization: Bearer {{aliAccessToken}}
 

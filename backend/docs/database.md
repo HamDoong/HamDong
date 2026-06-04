@@ -1,74 +1,45 @@
 # Database
 
-## Overview
+## Database-per-service Approach
 
-HamDong uses one PostgreSQL database per service. This keeps schemas isolated and forces all cross-service synchronization through APIs or events instead of direct table reads.
+Each microservice owns its schema and should not read or write another service database directly. Cross-service state is shared through events and projection tables.
 
-## Databases
+## identity Database
 
-- `identity_db`
-- `group_db`
-- `expense_db`
-- `media_db`
-- `settlement_db`
-- `notification_db`
+Stores users, OTP metadata where applicable, refresh token hashes, and identity outbox rows.
 
-## Why One Database Per Service?
+## group Database
 
-- bounded contexts keep ownership clear
-- migrations stay local to each service
-- accidental cross-service coupling is reduced
-- event projections become explicit
-- service failure domains are cleaner
+Stores groups, members, invites, user projections, group outbox rows, and inbox rows.
 
-## Main Data by Service
+## expense Database
 
-### identity-service
-- user records
-- refresh tokens
-- OTP state / audit metadata
-- outbox messages
+Stores expenses, participants, user/group/member projections, expense outbox rows, and inbox rows.
 
-### group-service
-- groups
-- members
-- invite records
-- user projections
-- outbox / inbox
+## media Database
 
-### expense-service
-- expenses
-- expense participants
-- user/group/member projections
-- outbox / inbox
+Stores media file metadata, access records, projections, media outbox rows, and inbox rows. File bytes are stored in the configured media storage path or provider.
 
-### media-service
-- media file metadata
-- user/group projections
-- outbox / inbox
+## settlement Database
 
-### settlement-service
-- user/group/member/expense projections
-- debt ledger entries
-- group balance snapshots
-- manual settlements
-- settlement plans and items
-- reminder dispatch logs
-- outbox / inbox / processed-event compatibility
+Stores projections, expense projections, debt ledger entries, balance snapshots, manual settlements, settlement plans, plan items, reminder dispatch logs, outbox rows, and inbox or processed-event rows.
 
-### notification-service
-- notification jobs
-- delivery/provider logs
-- inbox / outbox
+## notification Database
 
-## Data Consistency
+Stores notification messages, notification jobs, templates or template metadata where configured, outbox rows, and inbox rows.
 
-HamDong uses eventual consistency for projections:
+## Projection Tables
 
-- source services own their write models
-- downstream services build read/write projections from RabbitMQ events
-- retry and duplicate handling are explicit through outbox/inbox tables
+Projection tables store minimal copies of external service facts needed for local authorization and business logic. They are updated from RabbitMQ events.
 
-## Notes for Local Delivery
+## Outbox Tables
 
-The local stack uses a shared PostgreSQL container with separate logical databases and persistent Docker volumes.
+Outbox tables store durable event envelopes before publishing. Dispatchers publish pending rows and update status.
+
+## Inbox or Processed Event Tables
+
+Inbox or processed-event tables store consumed event IDs so duplicate deliveries do not create duplicate side effects.
+
+## Why Direct Cross-service Database Access Is Avoided
+
+Direct database access would couple deployments and schemas across services. Events plus projections preserve service ownership and allow retries, idempotency, and independent service evolution.

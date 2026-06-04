@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 build/
+node_modules/
 
 # Vite
 .vite/
@@ -18,6 +19,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+coverage.xml
 
 # OS files
 .DS_Store
@@ -51,8 +53,12 @@ venv/
 .venv/
 __pycache__/
 *.pyc
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Environment
 .env
@@ -60,11 +66,20 @@ __pycache__/
 # Django
 db.sqlite3
 media/
+uploads/
+local_uploads/
 staticfiles/
+backend/media/
+backend/uploads/
+backend/staticfiles/
+
 
 # Docker
 docker-compose.override.yml
 *.log
+*.tmp
+*.bak
+*.swp 
 
 # IDE
 .vscode/
