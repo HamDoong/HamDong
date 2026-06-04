@@ -8,8 +8,8 @@
 GET {{baseUrl}}/api/v1/media/health/
 
 ### Upload receipt
-# Optional: add api-tests/fixtures/receipt.jpg before running this request.
-# If the fixture does not exist yet, skip this request or create that file first.
+# Optional fixture path: api-tests/fixtures/receipt.jpg
+# If the fixture does not exist yet, skip this request and continue the rest of the flow.
 POST {{baseUrl}}/api/v1/media/receipts/
 Authorization: Bearer {{accessToken}}
 Content-Type: multipart/form-data; boundary=WebKitFormBoundary7MA4YWxkTrZu0gW

@@ -2,52 +2,72 @@
 
 ## JWT with RS256
 
-identity-service signs access and refresh tokens with RS256. Protected services verify access tokens with a public key or JWKS.
+identity-service signs tokens with RS256. Protected services verify access tokens with the public key or JWKS and validate issuer, audience, subject, type, expiration, issued-at, and JWT ID.
 
-## Key Ownership
+## Private Key Ownership
 
-The private key belongs only to identity-service. Verifier services use the public key path or JWKS URL.
+The private signing key must exist only in identity-service. Verifier services should never carry the private key. They consume the public key through a mounted file path or `IDENTITY_JWKS_URL`.
 
 ## Access Token Claims
 
-Access tokens include `sub`, `phone_number`, `role`, `type`, `jti`, `iat`, `exp`, `iss`, and `aud`. Protected services validate issuer, audience, expiration, issued-at, token type, subject, and JWT ID.
+Current access-token validation expects claims such as `sub`, `phone_number`, `role`, `type`, `jti`, `iat`, `exp`, `iss`, and `aud`.
 
 ## Refresh Token Hashing
 
-Refresh tokens are stored as hashes. Rotation revokes the old token, and logout revokes the active refresh token.
+Refresh tokens are stored as hashes, not as raw token strings. Rotation replaces the old record and logout revokes the active refresh token.
 
-## OTP Hashing and Expiration
+## OTP Hashing
 
-Raw OTP values are not stored. OTP values are hashed and expire after the configured TTL. Resend cooldown and rate-limit settings reduce abuse.
+Raw OTP values are not stored in the database. identity-service stores only hashed/derived verification state plus TTL and rate-limit metadata.
 
-## OTP Logging
+## OTP Expiration
 
-Raw OTP values are not logged. In local debug mode, `debug_otp` can be returned for manual testing. Production should run with `DEBUG=false`.
+OTP codes expire after the configured `OTP_TTL_SECONDS`. Resend cooldown is controlled by `OTP_RESEND_COOLDOWN_SECONDS`.
+
+## OTP Rate Limit
+
+Request throttling and verification-attempt limits are controlled by `OTP_MAX_REQUESTS_PER_WINDOW`, `OTP_RATE_LIMIT_WINDOW_SECONDS`, and `OTP_MAX_VERIFY_ATTEMPTS`.
+
+## Raw OTP Handling
+
+Raw OTP values must not be stored in the database and must not be written to normal logs. Local debug responses may include `debug_otp` only when `DEBUG=true`.
 
 ## Invite Token Hashing
 
-Group invite tokens are stored in hashed form where implemented, limiting exposure if storage is inspected.
+Group invite tokens should be stored in hashed form so a database read does not reveal reusable raw invite tokens.
 
 ## File Validation
 
-media-service validates uploaded receipt files, stores random filenames, and tracks checksums for integrity and traceability.
+media-service validates content type, extension, and maximum file size before storing a receipt.
+
+## Random Stored Filename
+
+Uploaded files are stored under randomized names rather than user-provided names to reduce guessing and collision risks.
+
+## Checksum
+
+media-service records checksums so uploads can be tracked and validated for integrity.
 
 ## Group Permissions
 
-Protected group, expense, media, and settlement endpoints require an authenticated user and group membership where appropriate.
+Expense, media, and settlement endpoints require a valid JWT and appropriate group membership/role checks before a user can act on group resources.
 
-## No Direct Cross-service Database Access
+## No Direct Cross-service DB Access
 
-Services use events and local projections rather than reading another service database.
+Services do not read another service database directly. They use events and local projections instead, which limits accidental privilege expansion across service boundaries.
+
+## Production `DEBUG=false`
+
+Production deployments should run with `DEBUG=false`. Debug-only helpers such as returning `debug_otp` are for local/demo use only.
 
 ## Environment Secrets
 
-Secrets belong in local `.env` files or deployment secret stores. `.env.example` files contain placeholders only.
+Keep secrets in local `.env` files or a deployment secret store. `.env.example` files must keep placeholder values only. Do not commit real SMS credentials or real private-key content.
 
 ## Phone Masking
 
-Phone numbers should be masked in logs and notification records where possible.
+Phone numbers should be masked in logs, notification records, and operator tooling where possible.
 
-## Swagger in Production
+## Swagger Restriction Recommendation
 
-Swagger and schema endpoints are helpful for development and academic review. Production deployments should restrict them or disable public access.
+Swagger and schema endpoints are useful during development and demos. Production environments should restrict or disable public access to them.

@@ -9,7 +9,7 @@
 GET {{baseUrl}}/api/v1/auth/health/
 
 ### Request OTP
-# If DEBUG=true returns debug_otp, copy it manually into @otp.
+# If DEBUG=true the response may include debug_otp. Copy it into @otp for local testing.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 

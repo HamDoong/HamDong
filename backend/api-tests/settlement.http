@@ -12,6 +12,7 @@
 GET {{baseUrl}}/api/v1/settlements/health/
 
 ### Get group balances
+# Wait briefly after expense creation so async projections can catch up.
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
 Authorization: Bearer {{accessToken}}
 
@@ -70,6 +71,11 @@ Authorization: Bearer {{accessToken}}
 ### Report plan item paid
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/report-paid/
 Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "description": "Ali transferred his share."
+}
 
 ### Confirm plan item
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/confirm/
@@ -78,3 +84,8 @@ Authorization: Bearer {{receiverAccessToken}}
 ### Reject plan item
 POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/reject/
 Authorization: Bearer {{receiverAccessToken}}
+Content-Type: application/json
+
+{
+  "reason": "Receiver rejected the payment report."
+}

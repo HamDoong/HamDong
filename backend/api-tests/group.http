@@ -39,7 +39,7 @@ Content-Type: application/json
 }
 
 ### Create invite
-# If the API returns invite_url instead of inviteToken, copy the token from the end of invite_url into @inviteToken.
+# If the API returns invite_url, copy the token from the end of the URL into @inviteToken.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json

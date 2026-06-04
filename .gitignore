@@ -13,6 +13,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
+backend/.env
+backend/**/.env
 
 # Logs
 npm-debug.log*
@@ -72,7 +74,7 @@ staticfiles/
 backend/media/
 backend/uploads/
 backend/staticfiles/
-
+backend/media-uploads/
 
 # Docker
 docker-compose.override.yml
@@ -84,8 +86,8 @@ docker-compose.override.yml
 # IDE
 .vscode/
 .idea/
-
-.idea/
+.DS_Store
+Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
@@ -95,7 +97,11 @@ docker-compose.override.yml
 .parcel-cache/
 
 # Coverage
+.coverage
 coverage/
+coverage.xml
+htmlcov/
+.cache/
 
 # Temporary files
 *.tmp

@@ -3,32 +3,45 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 
-cat <<EOF
+cat <<'EOF'
 HamDong demo helper
 
-This project uses API-based demo setup instead of direct database seeding.
-Direct seeding could bypass events, outbox rows, and projections.
+This script intentionally does not seed the database directly.
+The demo should go through the API so events, outbox rows, consumers, and projections are exercised.
 
-Steps:
-1. Start the stack:
+Recommended flow:
+1. Copy environment files:
+   cp .env.example .env
+   cp backend/.env.example backend/.env
+
+2. Start the stack:
    docker compose -f backend/docker-compose.yml up --build
 
-2. Open:
+3. Open:
    api-tests/hamdong.http
 
-3. Run the OTP request steps. If DEBUG=true, copy each debug_otp value into:
+4. Run the OTP request steps for Ali, Sara, and Reza.
+   If DEBUG=true, copy each returned debug_otp value into:
    @aliOtp
    @saraOtp
    @rezaOtp
 
-4. Continue the REST Client flow through group, expense, balance, settlement plan, report-paid, confirm, and final balance.
-
-Optional quick check:
+5. Continue through:
+   group creation
+   invite creation
+   invite acceptance
+   optional receipt upload
+   expense creation
+   balances
+   settlement-plan generate/activate
+   report-paid
+   confirm
+   final balances
 EOF
 
-curl -fsS -X POST "$BASE_URL/api/v1/auth/otp/request/" \
-  -H "Content-Type: application/json" \
-  -d '{"phone_number":"09120000001"}' || true
+echo
+echo "Optional quick OTP request:"
+curl -fsS -X POST "${BASE_URL}/api/v1/auth/otp/request/"   -H "Content-Type: application/json"   -d '{"phone_number":"09120000001"}' || true
 
 echo
-echo "If the stack is running with DEBUG=true, copy the returned debug_otp into api-tests/hamdong.http."
+echo "If DEBUG=true, copy debug_otp into api-tests/hamdong.http."

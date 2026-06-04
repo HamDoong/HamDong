@@ -2,51 +2,49 @@
 
 ## Docker Compose Fails
 
-Validate the compose file:
+Validate the file first:
 
 ```bash
 docker compose -f backend/docker-compose.yml config
 ```
 
-Check Docker is running and ports are available.
+Then confirm Docker is running and required ports are free.
 
-## Gateway Returns 502
+## Gateway `502`
 
-Check that the target service is running:
+Check gateway plus the target service:
 
 ```bash
 docker compose -f backend/docker-compose.yml ps
 docker compose -f backend/docker-compose.yml logs -f api-gateway
-```
-
-Then inspect the service log, for example:
-
-```bash
-docker compose -f backend/docker-compose.yml logs -f expense-service
-```
-
-## Health Endpoint Fails
-
-Run the smoke test and inspect the failing service:
-
-```bash
-BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
 docker compose -f backend/docker-compose.yml logs -f identity-service
 ```
 
-## RabbitMQ Is Not Ready
+Replace `identity-service` with the service behind the failing route.
 
-Check RabbitMQ logs and management port:
+## Health Endpoint Fails
+
+Run:
+
+```bash
+BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+```
+
+Then inspect the failing service log.
+
+## RabbitMQ Not Ready
+
+Check the broker logs and management UI:
 
 ```bash
 docker compose -f backend/docker-compose.yml logs -f rabbitmq
 ```
 
-Open `http://localhost:15672`.
+Management UI: `http://localhost:15672`
 
 ## PostgreSQL Connection Fails
 
-Check PostgreSQL health and credentials:
+Inspect PostgreSQL logs and container health:
 
 ```bash
 docker compose -f backend/docker-compose.yml logs -f postgres
@@ -55,7 +53,7 @@ docker compose -f backend/docker-compose.yml ps postgres
 
 ## Redis Connection Fails
 
-Check Redis status:
+Inspect Redis logs:
 
 ```bash
 docker compose -f backend/docker-compose.yml logs -f redis
@@ -63,44 +61,55 @@ docker compose -f backend/docker-compose.yml logs -f redis
 
 ## Migrations Fail
 
-Run migrations inside the affected service container:
+Run migrations manually in the affected service:
 
 ```bash
 docker compose -f backend/docker-compose.yml exec identity-service python manage.py migrate
 ```
 
-Repeat with the relevant service name.
+Repeat with the affected service name.
 
-## JWT Public Key Not Found
+## JWT Public Key Missing
 
-Verify `JWT_PUBLIC_KEY_PATH`, `JWT_PRIVATE_KEY_PATH`, and `IDENTITY_JWKS_URL` in `backend/.env`.
+Verify the following variables in `backend/.env`:
+
+- `JWT_PRIVATE_KEY_PATH`
+- `JWT_PUBLIC_KEY_PATH`
+- `IDENTITY_PUBLIC_KEY_PATH`
+- `IDENTITY_JWKS_URL`
 
 ## OTP Not Received in Fake Provider
 
-In local debug mode, check the OTP request response for `debug_otp`. Also inspect notification-service logs.
+When `DEBUG=true`, inspect the OTP request response for `debug_otp`. Also check notification-service logs to confirm the OTP event was consumed.
 
-## Event Consumers Are Delayed
+## Event Consumers Delayed
 
-Expense and settlement projections are asynchronous. Wait a few seconds and check consumer logs:
+Async projections depend on workers such as `group-consumer`, `expense-consumer`, `settlement-consumer`, and `notification-consumer`. Inspect the relevant worker logs:
 
 ```bash
 docker compose -f backend/docker-compose.yml logs -f settlement-consumer
+docker compose -f backend/docker-compose.yml logs -f notification-consumer
 ```
 
 ## Balance Not Updated Yet
 
-Confirm the expense event was created and consumers are running. Then rerun the balance request.
+Expense and settlement projections are asynchronous. Wait briefly after expense creation, then retry the balance or settlement-plan request.
 
 ## Media Upload Fails
 
-Verify the file exists, file size is within `MEDIA_MAX_FILE_SIZE_BYTES`, and the media volume is writable.
+Verify that:
+
+- the file exists
+- the file size is below `MEDIA_MAX_FILE_SIZE_BYTES`
+- the extension/content type is allowed
+- the media volume is writable
 
 ## Swagger Not Opening
 
-Check service logs and open the direct service URL, for example:
+Check the direct service logs and open the direct service docs URL, for example:
 
 ```bash
 docker compose -f backend/docker-compose.yml logs -f group-service
 ```
 
-Then visit `http://localhost:8002/api/docs/`.
+Then open `http://localhost:8002/api/docs/`.

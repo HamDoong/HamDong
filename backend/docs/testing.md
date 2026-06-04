@@ -6,6 +6,12 @@
 docker compose -f backend/docker-compose.yml up --build
 ```
 
+## Validate Compose Configuration
+
+```bash
+docker compose -f backend/docker-compose.yml config
+```
+
 ## Run Service Tests
 
 ```bash
@@ -23,34 +29,38 @@ docker compose -f backend/docker-compose.yml exec notification-service pytest
 BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
 ```
 
-The script checks all gateway health endpoints and prints `All gateway health checks passed.` on success.
+Expected success message:
+
+```text
+All gateway health checks passed.
+```
 
 ## Run API Tests with VS Code REST Client
 
-Open `api-tests/hamdong.http` or `backend/api-tests/hamdong.http`.
+Open `api-tests/hamdong.http`.
 
-Use local debug OTP values when `DEBUG=true`. Copy returned `debug_otp` values into the variables at the top of the file.
+- Request OTP for Ali, Sara, and Reza.
+- Copy `debug_otp` values when `DEBUG=true`.
+- Follow the group, invite, expense, balances, settlement-plan, report-paid, confirm, and final-balance requests in order.
+- Wait briefly at the noted async checkpoints so RabbitMQ consumers can update projections.
 
 ## Suggested Manual Order
 
-1. Start services.
-2. Run smoke test.
-3. Run identity-service tests.
-4. Run group-service tests.
-5. Run expense-service tests.
-6. Run media-service tests.
-7. Run settlement-service tests.
-8. Run notification-service tests.
-9. Run the REST Client demo flow.
+1. Start the stack.
+2. Validate compose configuration.
+3. Run the smoke test.
+4. Run service tests for the service you are changing.
+5. Run the full demo flow from `api-tests/hamdong.http`.
 
 ## Troubleshooting Failing Tests
 
-Check service logs with:
+Useful logs:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f identity-service
-docker compose -f backend/docker-compose.yml logs -f rabbitmq
+docker compose -f backend/docker-compose.yml logs -f api-gateway
 docker compose -f backend/docker-compose.yml logs -f postgres
+docker compose -f backend/docker-compose.yml logs -f rabbitmq
+docker compose -f backend/docker-compose.yml logs -f settlement-consumer
 ```
 
-If balance tests lag, verify RabbitMQ consumers are running and wait briefly after expense creation.
+If balance or plan responses lag, wait briefly and verify the relevant consumer is still running.
