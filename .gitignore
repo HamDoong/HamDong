@@ -9,12 +9,12 @@ node_modules/
 # Vite
 .vite/
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-backend/.env
-backend/**/.env
+# # Environment variables
+# .env
+# .env.local
+# .env.*.local
+# backend/.env
+# backend/**/.env
 
 # Logs
 npm-debug.log*
@@ -62,8 +62,6 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Environment
-.env
 
 # Django
 db.sqlite3
@@ -108,7 +106,7 @@ htmlcov/
 *.temp
 
 # HamDong local backend artifacts
-backend/.env
+# backend/.env
 backend/media/
 backend/media-uploads/
 backend/postgres-data/
@@ -124,12 +122,12 @@ backend/redis-data/
 FrontEnd/node_modules/
 FrontEnd/dist/
 FrontEnd/.vite/
-FrontEnd/.env
-FrontEnd/.env.local
-FrontEnd/.env.*.local
+# FrontEnd/.env
+# FrontEnd/.env.local
+# FrontEnd/.env.*.local
 
 # Backend local artifacts
-backend/**/.env
+# backend/**/.env
 backend/**/media/
 backend/**/staticfiles/
 backend/**/__pycache__/
