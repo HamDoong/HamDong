@@ -6,7 +6,7 @@ from typing import Tuple, Optional, Dict, Any
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 from apps.identity.domain.rules import PhoneNumberRule
 from apps.identity.domain.events import (
     SendOtpSmsRequested,

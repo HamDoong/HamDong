@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from unittest.mock import patch
 
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.Backends import default_Backend
+from cryptography.hazmat.backends import default_backend
 
 
 class Command(BaseCommand):
@@ -41,7 +41,7 @@ class Command(BaseCommand):
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
-            Backend=default_Backend(),
+            Backend=default_backend(),
         )
 
         # Serialize private key

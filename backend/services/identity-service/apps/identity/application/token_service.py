@@ -8,11 +8,11 @@ from datetime import datetime, timedelta, timezone as tz
 from typing import Any, Dict, Optional, Tuple
 
 import jwt
-from cryptography.hazmat.Backends import default_Backend
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from django.conf import settings
 
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 from apps.identity.infrastructure.key_loader import JwtKeyLoader
 from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
@@ -163,7 +163,7 @@ class TokenService:
     def get_jwks(self) -> Dict[str, Any]:
         public_key_obj = serialization.load_pem_public_key(
             self.public_key.encode(),
-            Backend=default_Backend(),
+            Backend=default_backend(),
         )
         public_numbers = public_key_obj.public_numbers()
 

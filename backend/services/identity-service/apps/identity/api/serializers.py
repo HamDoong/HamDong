@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 
 
 class PhoneNumberField(serializers.CharField):

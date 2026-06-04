@@ -456,11 +456,7 @@ services:
   notification-consumer:
     build: ./Backend/services/notification-service
     env_file: ./Backend/.env
-    entrypoint:
-    - sh
-    - -c
-    command:
-    - python manage.py consume_identity_events
+    command: ["python", "manage.py", "consume_notification_events"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}

@@ -48,7 +48,7 @@ ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
-        "Backend": "django.template.Backends.django.DjangoTemplates",
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -67,7 +67,7 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.Backends.postgresql",
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": POSTGRES_DB,
         "USER": POSTGRES_USER,
         "PASSWORD": POSTGRES_PASSWORD,
@@ -97,7 +97,7 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# Use the custom user model defined in apps.identity.domain.models.User
+# Use the custom user model defined in apps.identity.domain.models *
 AUTH_USER_MODEL = "identity.User"
 
 # JWT Configuration

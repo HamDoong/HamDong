@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
-from apps.identity.domain.models import User, RefreshToken
+from apps.identity.domain.models import *
 
 
 class UserRepository:

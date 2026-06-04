@@ -52,7 +52,7 @@ ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
-        "Backend": "django.template.Backends.django.DjangoTemplates",
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -71,7 +71,7 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.Backends.postgresql",
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": POSTGRES_DB,
         "USER": POSTGRES_USER,
         "PASSWORD": POSTGRES_PASSWORD,

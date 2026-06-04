@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import ACCESS_TOKEN_KID, TokenService
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 from apps.identity.infrastructure.repositories import RefreshTokenRepository
 

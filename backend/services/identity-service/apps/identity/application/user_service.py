@@ -5,7 +5,7 @@ from typing import Optional
 
 from django.utils import timezone
 from apps.identity.domain.rules import PhoneNumberRule
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 from apps.identity.infrastructure.repositories import UserRepository
 
 logger = logging.getLogger(__name__)

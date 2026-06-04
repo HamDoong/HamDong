@@ -9,7 +9,7 @@ from apps.identity.application.use_cases import (
     UpdateProfileUseCase,
     VerifyOtpUseCase,
 )
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 
 
 @override_settings(DEBUG=True, OTP_DEBUG_RETURN_CODE=True)
