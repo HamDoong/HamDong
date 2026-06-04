@@ -1,4 +1,4 @@
-"""JWT authentication backend for identity service."""
+"""JWT authentication Backend for identity service."""
 
 from __future__ import annotations
 

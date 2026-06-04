@@ -5,12 +5,12 @@ from pathlib import Path
 import unittest
 
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+Backend_DIR = Path(__file__).resolve().parents[1]
 
 
 class FixPack4ContractChecks(unittest.TestCase):
     def test_gateway_nested_routes_precede_generic_groups_route(self) -> None:
-        nginx = (BACKEND_DIR / "api-gateway" / "nginx.conf").read_text(encoding="utf-8")
+        nginx = (Backend_DIR / "api-gateway" / "nginx.conf").read_text(encoding="utf-8")
         nested_patterns = [
             r"location ~ \^/api/v1/groups/\[^/\]\+/expenses\(/\|\$\)",
             r"location ~ \^/api/v1/groups/\[^/\]\+/media\(/\|\$\)",
@@ -26,7 +26,7 @@ class FixPack4ContractChecks(unittest.TestCase):
             self.assertLess(nginx.index(snippet), group_index)
 
     def test_api_tests_do_not_use_deprecated_expense_fields(self) -> None:
-        api_tests_dir = BACKEND_DIR / "api-tests"
+        api_tests_dir = Backend_DIR / "api-tests"
         combined = "\n".join(
             path.read_text(encoding="utf-8")
             for path in api_tests_dir.glob("*.http")
@@ -36,7 +36,7 @@ class FixPack4ContractChecks(unittest.TestCase):
         self.assertNotRegex(combined, r'\n\s*"amount"\s*:')
 
     def test_hamdong_demo_contains_required_sections(self) -> None:
-        hamdong = (BACKEND_DIR / "api-tests" / "hamdong.http").read_text(encoding="utf-8")
+        hamdong = (Backend_DIR / "api-tests" / "hamdong.http").read_text(encoding="utf-8")
         required_markers = [
             "@aliPhone = 09120000001",
             "@saraPhone = 09120000002",

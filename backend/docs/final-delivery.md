@@ -4,39 +4,39 @@
 
 ```bash
 cp .env.example .env
-cp backend/.env.example backend/.env
-docker compose -f backend/docker-compose.yml up --build
+cp Backend/.env.example Backend/.env
+docker compose -f Backend/docker-compose.yml up --build
 ```
 
 ## Stop Project
 
 ```bash
-docker compose -f backend/docker-compose.yml down
+docker compose -f Backend/docker-compose.yml down
 ```
 
 ## View Logs
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f
-docker compose -f backend/docker-compose.yml logs -f identity-service
-docker compose -f backend/docker-compose.yml logs -f settlement-service
+docker compose -f Backend/docker-compose.yml logs -f
+docker compose -f Backend/docker-compose.yml logs -f identity-service
+docker compose -f Backend/docker-compose.yml logs -f settlement-service
 ```
 
 ## Run Smoke Test
 
 ```bash
-BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+BASE_URL=http://localhost:8080 Backend/scripts/smoke-test.sh
 ```
 
 ## Run Service Tests
 
 ```bash
-docker compose -f backend/docker-compose.yml exec identity-service pytest
-docker compose -f backend/docker-compose.yml exec group-service pytest
-docker compose -f backend/docker-compose.yml exec expense-service pytest
-docker compose -f backend/docker-compose.yml exec media-service pytest
-docker compose -f backend/docker-compose.yml exec settlement-service pytest
-docker compose -f backend/docker-compose.yml exec notification-service pytest
+docker compose -f Backend/docker-compose.yml exec identity-service pytest
+docker compose -f Backend/docker-compose.yml exec group-service pytest
+docker compose -f Backend/docker-compose.yml exec expense-service pytest
+docker compose -f Backend/docker-compose.yml exec media-service pytest
+docker compose -f Backend/docker-compose.yml exec settlement-service pytest
+docker compose -f Backend/docker-compose.yml exec notification-service pytest
 ```
 
 ## Swagger URLs
@@ -56,7 +56,7 @@ Use `api-tests/hamdong.http` for the full Ali, Sara, and Reza scenario.
 
 ## CI Behavior
 
-The GitHub Actions workflow checks out the repository, prepares safe environment files, validates Docker Compose configuration, and builds backend services.
+The GitHub Actions workflow checks out the repository, prepares safe environment files, validates Docker Compose configuration, and builds Backend services.
 
 ## Known Limitations
 

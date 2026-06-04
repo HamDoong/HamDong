@@ -5,7 +5,7 @@
 Validate the file first:
 
 ```bash
-docker compose -f backend/docker-compose.yml config
+docker compose -f Backend/docker-compose.yml config
 ```
 
 Then confirm Docker is running and required ports are free.
@@ -15,9 +15,9 @@ Then confirm Docker is running and required ports are free.
 Check gateway plus the target service:
 
 ```bash
-docker compose -f backend/docker-compose.yml ps
-docker compose -f backend/docker-compose.yml logs -f api-gateway
-docker compose -f backend/docker-compose.yml logs -f identity-service
+docker compose -f Backend/docker-compose.yml ps
+docker compose -f Backend/docker-compose.yml logs -f api-gateway
+docker compose -f Backend/docker-compose.yml logs -f identity-service
 ```
 
 Replace `identity-service` with the service behind the failing route.
@@ -27,7 +27,7 @@ Replace `identity-service` with the service behind the failing route.
 Run:
 
 ```bash
-BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+BASE_URL=http://localhost:8080 Backend/scripts/smoke-test.sh
 ```
 
 Then inspect the failing service log.
@@ -37,7 +37,7 @@ Then inspect the failing service log.
 Check the broker logs and management UI:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f rabbitmq
+docker compose -f Backend/docker-compose.yml logs -f rabbitmq
 ```
 
 Management UI: `http://localhost:15672`
@@ -47,8 +47,8 @@ Management UI: `http://localhost:15672`
 Inspect PostgreSQL logs and container health:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f postgres
-docker compose -f backend/docker-compose.yml ps postgres
+docker compose -f Backend/docker-compose.yml logs -f postgres
+docker compose -f Backend/docker-compose.yml ps postgres
 ```
 
 ## Redis Connection Fails
@@ -56,7 +56,7 @@ docker compose -f backend/docker-compose.yml ps postgres
 Inspect Redis logs:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f redis
+docker compose -f Backend/docker-compose.yml logs -f redis
 ```
 
 ## Migrations Fail
@@ -64,14 +64,14 @@ docker compose -f backend/docker-compose.yml logs -f redis
 Run migrations manually in the affected service:
 
 ```bash
-docker compose -f backend/docker-compose.yml exec identity-service python manage.py migrate
+docker compose -f Backend/docker-compose.yml exec identity-service python manage.py migrate
 ```
 
 Repeat with the affected service name.
 
 ## JWT Public Key Missing
 
-Verify the following variables in `backend/.env`:
+Verify the following variables in `Backend/.env`:
 
 - `JWT_PRIVATE_KEY_PATH`
 - `JWT_PUBLIC_KEY_PATH`
@@ -87,8 +87,8 @@ When `DEBUG=true`, inspect the OTP request response for `debug_otp`. Also check 
 Async projections depend on workers such as `group-consumer`, `expense-consumer`, `settlement-consumer`, and `notification-consumer`. Inspect the relevant worker logs:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f settlement-consumer
-docker compose -f backend/docker-compose.yml logs -f notification-consumer
+docker compose -f Backend/docker-compose.yml logs -f settlement-consumer
+docker compose -f Backend/docker-compose.yml logs -f notification-consumer
 ```
 
 ## Balance Not Updated Yet
@@ -109,7 +109,7 @@ Verify that:
 Check the direct service logs and open the direct service docs URL, for example:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f group-service
+docker compose -f Backend/docker-compose.yml logs -f group-service
 ```
 
 Then open `http://localhost:8002/api/docs/`.

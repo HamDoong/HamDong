@@ -14,11 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare backend env
-        run: cp backend/.env.example backend/.env
+      - name: Prepare Backend env
+        run: cp Backend/.env.example Backend/.env
 
       - name: Validate docker compose
-        run: docker compose --env-file backend/.env -f docker-compose.yml config
+        run: docker compose --env-file Backend/.env -f docker-compose.yml config
 
       - name: Build full stack
-        run: docker compose --env-file backend/.env -f docker-compose.yml build
+        run: docker compose --env-file Backend/.env -f docker-compose.yml build

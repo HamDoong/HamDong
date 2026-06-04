@@ -6,7 +6,7 @@ HamDong Backend
 
 ## Project Description
 
-HamDong is a Django/DRF microservice backend for shared group expenses, receipt media, debt tracking, manual settlements, smart settlement plans, and reminder notifications. The stack is designed for local development with Docker Compose and for presentation/demo flows through the API gateway.
+HamDong is a Django/DRF microservice Backend for shared group expenses, receipt media, debt tracking, manual settlements, smart settlement plans, and reminder notifications. The stack is designed for local development with Docker Compose and for presentation/demo flows through the API gateway.
 
 ## Architecture Overview
 
@@ -40,7 +40,7 @@ Python 3.12, Django, Django REST Framework, drf-spectacular/Swagger, PostgreSQL,
 ├── .github/workflows/ci.yml
 ├── api-tests/
 ├── docs/
-└── backend/
+└── Backend/
     ├── README.md
     ├── .env.example
     ├── docker-compose.yml
@@ -54,7 +54,7 @@ Python 3.12, Django, Django REST Framework, drf-spectacular/Swagger, PostgreSQL,
     └── tests/
 ```
 
-Root `docs/` and `api-tests/` are final-delivery copies. `backend/` contains the runnable stack, worker commands, contracts, scripts, and service code.
+Root `docs/` and `api-tests/` are final-delivery copies. `Backend/` contains the runnable stack, worker commands, contracts, scripts, and service code.
 
 ## How to Run Locally
 
@@ -62,47 +62,47 @@ Prepare environment files:
 
 ```bash
 cp .env.example .env
-cp backend/.env.example backend/.env
+cp Backend/.env.example Backend/.env
 ```
 
 Start the stack:
 
 ```bash
-docker compose -f backend/docker-compose.yml up --build
+docker compose -f Backend/docker-compose.yml up --build
 ```
 
 Stop the stack:
 
 ```bash
-docker compose -f backend/docker-compose.yml down
+docker compose -f Backend/docker-compose.yml down
 ```
 
 Check container status:
 
 ```bash
-docker compose -f backend/docker-compose.yml ps
+docker compose -f Backend/docker-compose.yml ps
 ```
 
 View logs:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f
+docker compose -f Backend/docker-compose.yml logs -f
 ```
 
 View a single service log:
 
 ```bash
-docker compose -f backend/docker-compose.yml logs -f identity-service
-docker compose -f backend/docker-compose.yml logs -f group-service
-docker compose -f backend/docker-compose.yml logs -f expense-service
-docker compose -f backend/docker-compose.yml logs -f media-service
-docker compose -f backend/docker-compose.yml logs -f settlement-service
-docker compose -f backend/docker-compose.yml logs -f notification-service
+docker compose -f Backend/docker-compose.yml logs -f identity-service
+docker compose -f Backend/docker-compose.yml logs -f group-service
+docker compose -f Backend/docker-compose.yml logs -f expense-service
+docker compose -f Backend/docker-compose.yml logs -f media-service
+docker compose -f Backend/docker-compose.yml logs -f settlement-service
+docker compose -f Backend/docker-compose.yml logs -f notification-service
 ```
 
 ## Environment Variables
 
-Use `.env.example` and `backend/.env.example` as safe templates. They contain placeholders for app mode, secrets, PostgreSQL, Redis, RabbitMQ, JWT, OTP, SMS, outbox/retry settings, reminder settings, and media storage configuration. Do not commit real secrets, real SMS credentials, or real private-key material.
+Use `.env.example` and `Backend/.env.example` as safe templates. They contain placeholders for app mode, secrets, PostgreSQL, Redis, RabbitMQ, JWT, OTP, SMS, outbox/retry settings, reminder settings, and media storage configuration. Do not commit real secrets, real SMS credentials, or real private-key material.
 
 ## Ports
 
@@ -186,24 +186,24 @@ The stack uses RabbitMQ plus outbox/inbox patterns. Producers write domain data 
 Start the stack:
 
 ```bash
-docker compose -f backend/docker-compose.yml up --build
+docker compose -f Backend/docker-compose.yml up --build
 ```
 
 Run the smoke test:
 
 ```bash
-BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+BASE_URL=http://localhost:8080 Backend/scripts/smoke-test.sh
 ```
 
 Run service test suites where practical:
 
 ```bash
-docker compose -f backend/docker-compose.yml exec identity-service pytest
-docker compose -f backend/docker-compose.yml exec group-service pytest
-docker compose -f backend/docker-compose.yml exec expense-service pytest
-docker compose -f backend/docker-compose.yml exec media-service pytest
-docker compose -f backend/docker-compose.yml exec settlement-service pytest
-docker compose -f backend/docker-compose.yml exec notification-service pytest
+docker compose -f Backend/docker-compose.yml exec identity-service pytest
+docker compose -f Backend/docker-compose.yml exec group-service pytest
+docker compose -f Backend/docker-compose.yml exec expense-service pytest
+docker compose -f Backend/docker-compose.yml exec media-service pytest
+docker compose -f Backend/docker-compose.yml exec settlement-service pytest
+docker compose -f Backend/docker-compose.yml exec notification-service pytest
 ```
 
 Run the end-to-end demo with VS Code REST Client using `api-tests/hamdong.http`.

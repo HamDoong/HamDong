@@ -13,8 +13,8 @@ node_modules/
 # .env
 # .env.local
 # .env.*.local
-# backend/.env
-# backend/**/.env
+# Backend/.env
+# Backend/**/.env
 
 # Logs
 npm-debug.log*
@@ -69,10 +69,10 @@ media/
 uploads/
 local_uploads/
 staticfiles/
-backend/media/
-backend/uploads/
-backend/staticfiles/
-backend/media-uploads/
+Backend/media/
+Backend/uploads/
+Backend/staticfiles/
+Backend/media-uploads/
 
 # Docker
 docker-compose.override.yml
@@ -105,13 +105,13 @@ htmlcov/
 *.tmp
 *.temp
 
-# HamDong local backend artifacts
-# backend/.env
-backend/media/
-backend/media-uploads/
-backend/postgres-data/
-backend/rabbitmq-data/
-backend/redis-data/
+# HamDong local Backend artifacts
+# Backend/.env
+Backend/media/
+Backend/media-uploads/
+Backend/postgres-data/
+Backend/rabbitmq-data/
+Backend/redis-data/
 
 # Runtime / process artifacts
 *.pid
@@ -127,10 +127,10 @@ FrontEnd/.vite/
 # FrontEnd/.env.*.local
 
 # Backend local artifacts
-# backend/**/.env
-backend/**/media/
-backend/**/staticfiles/
-backend/**/__pycache__/
-backend/**/*.pyc
-backend/**/.pytest_cache/
-backend/**/.ruff_cache/
+# Backend/**/.env
+Backend/**/media/
+Backend/**/staticfiles/
+Backend/**/__pycache__/
+Backend/**/*.pyc
+Backend/**/.pytest_cache/
+Backend/**/.ruff_cache/
