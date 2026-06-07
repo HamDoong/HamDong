@@ -4,7 +4,7 @@
 
 ```bash
 cp .env.example .env
-cp Backend/.env.example Backend/.env
+cp .env.example .env
 docker compose -f Backend/docker-compose.yml up --build
 ```
 

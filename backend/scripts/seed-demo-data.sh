@@ -12,7 +12,7 @@ The demo should go through the API so events, outbox rows, consumers, and projec
 Recommended flow:
 1. Copy environment files:
    cp .env.example .env
-   cp Backend/.env.example Backend/.env
+   cp .env.example .env
 
 2. Start the stack:
    docker compose -f Backend/docker-compose.yml up --build

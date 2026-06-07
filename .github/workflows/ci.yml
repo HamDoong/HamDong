@@ -15,10 +15,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Prepare Backend env
-        run: cp Backend/.env.example Backend/.env
+        run: cp .env.example .env
 
       - name: Validate docker compose
-        run: docker compose --env-file Backend/.env -f docker-compose.yml config
+        run: docker compose --env-file .env -f docker-compose.yml config
 
       - name: Build full stack
         run: docker compose --env-file Backend/.env -f docker-compose.yml build

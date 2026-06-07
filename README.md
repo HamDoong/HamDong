@@ -62,7 +62,7 @@ Prepare environment files:
 
 ```bash
 cp .env.example .env
-cp Backend/.env.example Backend/.env
+cp .env.example .env
 ```
 
 Start the stack:
