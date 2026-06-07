@@ -5,16 +5,15 @@ import {
   Car,
   CheckCircle2,
   CreditCard,
-  Download,
-  Heart,
+  ImageUp,
   MoreVertical,
-  Play,
-  Plus,
   ReceiptText,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
+  TrendingUp,
   Utensils,
+  WalletCards,
   UsersRound,
 } from 'lucide-react';
 
@@ -42,7 +41,6 @@ const expenseCards = [
     title: 'سوپرمارکت',
     amount: '1,250,000 تومان',
     meta: 'پرداخت توسط سارا',
-    time: 'دیروز',
     tone: 'orange',
   },
   {
@@ -50,7 +48,6 @@ const expenseCards = [
     title: 'بنزین و عوارض',
     amount: '850,000 تومان',
     meta: 'پرداخت توسط احمد',
-    time: '2 روز پیش',
     tone: 'green',
   },
   {
@@ -58,34 +55,39 @@ const expenseCards = [
     title: 'رستوران دربند',
     amount: '2,350,000 تومان',
     meta: 'پرداخت توسط مهدی',
-    time: '3 روز پیش',
     tone: 'orange',
   },
+];
+
+const heroHighlights = [
+  { icon: WalletCards, label: 'هرکس به اندازه خودش' },
+  { icon: ImageUp, label: 'رسید برای همه' },
+  { icon: TrendingUp, label: 'تسویه بدون رودربایستی' },
 ];
 
 const featureItems: FeatureItem[] = [
   {
     icon: UsersRound,
-    title: 'گروه‌های نامحدود',
-    description: 'هر تعداد گروه که می‌خواهید بسازید و مدیریت کنید',
+    title: 'دعوت با یک لینک',
+    description: 'برای هر دورهمی یک فضای مشترک بسازید و اعضا را با لینک دعوت اضافه کنید',
     tone: 'bg-emerald-100 text-emerald-700',
   },
   {
     icon: ReceiptText,
-    title: 'محاسبه خودکار',
-    description: 'سهم هر نفر به‌صورت خودکار محاسبه می‌شود',
+    title: 'مالیات و سهم نابرابر',
+    description: 'مبلغ هر نفر، مالیات و خدمات جداگانه حساب می‌شود تا سهم‌ها دقیق بماند',
     tone: 'bg-orange-100 text-orange-600',
   },
   {
     icon: ShieldCheck,
-    title: 'شفاف و امن',
-    description: 'همه چیز شفاف و اطلاعات شما کاملا امن است',
+    title: 'رسید برای همه قابل مشاهده است',
+    description: 'تصویر فاکتور و وضعیت حساب فقط برای اعضای مجاز رویداد قابل مشاهده است',
     tone: 'bg-emerald-100 text-emerald-700',
   },
   {
     icon: Bell,
-    title: 'یادآوری پرداخت',
-    description: 'یادآوری هوشمند برای تسویه حساب‌ها',
+    title: 'یادآوری بدون تعارف',
+    description: 'یادآوری زمان‌بندی‌شده کمک می‌کند پیگیری پرداخت‌ها دستی و معذب‌کننده نباشد',
     tone: 'bg-orange-100 text-orange-600',
   },
 ];
@@ -113,26 +115,26 @@ const balances = [
 
 const useCases = [
   'سفرهای دوستانه و خانوادگی',
-  'زندگی مشترک و هم‌خانه‌ای',
-  'پروژه‌های کاری و تیمی',
-  'کلاس‌ها و دوره‌های آموزشی',
+  'هم‌خانه‌ای و زندگی مشترک',
+  'رستوران، کافه و خرید گروهی',
+  'سفرها و رویدادهای چندپرداختی',
 ];
 
 const howItWorks = [
   {
     icon: UsersRound,
-    title: 'گروه بساز',
-    description: 'اعضا را اضافه کن و سهم هر نفر را از همان ابتدا شفاف نگه دار.',
+    title: 'دورهمی را بساز',
+    description: 'بعد از سفر، رستوران یا خرید مشترک، یک فضای حساب‌وکتاب بساز و لینک دعوت بفرست.',
   },
   {
-    icon: ReceiptText,
-    title: 'هزینه ثبت کن',
-    description: 'خرج‌های سفر، خانه یا پروژه را سریع وارد کن و محاسبه را بسپار به هم‌هزینه.',
+    icon: ImageUp,
+    title: 'خرج‌ها را شفاف ثبت کن',
+    description: 'رسید، مالیات، خدمات و سهم‌های نابرابر را وارد کن تا همه چیز قابل پیگیری باشد.',
   },
   {
     icon: CreditCard,
-    title: 'تسویه کن',
-    description: 'در پایان، دقیق ببین چه کسی چقدر بدهکار یا طلبکار است.',
+    title: 'بدون پیگیری سخت تسویه کن',
+    description: 'همدنگ سهم‌ها را محاسبه می‌کند و یادآوری‌های دوستانه می‌فرستد.',
   },
 ];
 
@@ -141,7 +143,7 @@ function Logo() {
     <div
       className="landing-logo flex min-w-0 shrink-0 items-center gap-3"
       dir="ltr"
-      aria-label="هم‌هزینه"
+      aria-label="همدنگ"
     >
       <div className="grid h-11 w-11 place-items-center rounded-[14px] bg-primary-gradient text-white shadow-button sm:h-12 sm:w-12 sm:rounded-[16px]">
         <span className="text-2xl font-extrabold leading-none sm:text-3xl">ه</span>
@@ -150,7 +152,7 @@ function Logo() {
         className="hidden whitespace-nowrap text-2xl font-extrabold tracking-normal text-slate-950 sm:inline"
         dir="rtl"
       >
-        هم‌هزینه
+        همدنگ
       </span>
     </div>
   );
@@ -192,13 +194,12 @@ function ExpenseCard({
       className={`hero-expense-card hero-expense-card-${index + 1}`}
       aria-label={`${item.title}، ${item.amount}`}
     >
-      <div className={`grid h-12 w-12 place-items-center rounded-[18px] ${toneClass}`}>
-        <Icon className="h-6 w-6" strokeWidth={2.6} />
+      <div className={`grid h-10 w-10 place-items-center rounded-[15px] ${toneClass}`}>
+        <Icon className="h-5 w-5" strokeWidth={2.6} />
       </div>
-      <h3 className="mt-5 text-lg font-extrabold text-slate-950">{item.title}</h3>
-      <p className="mt-1 text-base font-extrabold text-slate-950">{item.amount}</p>
-      <p className="mt-5 text-sm font-medium text-slate-400">{item.meta}</p>
-      <p className="mt-1 text-xs font-semibold text-slate-400">{item.time}</p>
+      <h3 className="mt-3 text-sm font-extrabold text-slate-950">{item.title}</h3>
+      <p className="mt-1 text-sm font-extrabold text-slate-950">{item.amount}</p>
+      <p className="mt-3 text-xs font-semibold text-slate-500">{item.meta}</p>
     </article>
   );
 }
@@ -206,82 +207,60 @@ function ExpenseCard({
 function HeroMockup() {
   return (
     <div className="hero-mockup" aria-label="نمایی از مدیریت هزینه‌های گروهی">
-      <div className="hero-avatar hero-avatar-1">
-        <img src="/landing/avatar-ali.png" alt="عضو گروه" />
-      </div>
-      <div className="hero-avatar hero-avatar-2">
-        <img src="/landing/avatar-mahdi.png" alt="عضو گروه" />
-      </div>
-      <div className="hero-avatar hero-avatar-3">
-        <img src="/landing/avatar-sara.png" alt="عضو گروه" />
-      </div>
-      <div className="hero-avatar hero-avatar-4">
-        <img src="/landing/avatar-nika.png" alt="عضو گروه" />
-      </div>
-
       <div className="hero-phone">
-        <div className="rounded-t-[2rem] bg-primary-gradient px-7 pb-10 pt-7 text-white">
-          <div className="flex items-center justify-between">
-            <ArrowLeft className="h-6 w-6" />
-            <MoreVertical className="h-6 w-6" />
+        <div className="hero-phone-screen">
+          <div className="hero-phone-status" aria-hidden="true">
+            <span>9:41</span>
+            <span>LTE</span>
           </div>
-          <div className="mt-14 text-center">
-            <p className="text-xl font-extrabold">سفر شمال</p>
-            <p className="mt-1 text-sm font-semibold text-white/80">7 عضو</p>
-            <div className="mt-5 flex items-center justify-center gap-2">
-              <span className="grid h-8 min-w-8 place-items-center rounded-full bg-slate-900 px-2 text-xs font-bold">
-                +3
-              </span>
-              <AvatarStack compact />
+
+          <div className="hero-phone-top rounded-t-[2rem] px-7 pb-10 pt-7 text-white">
+            <div className="flex items-center justify-between">
+              <ArrowLeft className="h-6 w-6" />
+              <MoreVertical className="h-6 w-6" />
+            </div>
+            <div className="mt-14 text-center">
+              <p className="text-xl font-extrabold">رویداد سفر شمال</p>
+              <p className="mt-1 text-sm font-semibold text-white/80">7 عضو</p>
+              <div className="mt-5 flex items-center justify-center gap-2">
+                <span className="grid h-8 min-w-8 place-items-center rounded-full bg-slate-900 px-2 text-xs font-bold">
+                  +3
+                </span>
+                <AvatarStack compact />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="-mt-7 rounded-t-[2rem] bg-white px-7 py-8 shadow-[0_-10px_30px_rgba(15,23,42,0.05)]">
-          <p className="text-center text-sm font-semibold text-slate-400">
-            مجموع هزینه‌ها
-          </p>
-          <p className="mt-3 text-center text-3xl font-black text-slate-950">
-            24,580,000
-          </p>
-          <p className="mt-1 text-center text-sm font-bold text-slate-500">تومان</p>
+          <div className="-mt-7 rounded-t-[2rem] bg-white px-7 py-8 shadow-[0_-10px_30px_rgba(15,23,42,0.05)]">
+            <p className="text-center text-sm font-semibold text-slate-500">
+              مجموع هزینه‌ها
+            </p>
+            <p className="mt-3 text-center text-3xl font-black text-slate-950">
+              24,580,000
+            </p>
+            <p className="mt-1 text-center text-sm font-bold text-slate-500">تومان</p>
 
-          <div className="mt-7 h-4 rounded-full bg-slate-100 p-1">
-            <div className="h-full w-[68%] rounded-full bg-primary-gradient" />
-          </div>
-          <div className="mt-5 flex items-center justify-between text-sm font-bold">
-            <div>
-              <p className="text-slate-400">پرداخت شده</p>
-              <p className="mt-1 text-slate-950">18,450,000</p>
+            <div className="mt-7 h-4 rounded-full bg-slate-100 p-1 shadow-inner">
+              <div className="h-full w-[68%] rounded-full bg-primary-gradient shadow-[0_6px_18px_rgba(0,168,107,0.28)]" />
             </div>
-            <div className="text-left">
-              <p className="text-slate-400">باقی‌مانده</p>
-              <p className="mt-1 text-slate-950">6,130,000</p>
+            <div className="mt-5 flex items-center justify-between text-sm font-bold">
+              <div>
+                <p className="text-slate-500">پرداخت شده</p>
+                <p className="mt-1 text-slate-950">18,450,000</p>
+              </div>
+              <div className="text-left">
+                <p className="text-slate-500">باقی‌مانده</p>
+                <p className="mt-1 text-slate-950">6,130,000</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {expenseCards.map((item, index) => (
-        <ExpenseCard key={item.title} item={item} index={index} />
-      ))}
-
-      <button
-        type="button"
-        className="hero-plus-button"
-        aria-label="افزودن هزینه جدید"
-      >
-        <Plus className="h-8 w-8" />
-      </button>
-
-      <div className="hero-add-note">
-        <img
-          className="hero-add-arrow"
-          src="/landing/arrow.png"
-          alt=""
-          aria-hidden="true"
-        />
-        <span>افزودن هزینه جدید</span>
+      <div className="hero-expense-stack" aria-label="نمونه هزینه‌های ثبت شده">
+        {expenseCards.map((item, index) => (
+          <ExpenseCard key={item.title} item={item} index={index} />
+        ))}
       </div>
     </div>
   );
@@ -289,15 +268,15 @@ function HeroMockup() {
 
 function FeatureStrip() {
   return (
-    <section className="relative z-10 mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:px-10">
-      <div className="grid gap-5 rounded-[26px] border border-white/80 bg-white/82 p-5 shadow-[0_18px_48px_rgba(15,23,42,0.06)] backdrop-blur md:grid-cols-2 lg:grid-cols-4 lg:p-7">
+    <section className="relative z-10 mx-auto max-w-[1180px] px-5 py-8 sm:px-8 lg:px-10">
+      <div className="feature-strip grid gap-5 rounded-[28px] border border-white/90 bg-white/[0.88] p-5 shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur md:grid-cols-2 lg:grid-cols-4 lg:p-7">
         {featureItems.map((item) => {
           const Icon = item.icon;
 
           return (
-            <article key={item.title} className="flex items-center gap-4">
+            <article key={item.title} className="feature-strip-item flex items-center gap-4 rounded-[22px] p-3">
               <div
-                className={`grid h-14 w-14 shrink-0 place-items-center rounded-[18px] ${item.tone}`}
+                className={`grid h-14 w-14 shrink-0 place-items-center rounded-[18px] ${item.tone} shadow-[0_12px_26px_rgba(15,23,42,0.06)]`}
               >
                 <Icon className="h-7 w-7" strokeWidth={2.5} />
               </div>
@@ -321,26 +300,26 @@ function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className="relative z-10 mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:px-10"
+      className="relative z-10 mx-auto max-w-[1180px] px-5 py-12 sm:px-8 lg:px-10"
     >
       <div className="mb-8 text-center">
-        <p className="text-sm font-extrabold text-primary">از ثبت خرج تا تسویه</p>
-        <h2 className="mt-3 text-3xl font-black leading-[1.45] text-slate-950 sm:text-4xl">
-          آخر سفر دنبال حساب‌کتاب دستی نرو
+        <p className="text-sm font-extrabold text-primary">از ورود تا تسویه</p>
+        <h2 className="mx-auto mt-3 max-w-3xl text-3xl font-black leading-[1.45] text-slate-950 sm:text-4xl">
+          آخر دورهمی دنبال حساب‌کتاب دستی نرو
         </h2>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="settlement-path grid gap-4 md:grid-cols-3">
         {howItWorks.map((item, index) => {
           const Icon = item.icon;
 
           return (
             <article
               key={item.title}
-              className="rounded-[24px] border border-white/80 bg-white/84 p-6 text-right shadow-[0_18px_44px_rgba(15,23,42,0.06)] backdrop-blur"
+              className="how-card rounded-[26px] border border-white/[0.85] bg-white/[0.86] p-6 text-right shadow-[0_20px_54px_rgba(15,23,42,0.07)] backdrop-blur"
             >
               <div className="mb-6 flex items-center justify-between">
-                <span className="grid h-12 w-12 place-items-center rounded-[18px] bg-emerald-50 text-primary">
+                <span className="grid h-12 w-12 place-items-center rounded-[18px] bg-emerald-50 text-primary shadow-[0_12px_26px_rgba(0,168,107,0.1)]">
                   <Icon className="h-6 w-6" strokeWidth={2.4} />
                 </span>
                 <span className="text-3xl font-black text-slate-200">
@@ -361,13 +340,21 @@ function HowItWorks() {
 
 function BalancePanel() {
   return (
-    <div className="balance-panel relative mx-auto w-full max-w-[456px] rounded-[28px] border border-orange-200/70 bg-gradient-to-br from-orange-500 via-orange-300 to-orange-50 p-5 shadow-[0_24px_58px_rgba(249,115,22,0.18)]">
-      <h3 className="mb-5 text-center text-lg font-black text-slate-950">موجودی‌ها</h3>
+    <div className="balance-panel relative mx-auto w-full max-w-[456px] rounded-[30px] border border-orange-200/70 bg-gradient-to-br from-orange-500 via-orange-300 to-orange-50 p-5 shadow-[0_28px_70px_rgba(249,115,22,0.22)]">
+      <div className="mb-5 flex items-center justify-between rounded-[22px] bg-white/[0.72] px-4 py-3 text-right shadow-[0_12px_28px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div>
+          <h3 className="text-lg font-black text-slate-950">موجودی‌ها</h3>
+          <p className="mt-1 text-xs font-bold text-slate-500">وضعیت تسویه این رویداد</p>
+        </div>
+        <span className="grid h-11 w-11 place-items-center rounded-[16px] bg-orange-100 text-orange-600">
+          <ReceiptText className="h-6 w-6" />
+        </span>
+      </div>
       <div className="space-y-2.5">
         {balances.map((balance) => (
           <div
             key={balance.label}
-            className="flex min-h-[62px] items-center justify-between gap-3 rounded-[18px] bg-white px-4 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+            className="balance-row flex min-h-[64px] items-center justify-between gap-3 rounded-[20px] bg-white px-4 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.09)]"
           >
             <img
               src={balance.avatar.src}
@@ -386,7 +373,7 @@ function BalancePanel() {
       </div>
       <button
         type="button"
-        className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-l from-red-500 to-orange-500 px-5 text-base font-extrabold text-white shadow-[0_16px_32px_rgba(239,68,68,0.28)]"
+        className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-l from-red-500 to-orange-500 px-5 text-base font-extrabold text-white shadow-[0_18px_36px_rgba(239,68,68,0.28)] transition hover:-translate-y-0.5"
       >
         <CreditCard className="h-6 w-6" />
         تسویه حساب‌ها (2,100,000 تومان)
@@ -398,14 +385,24 @@ function BalancePanel() {
 export function LandingPage({ onStart }: LandingPageProps) {
   return (
     <main className="landing-page relative min-h-screen overflow-hidden text-slate-950">
-      <div className="landing-dot-grid right-0 top-44 h-72 w-72 opacity-40" />
-      <div className="landing-dot-grid bottom-16 left-4 h-72 w-72 opacity-35" />
-
-      <header className="landing-header relative z-20 mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 pb-4 pt-5 sm:px-8 sm:pb-5 sm:pt-6 lg:px-10 lg:py-7">
+      <div className="landing-wave-lines" aria-hidden="true" />
+      <img
+        src="/landing/frame-dots.svg"
+        alt=""
+        aria-hidden="true"
+        className="landing-frame-dots landing-frame-dots-1"
+      />
+      <img
+        src="/landing/frame-dots.svg"
+        alt=""
+        aria-hidden="true"
+        className="landing-frame-dots landing-frame-dots-2"
+      />
+      <header className="landing-header relative z-20 mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 pb-4 pt-5 sm:px-8 sm:pb-5 sm:pt-6 lg:px-10 lg:py-7">
         <Logo />
 
         <nav
-          className="hidden h-12 items-center gap-1 rounded-full border border-white/80 bg-white/60 p-1 text-sm font-extrabold text-slate-600 shadow-[0_14px_34px_rgba(15,23,42,0.06)] backdrop-blur lg:flex"
+          className="hidden h-12 items-center gap-1 rounded-full border border-white/90 bg-white/[0.68] p-1 text-sm font-extrabold text-slate-600 shadow-[0_16px_38px_rgba(15,23,42,0.07)] backdrop-blur lg:flex"
           aria-label="ناوبری اصلی"
         >
           <a className="inline-flex h-10 items-center rounded-full bg-emerald-50 px-4 text-primary" href="#home">
@@ -423,38 +420,49 @@ export function LandingPage({ onStart }: LandingPageProps) {
           <button
             type="button"
             onClick={onStart}
-            className="hidden h-12 items-center rounded-[18px] bg-white/85 px-6 text-sm font-extrabold text-slate-950 shadow-[0_14px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/80 transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:inline-flex"
+            className="landing-login-button hidden h-12 items-center px-6 text-sm font-extrabold shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:inline-flex"
           >
-            ورود
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] border border-emerald-200/80 bg-white/70 px-4 text-sm font-extrabold text-primary shadow-[0_12px_30px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:px-6"
-          >
-            <Download className="h-5 w-5" />
-            دانلود اپلیکیشن
+            ورود / ثبت‌نام
           </button>
         </div>
       </header>
 
       <section
         id="home"
-        className="relative z-10 mx-auto grid max-w-7xl items-center gap-5 px-5 pb-4 pt-4 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:gap-8 lg:px-10 lg:pb-6"
+        className="relative z-10 mx-auto grid max-w-[1180px] items-center gap-5 px-5 pb-4 pt-4 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-8 lg:px-10 lg:pb-6"
       >
         <div className="max-w-2xl justify-self-end text-center lg:text-right">
-          <div className="mx-auto inline-flex items-center gap-2 rounded-full bg-orange-50 px-5 py-2.5 text-sm font-extrabold text-orange-600 shadow-[0_10px_30px_rgba(249,115,22,0.08)] lg:mx-0">
+          <div className="hero-eyebrow mx-auto inline-flex items-center gap-2 rounded-full border border-orange-200/70 bg-white/[0.78] px-5 py-2.5 text-sm font-extrabold text-orange-600 shadow-[0_14px_34px_rgba(249,115,22,0.1)] backdrop-blur lg:mx-0">
             <Sparkles className="h-4 w-4" fill="currentColor" />
-            مدیریت هزینه‌ها گروهی، ساده و شفاف
+            <span>مدیریت و تسویه هزینه‌های مشترک، شفاف و خودکار</span>
           </div>
 
-          <h1 className="mt-7 text-[2.65rem] font-black leading-[1.32] text-slate-950 sm:text-5xl lg:text-6xl">
-            هزینه‌ها را
-            <span className="block text-primary">با هم تقسیم کنید</span>
+          <h1 className="mt-7 text-[2.65rem] font-black leading-[1.28] text-slate-950 sm:text-5xl lg:text-6xl">
+            همدنگ،
+            <span className="hero-title-accent block">
+              <span className="hero-title-accent-main">تسویه شفاف</span>
+              <span className="hero-title-accent-emphasis">با کمترین دردسر</span>
+            </span>
           </h1>
           <p className="mx-auto mt-5 max-w-[20rem] text-base font-semibold leading-8 text-slate-500 sm:max-w-xl sm:text-lg sm:leading-9 lg:mx-0">
-            با هم‌هزینه، هزینه‌های گروهی سفر، زندگی مشترک یا هر پروژه‌ای را
-            با سادگی مدیریت کنید.
+            رسید را وارد کن، اعضا را دعوت کن، همدنگ سهم هر نفر را دقیق حساب می‌کند؛ حتی با مالیات، پرداخت نابرابر و چند نفر پرداخت‌کننده.
           </p>
+
+          <div className="mx-auto mt-6 flex max-w-xl flex-wrap items-center justify-center gap-2.5 lg:mx-0 lg:justify-start">
+            {heroHighlights.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <span
+                  key={item.label}
+                  className="inline-flex h-10 items-center gap-2 rounded-full border border-white/90 bg-white/[0.72] px-4 text-sm font-extrabold text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur"
+                >
+                  <Icon className="h-4 w-4 text-primary" />
+                  {item.label}
+                </span>
+              );
+            })}
+          </div>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start">
             <button
@@ -462,32 +470,16 @@ export function LandingPage({ onStart }: LandingPageProps) {
               onClick={onStart}
               className="inline-flex h-14 min-w-[190px] items-center justify-center gap-3 rounded-[20px] bg-primary-gradient px-6 text-base font-extrabold text-white shadow-button transition hover:-translate-y-1"
             >
-              شروع رایگان
+              شروع حساب‌وکتاب
               <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-slate-950">
                 <ArrowLeft className="h-5 w-5" />
               </span>
             </button>
-            <button
-              type="button"
-              className="inline-flex h-14 min-w-[178px] items-center justify-center gap-3 rounded-[20px] bg-white/82 px-6 text-base font-extrabold text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.06)] ring-1 ring-white/80 transition hover:-translate-y-1"
-            >
-              تماشای ویدیو
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-white shadow-[0_10px_22px_rgba(15,23,42,0.08)]">
-                <Play className="h-5 w-5 fill-slate-950" />
-              </span>
-            </button>
           </div>
 
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
-            <AvatarStack />
-            <p className="text-base font-semibold leading-8 text-slate-500">
-              <span className="font-black text-orange-500">+12K</span> کاربر فعال
-              <span className="block">به ما اعتماد کرده‌اند</span>
-            </p>
-            <div className="hidden h-14 w-14 place-items-center rounded-full bg-white text-primary shadow-[0_14px_34px_rgba(15,23,42,0.07)] sm:grid">
-              <Heart className="h-6 w-6" fill="currentColor" />
-            </div>
-          </div>
+          <p className="mx-auto mt-4 max-w-md text-sm font-bold leading-7 text-slate-500 lg:mx-0">
+            وب‌اپ واکنش‌گرا؛ بدون نصب، مناسب مرورگر موبایل.
+          </p>
         </div>
 
         <HeroMockup />
@@ -498,34 +490,17 @@ export function LandingPage({ onStart }: LandingPageProps) {
 
       <section
         id="features"
-        className="feature-showcase-section relative z-10 mx-auto max-w-7xl px-5 pb-24 pt-10 sm:px-8 lg:px-10"
+        className="feature-showcase-section relative z-10 mx-auto max-w-[1180px] px-5 pb-16 pt-10 sm:px-8 lg:px-10"
       >
-        <img
-          src="/landing/green-side-wave.svg"
-          alt=""
-          aria-hidden="true"
-          className="feature-wave-shape"
-        />
-
-        <div className="balance-cluster order-3 lg:order-1">
-          <div className="reminder-card">
-            <span className="reminder-alert-badge">!</span>
-            <div className="reminder-bell-mark">
-              <Bell className="h-5 w-5" />
-            </div>
-            <h3 className="text-base font-black text-red-500">یادآوری پرداخت</h3>
-            <p className="mt-2 text-sm font-semibold leading-7 text-slate-500">
-              مهدی هنوز سهم خود را پرداخت نکرده است
-            </p>
-          </div>
+        <div className="balance-cluster order-1 lg:order-2">
           <BalancePanel />
         </div>
 
-        <div className="feature-copy order-1 lg:order-3">
+        <div className="feature-copy order-2 lg:order-1">
           <div className="text-center lg:text-right">
             <h2 className="text-3xl font-black leading-[1.55] text-slate-950 sm:text-4xl">
-              برای هر نوع هزینه گروهی
-              <span className="block text-orange-500">یک راه‌حل هوشمند</span>
+              از خرج‌های پراکنده
+              <span className="block text-orange-600">تا یک تسویه روشن</span>
             </h2>
             <ul className="mt-9 space-y-5">
               {useCases.map((item) => (
@@ -533,21 +508,40 @@ export function LandingPage({ onStart }: LandingPageProps) {
                   key={item}
                   className="flex items-center justify-center gap-3 text-base font-bold text-slate-600 lg:justify-start"
                 >
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-orange-500" />
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-orange-600" />
                   {item}
                 </li>
               ))}
             </ul>
           </div>
         </div>
+      </section>
 
-        <div className="high-five-card order-2 lg:order-2">
-          <img
-            src="/landing/high-five.png"
-            alt="دو دست در حال همکاری برای تقسیم هزینه‌ها"
-            className="high-five-image"
-            loading="lazy"
-          />
+      <section className="relative z-10 mx-auto max-w-[1180px] px-5 pb-16 sm:px-8 lg:px-10">
+        <div className="landing-final-cta overflow-hidden rounded-[32px] px-6 py-8 text-center shadow-[0_28px_78px_rgba(0,168,107,0.18)] sm:px-10 sm:py-10 lg:flex lg:items-center lg:justify-between lg:text-right">
+          <div>
+            <p className="text-sm font-black text-white/85">دعوت، ثبت خرج، تسویه</p>
+            <h2 className="mt-3 text-3xl font-black leading-[1.45] text-white sm:text-4xl">
+              اولین حساب‌وکتاب شفاف را شروع کن
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-7 text-white/[0.78] lg:mx-0">
+              اعضا را دعوت کن، خرج‌ها را ثبت کن و بدون رودربایستی تسویه کن.
+            </p>
+          </div>
+
+          <div className="mt-7 flex flex-col items-center justify-center gap-4 sm:flex-row lg:mt-0 lg:justify-end">
+            <AvatarStack compact />
+            <button
+              type="button"
+              onClick={onStart}
+              className="inline-flex h-14 min-w-[190px] items-center justify-center gap-3 rounded-[20px] bg-white px-6 text-base font-extrabold text-emerald-700 shadow-[0_18px_38px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5"
+            >
+              شروع حساب‌وکتاب
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-slate-950">
+                <ArrowLeft className="h-5 w-5" />
+              </span>
+            </button>
+          </div>
         </div>
       </section>
     </main>
