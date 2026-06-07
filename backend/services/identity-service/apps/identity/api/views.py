@@ -56,6 +56,7 @@ class RequestOtpView(APIView):
     @extend_schema(
         tags=["Auth"],
         summary="Request an OTP",
+        request=RequestOtpSerializer,
         responses={200: OpenApiResponse(description="OTP requested")},
     )
     def post(self, request):
@@ -136,6 +137,7 @@ class VerifyOtpView(APIView):
     @extend_schema(
         tags=["Auth"],
         summary="Verify an OTP",
+        request=VerifyOtpSerializer,
         responses={200: OpenApiResponse(description="OTP verified")},
     )
     def post(self, request):
@@ -221,6 +223,7 @@ class RefreshTokenView(APIView):
     @extend_schema(
         tags=["Auth"],
         summary="Refresh access token",
+        request=RefreshTokenSerializer,
         responses={200: OpenApiResponse(description="Tokens refreshed")},
     )
     def post(self, request):
@@ -284,6 +287,7 @@ class LogoutView(APIView):
     @extend_schema(
         tags=["Auth"],
         summary="Logout and revoke refresh token",
+        request=LogoutSerializer,
         responses={200: OpenApiResponse(description="Logged out")},
     )
     def post(self, request):

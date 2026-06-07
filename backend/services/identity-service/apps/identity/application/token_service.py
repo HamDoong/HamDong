@@ -163,7 +163,7 @@ class TokenService:
     def get_jwks(self) -> Dict[str, Any]:
         public_key_obj = serialization.load_pem_public_key(
             self.public_key.encode(),
-            Backend=default_backend(),
+            backend=default_backend(),
         )
         public_numbers = public_key_obj.public_numbers()
 

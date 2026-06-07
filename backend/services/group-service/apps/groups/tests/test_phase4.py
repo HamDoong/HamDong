@@ -13,10 +13,19 @@ from datetime import timedelta
 class FakeUser:
     def __init__(self, sub=None, phone_number="+10000000000", display_name="Test User", role="USER"):
         self.sub = sub or uuid.uuid4()
+        self.id = str(self.sub)
         self.phone_number = phone_number
         self.display_name = display_name
         self.role = role
         self.payload = {"sub": str(self.sub), "phone_number": phone_number, "role": role}
+    
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
 
 
 @pytest.fixture(autouse=True)
