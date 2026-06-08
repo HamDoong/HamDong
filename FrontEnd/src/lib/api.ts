@@ -3,6 +3,24 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const ACCESS_TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  bodyText: string;
+
+  constructor(message: string, status: number, body: unknown, bodyText: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+    this.bodyText = bodyText;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
 export function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
@@ -24,6 +42,47 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
+function parseJsonSafely(text: string) {
+  if (!text) return undefined;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+async function readResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+
+  if (!text) {
+    return undefined as T;
+  }
+
+  return parseJsonSafely(text) as T;
+}
+
+async function throwApiError(path: string, response: Response): Promise<never> {
+  const text = await response.text();
+  const body = parseJsonSafely(text);
+  const message =
+    typeof body === 'object' && body && 'detail' in body
+      ? String((body as { detail?: unknown }).detail)
+      : text || `Request failed with status ${response.status}`;
+
+  console.error('API Error:', {
+    path,
+    status: response.status,
+    body,
+  });
+
+  throw new ApiError(message, response.status, body, text);
+}
+
 async function refreshAccessToken() {
   const refreshToken = getRefreshToken();
 
@@ -31,7 +90,7 @@ async function refreshAccessToken() {
     throw new Error('No refresh token found');
   }
 
-  const tryRefresh = async (body: Record<string, string>) => {
+  async function tryRefresh(body: Record<string, string>) {
     return fetch(`${API_BASE_URL}/auth/token/refresh/`, {
       method: 'POST',
       headers: {
@@ -39,7 +98,7 @@ async function refreshAccessToken() {
       },
       body: JSON.stringify(body),
     });
-  };
+  }
 
   let response = await tryRefresh({ refresh_token: refreshToken });
 
@@ -52,7 +111,7 @@ async function refreshAccessToken() {
     throw new Error('Refresh token failed');
   }
 
-  const data = await response.json();
+  const data = await readResponse<Record<string, string>>(response);
 
   const newAccessToken = data.access_token || data.access;
   const newRefreshToken = data.refresh_token || data.refresh;
@@ -76,54 +135,44 @@ export async function apiRequest<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const { auth = true, skipAuthRefresh = false, ...fetchOptions } = options;
+
   const token = getAccessToken();
+  const headers = new Headers(fetchOptions.headers);
 
-  const headers = new Headers(options.headers);
-
-  if (!headers.has('Content-Type') && options.body) {
+  if (!headers.has('Content-Type') && fetchOptions.body) {
     headers.set('Content-Type', 'application/json');
   }
 
-  if (options.auth !== false && token) {
+  if (auth && token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers,
   });
 
-  if (response.status === 401 && options.auth !== false && !options.skipAuthRefresh) {
+  if (response.status === 401 && auth && !skipAuthRefresh) {
     const newAccessToken = await refreshAccessToken();
 
     headers.set('Authorization', `Bearer ${newAccessToken}`);
 
     const retryResponse = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
+      ...fetchOptions,
       headers,
-      skipAuthRefresh: true,
-    } as RequestInit);
+    });
 
     if (!retryResponse.ok) {
-      const errorText = await retryResponse.text();
-      throw new Error(errorText || `Request failed with status ${retryResponse.status}`);
+      return throwApiError(path, retryResponse);
     }
 
-    if (retryResponse.status === 204) {
-      return undefined as T;
-    }
-
-    return retryResponse.json() as Promise<T>;
+    return readResponse<T>(retryResponse);
   }
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `Request failed with status ${response.status}`);
+    return throwApiError(path, response);
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
+  return readResponse<T>(response);
 }

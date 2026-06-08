@@ -1,7 +1,7 @@
 import { apiRequest } from './api';
 
 export interface CurrentUser {
-  id: number | string;
+  id: string;
   phone_number?: string;
   phone?: string;
   username?: string;
