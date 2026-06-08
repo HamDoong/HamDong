@@ -27,6 +27,7 @@ import {
 
 export interface CreatedGroupPayload {
   name: string;
+  description: string;
   groupType: GroupTypeValue;
   amount: string;
   memberCount: number;
@@ -700,6 +701,7 @@ export function CreateGroupWizard({
   const handleFinish = () => {
     onComplete({
       name: values.name || 'گروه جدید',
+      description: values.description,
       groupType: values.groupType,
       amount: values.amount,
       memberCount: selectedIds.length,

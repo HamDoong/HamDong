@@ -14,7 +14,7 @@ export interface NavItem {
 }
 
 export interface Group {
-  id: number;
+  id: string | number;
   name: string;
   membersLabel: string;
   statusLabel: string;

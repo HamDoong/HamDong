@@ -9,6 +9,7 @@ import {
 } from './pages/CreateGroupWizard';
 import { GroupsPage } from './pages/GroupsPage';
 import { createGroup, getMyGroups, type BackendGroup } from './lib/groupApi';
+import { getCurrentUser } from './lib/userApi';
 
 type AppPage = 'groups' | 'create-group';
 type DashboardGroup = (typeof mockGroups)[number];
@@ -46,24 +47,37 @@ export default function App() {
   const [groupItems, setGroupItems] = useState<DashboardGroup[]>(mockGroups);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [currentUserPhone, setCurrentUserPhone] = useState('کاربر');
+
   useEffect(() => {
     let ignore = false;
 
-    async function loadGroups() {
+    async function loadInitialData() {
       try {
         setLoadingGroups(true);
         setGroupsError(null);
 
-        const backendGroups = await getMyGroups();
+        const [backendGroups, currentUser] = await Promise.all([
+          getMyGroups(),
+          getCurrentUser(),
+        ]);
 
-        if (!ignore) {
-          setGroupItems(backendGroups.map(mapBackendGroupToDashboardGroup));
-        }
+        if (ignore) return;
+
+        setGroupItems(backendGroups.map(mapBackendGroupToDashboardGroup));
+
+        const phone =
+          currentUser.phone_number ||
+          currentUser.phone ||
+          currentUser.username ||
+          'کاربر';
+
+        setCurrentUserPhone(phone);
       } catch (error) {
         console.error(error);
 
         if (!ignore) {
-          setGroupsError('خطا در دریافت گروه‌ها از بک‌اند');
+          setGroupsError('خطا در دریافت اطلاعات از بک‌اند');
         }
       } finally {
         if (!ignore) {
@@ -72,7 +86,7 @@ export default function App() {
       }
     }
 
-    loadGroups();
+    loadInitialData();
 
     return () => {
       ignore = true;
@@ -91,8 +105,9 @@ export default function App() {
   const handleCreateGroupComplete = async (payload: CreatedGroupPayload) => {
     try {
       const backendGroup = await createGroup({
-        name: payload.name || 'گروه جدید',
-        description: '',
+        title: payload.name || 'گروه جدید',
+        description: payload.description || '',
+        group_type: 'GENERAL',
       });
 
       setGroupItems((prev) => [
@@ -103,7 +118,7 @@ export default function App() {
       setPage('groups');
     } catch (error) {
       console.error(error);
-      alert('ایجاد گروه ناموفق بود. لاگ کنسول را بررسی کن.');
+      alert('ایجاد گروه ناموفق بود. Network و Console را بررسی کن.');
     }
   };
   return (
@@ -117,15 +132,17 @@ export default function App() {
         <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" />
 
         <div className="min-w-0">
-          <TopBar onMenuClick={() => setMobileDrawerOpen(true)} />
-
+          <TopBar
+            onMenuClick={() => setMobileDrawerOpen(true)}
+            displayName={currentUserPhone}
+          />
           {page === 'groups' ? (
             <GroupsPage
-              groups={groupItems}
-              loading={loadingGroups}
-              error={groupsError}
-              onCreateGroup={() => setPage('create-group')}
-            />
+            groups={groupItems}
+            loading={loadingGroups}
+            error={groupsError}
+            onCreateGroup={() => setPage('create-group')}
+          />
           ) : (
             <CreateGroupWizard
               onBack={() => setPage('groups')}
@@ -149,10 +166,10 @@ function mapBackendGroupToDashboardGroup(group: BackendGroup): DashboardGroup {
 
   return {
     ...baseGroup,
-    id: Number(group.id),
-    name: group.name,
+    id: group.id,
+    name: group.title,
     membersLabel: `${memberCount.toLocaleString('fa-IR')} عضو • ${
-      group.is_archived ? 'آرشیو شده' : 'فعال'
+      group.status === 'ARCHIVED' ? 'آرشیو شده' : 'فعال'
     }`,
     statusLabel: 'تراز این گروه صفر است',
     amount: '۰ تومان',

@@ -31,9 +31,10 @@ function DesktopSearch() {
 
 interface TopBarProps {
   onMenuClick: () => void;
+  displayName?: string;
 }
 
-export function TopBar({ onMenuClick }: TopBarProps) {
+export function TopBar({ onMenuClick, displayName = 'کاربر' }: TopBarProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-border/90 bg-white/95 backdrop-blur">
       <div className="flex h-[78px] items-center justify-between px-4 sm:h-[86px] sm:px-6 lg:hidden">
@@ -80,7 +81,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             className="flex items-center gap-3 rounded-full px-1 transition hover:bg-slate-50"
           >
             <HeaderAvatar />
-            <span className="text-[17px] font-semibold text-slate-800">علی احمدی</span>
+            <span className="text-[17px] font-semibold text-slate-800">{displayName}</span>
             <ChevronDown className="h-4 w-4 text-slate-500" />
           </button>
 
