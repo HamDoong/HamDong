@@ -9,6 +9,8 @@ type DashboardGroup = (typeof mockGroups)[number];
 
 interface GroupsPageProps {
   groups: DashboardGroup[];
+  loading?: boolean;
+  error?: string | null;
   onCreateGroup: () => void;
 }
 
@@ -23,7 +25,12 @@ function CarouselDots() {
   );
 }
 
-export function GroupsPage({ groups, onCreateGroup }: GroupsPageProps) {
+export function GroupsPage({
+  groups,
+  loading = false,
+  error = null,
+  onCreateGroup,
+}: GroupsPageProps) {
   return (
     <main className="lg:min-h-[calc(100vh-94px)] xl:grid xl:grid-cols-[minmax(0,1fr)_354px]">
       <section className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 xl:px-8">
@@ -48,11 +55,25 @@ export function GroupsPage({ groups, onCreateGroup }: GroupsPageProps) {
             </button>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-3">
-            {groups.map((group) => (
-              <GroupCard key={group.id} group={group} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="rounded-3xl border border-border bg-white p-6 text-center text-muted">
+              در حال دریافت گروه‌ها...
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="rounded-3xl border border-rose-100 bg-rose-50 p-6 text-center text-rose-600">
+              {error}
+            </div>
+          ) : null}
+
+          {!loading ? (
+            <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-3">
+              {groups.map((group) => (
+                <GroupCard key={group.id} group={group} />
+              ))}
+            </div>
+          ) : null}
 
           <CarouselDots />
         </div>

@@ -8,6 +8,7 @@ import {
   type CreatedGroupPayload,
 } from './pages/CreateGroupWizard';
 import { GroupsPage } from './pages/GroupsPage';
+import { createGroup, getMyGroups, type BackendGroup } from './lib/groupApi';
 
 type AppPage = 'groups' | 'create-group';
 type DashboardGroup = (typeof mockGroups)[number];
@@ -18,7 +19,6 @@ function mapCreatedGroupToDashboardGroup(
   const baseGroup = mockGroups[0]!;
   const normalizedAmount = payload.amount.replace(/[^\d-]/g, '');
   const amountValue = Number(normalizedAmount || '0');
-
   const illustration: DashboardGroup['illustration'] =
     payload.groupType === 'travel'
       ? 'trip'
@@ -44,25 +44,39 @@ export default function App() {
   const [page, setPage] = useState<AppPage>('groups');
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [groupItems, setGroupItems] = useState<DashboardGroup[]>(mockGroups);
-
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    let ignore = false;
 
-    const handleChange = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) {
-        setMobileDrawerOpen(false);
+    async function loadGroups() {
+      try {
+        setLoadingGroups(true);
+        setGroupsError(null);
+
+        const backendGroups = await getMyGroups();
+
+        if (!ignore) {
+          setGroupItems(backendGroups.map(mapBackendGroupToDashboardGroup));
+        }
+      } catch (error) {
+        console.error(error);
+
+        if (!ignore) {
+          setGroupsError('خطا در دریافت گروه‌ها از بک‌اند');
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingGroups(false);
+        }
       }
-    };
-
-    handleChange(mediaQuery);
-
-    if (typeof mediaQuery.addEventListener === 'function') {
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
     }
 
-    mediaQuery.addListener(handleChange);
-    return () => mediaQuery.removeListener(handleChange);
+    loadGroups();
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -74,11 +88,24 @@ export default function App() {
     };
   }, [mobileDrawerOpen]);
 
-  const handleCreateGroupComplete = (payload: CreatedGroupPayload) => {
-    setGroupItems((prev) => [mapCreatedGroupToDashboardGroup(payload), ...prev]);
-    setPage('groups');
-  };
+  const handleCreateGroupComplete = async (payload: CreatedGroupPayload) => {
+    try {
+      const backendGroup = await createGroup({
+        name: payload.name || 'گروه جدید',
+        description: '',
+      });
 
+      setGroupItems((prev) => [
+        mapBackendGroupToDashboardGroup(backendGroup),
+        ...prev,
+      ]);
+
+      setPage('groups');
+    } catch (error) {
+      console.error(error);
+      alert('ایجاد گروه ناموفق بود. لاگ کنسول را بررسی کن.');
+    }
+  };
   return (
     <div dir="rtl" className="min-h-screen bg-background text-text">
       <MobileDrawer
@@ -95,6 +122,8 @@ export default function App() {
           {page === 'groups' ? (
             <GroupsPage
               groups={groupItems}
+              loading={loadingGroups}
+              error={groupsError}
               onCreateGroup={() => setPage('create-group')}
             />
           ) : (
@@ -107,4 +136,27 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function mapBackendGroupToDashboardGroup(group: BackendGroup): DashboardGroup {
+  const baseGroup = mockGroups[0]!;
+
+  const memberCount =
+    group.member_count ??
+    group.members_count ??
+    group.members?.length ??
+    1;
+
+  return {
+    ...baseGroup,
+    id: Number(group.id),
+    name: group.name,
+    membersLabel: `${memberCount.toLocaleString('fa-IR')} عضو • ${
+      group.is_archived ? 'آرشیو شده' : 'فعال'
+    }`,
+    statusLabel: 'تراز این گروه صفر است',
+    amount: '۰ تومان',
+    tone: 'positive',
+    illustration: baseGroup.illustration,
+  };
 }
