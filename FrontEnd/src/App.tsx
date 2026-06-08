@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
 import {
+  archiveGroup,
   createGroup,
   extractInviteToken,
   getMyGroups,
@@ -20,9 +21,10 @@ import { ActivitiesPage } from './pages/ActivitiesPage';
 import { GroupDetailPage } from './pages/GroupDetailPage';
 import { GroupsPage } from './pages/GroupsPage';
 import { InviteJoinPage } from './pages/InviteJoinPage';
+import { WalletPage } from './pages/WalletPage';
 import type { Group } from './types';
 
-type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities';
+type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet';
 type DashboardGroup = Group;
 
 function getIllustrationFromBackendGroup(group: BackendGroup): DashboardGroup['illustration'] {
@@ -84,6 +86,16 @@ function setBrowserPath(path: string) {
 
 function getSidebarActivePage(page: AppPage) {
   if (page === 'activities') return 'activities';
+  if (page === 'wallet') return 'wallet';
+  return 'groups';
+}
+
+function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet'> {
+  const hash = window.location.hash.replace('#', '');
+
+  if (hash === 'activities') return 'activities';
+  if (hash === 'wallet') return 'wallet';
+
   return 'groups';
 }
 
@@ -91,7 +103,7 @@ function AppContent() {
   const { notify } = useFeedback();
   const initialInviteToken = useMemo(() => getInviteTokenFromLocation(), []);
 
-  const [page, setPage] = useState<AppPage>(initialInviteToken ? 'invite-join' : 'groups');
+  const [page, setPage] = useState<AppPage>(initialInviteToken ? 'invite-join' : getPageFromHash());
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [groupItems, setGroupItems] = useState<DashboardGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -170,7 +182,7 @@ function AppContent() {
         setPage('invite-join');
         setSelectedGroupId(null);
       } else {
-        setPage('groups');
+        setPage(getPageFromHash());
         setInviteToken('');
       }
     };
@@ -178,6 +190,21 @@ function AppContent() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  const handleDeleteGroup = async (group: Group) => {
+    const groupId = String(group.id);
+
+    try {
+      await archiveGroup(groupId);
+
+      setGroupItems((prev) =>
+        prev.filter((item) => String(item.id) !== groupId),
+      );
+    } catch (error) {
+      console.error(error);
+      setGroupsError('حذف گروه ناموفق بود. دوباره تلاش کن.');
+    }
+  };
 
   const handleSidebarNavigate = (itemId: string) => {
     if (itemId === 'groups') {
@@ -197,10 +224,18 @@ function AppContent() {
       return;
     }
 
+    if (itemId === 'wallet') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('wallet');
+      setBrowserPath('/Dashboard#wallet');
+      return;
+    }
+
     notify({
       type: 'info',
       title: 'این بخش هنوز آماده نشده',
-      description: 'فعلاً صفحه گروه‌ها و فعالیت‌ها برای UI فعال هستند.',
+      description: 'فعلاً صفحه گروه‌ها، فعالیت‌ها و کیف پول برای UI فعال هستند.',
     });
   };
 
@@ -327,10 +362,13 @@ function AppContent() {
               onCreateGroup={() => setPage('create-group')}
               onOpenGroup={handleOpenGroup}
               onOpenInvite={handleOpenInvite}
+              onDeleteGroup={handleDeleteGroup}
             />
           ) : null}
 
           {page === 'activities' ? <ActivitiesPage /> : null}
+
+          {page === 'wallet' ? <WalletPage /> : null}
 
           {page === 'create-group' ? (
             <CreateGroupWizard
