@@ -5,10 +5,8 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
 import {
-  archiveGroup,
   createGroup,
   extractInviteToken,
-  getGroupDetail,
   getMyGroups,
   type BackendGroup,
   type BackendGroupType,
@@ -18,12 +16,13 @@ import {
   CreateGroupWizard,
   type CreatedGroupPayload,
 } from './pages/CreateGroupWizard';
+import { ActivitiesPage } from './pages/ActivitiesPage';
 import { GroupDetailPage } from './pages/GroupDetailPage';
 import { GroupsPage } from './pages/GroupsPage';
 import { InviteJoinPage } from './pages/InviteJoinPage';
 import type { Group } from './types';
 
-type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join';
+type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities';
 type DashboardGroup = Group;
 
 function getIllustrationFromBackendGroup(group: BackendGroup): DashboardGroup['illustration'] {
@@ -83,8 +82,13 @@ function setBrowserPath(path: string) {
   window.history.pushState({}, '', path);
 }
 
+function getSidebarActivePage(page: AppPage) {
+  if (page === 'activities') return 'activities';
+  return 'groups';
+}
+
 function AppContent() {
-  const { notify, confirm } = useFeedback();
+  const { notify } = useFeedback();
   const initialInviteToken = useMemo(() => getInviteTokenFromLocation(), []);
 
   const [page, setPage] = useState<AppPage>(initialInviteToken ? 'invite-join' : 'groups');
@@ -102,17 +106,12 @@ function AppContent() {
       setLoadingGroups(true);
       setGroupsError(null);
 
-      const backendGroups = await getMyGroups();
-      setGroupItems(backendGroups.map(mapBackendGroupToDashboardGroup));
-    } catch (error) {
-      console.error(error);
-      setGroupsError('خطا در دریافت گروه‌ها از بک‌اند');
-    } finally {
-      setLoadingGroups(false);
-    }
+      const [backendGroups, currentUser] = await Promise.all([
+        getMyGroups(),
+        getCurrentUser(),
+      ]);
 
-    try {
-      const currentUser = await getCurrentUser();
+      setGroupItems(backendGroups.map(mapBackendGroupToDashboardGroup));
 
       const phone =
         currentUser.phone_number ||
@@ -122,7 +121,10 @@ function AppContent() {
 
       setCurrentUserPhone(phone);
     } catch (error) {
-      console.warn('Could not load current user profile. Keeping fallback display name.', error);
+      console.error(error);
+      setGroupsError('خطا در دریافت اطلاعات از بک‌اند');
+    } finally {
+      setLoadingGroups(false);
     }
   }
 
@@ -176,6 +178,31 @@ function AppContent() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  const handleSidebarNavigate = (itemId: string) => {
+    if (itemId === 'groups') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('groups');
+      setBrowserPath('/Dashboard#');
+      loadInitialData();
+      return;
+    }
+
+    if (itemId === 'activity') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('activities');
+      setBrowserPath('/Dashboard#activities');
+      return;
+    }
+
+    notify({
+      type: 'info',
+      title: 'این بخش هنوز آماده نشده',
+      description: 'فعلاً صفحه گروه‌ها و فعالیت‌ها برای UI فعال هستند.',
+    });
+  };
 
   const handleCreateGroupComplete = async (payload: CreatedGroupPayload) => {
     try {
@@ -233,62 +260,6 @@ function AppContent() {
     setBrowserPath(`/invites/${encodeURIComponent(token)}`);
   };
 
-  const handleDeleteGroupFromCard = async (group: Group) => {
-    if (group.status === 'ARCHIVED') {
-      notify({
-        type: 'info',
-        title: 'این گروه قبلاً آرشیو شده',
-        description: 'گروه‌های آرشیو شده از لیست فعال‌ها جدا شده‌اند.',
-      });
-      return;
-    }
-
-    const confirmed = await confirm({
-      title: 'حذف گروه از لیست فعال‌ها؟',
-      description:
-        'این عملیات گروه را از لیست گروه‌های فعال حذف می‌کند و به بخش گروه‌های آرشیو شده منتقل می‌کند.',
-      confirmText: 'حذف از لیست',
-      cancelText: 'انصراف',
-      tone: 'danger',
-    });
-
-    if (!confirmed) return;
-
-    try {
-      await archiveGroup(String(group.id));
-
-      try {
-        const refreshedGroup = await getGroupDetail(String(group.id));
-        handleGroupUpdated(refreshedGroup);
-      } catch {
-        setGroupItems((prev) =>
-          prev.map((item) =>
-            String(item.id) === String(group.id)
-              ? {
-                  ...item,
-                  status: 'ARCHIVED',
-                  membersLabel: item.membersLabel.replace('فعال', 'آرشیو شده'),
-                }
-              : item,
-          ),
-        );
-      }
-
-      notify({
-        type: 'success',
-        title: 'گروه حذف شد',
-        description: 'گروه از لیست فعال‌ها حذف شد و در آرشیو قرار گرفت.',
-      });
-    } catch (error) {
-      console.error(error);
-      notify({
-        type: 'error',
-        title: 'حذف گروه ناموفق بود',
-        description: 'Network و Console را بررسی کن.',
-      });
-    }
-  };
-
   const handleBackToGroups = () => {
     setSelectedGroupId(null);
     setInviteToken('');
@@ -331,10 +302,16 @@ function AppContent() {
       <MobileDrawer
         open={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
+        activePage={getSidebarActivePage(page)}
+        onNavigate={handleSidebarNavigate}
       />
 
       <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" />
+        <Sidebar
+          className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90"
+          activePage={getSidebarActivePage(page)}
+          onNavigate={handleSidebarNavigate}
+        />
 
         <div className="min-w-0">
           <TopBar
@@ -350,9 +327,10 @@ function AppContent() {
               onCreateGroup={() => setPage('create-group')}
               onOpenGroup={handleOpenGroup}
               onOpenInvite={handleOpenInvite}
-              onDeleteGroup={handleDeleteGroupFromCard}
             />
           ) : null}
+
+          {page === 'activities' ? <ActivitiesPage /> : null}
 
           {page === 'create-group' ? (
             <CreateGroupWizard

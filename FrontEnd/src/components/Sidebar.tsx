@@ -32,21 +32,26 @@ function SidebarSearch() {
 }
 
 function SidebarItem({
+  id,
   label,
   active,
   icon: Icon,
+  onNavigate,
 }: {
+  id: string;
   label: string;
   active?: boolean;
   icon: LucideIcon;
+  onNavigate?: (itemId: string) => void;
 }) {
   return (
     <button
       type="button"
+      onClick={() => onNavigate?.(id)}
       className={cn(
         'flex h-14 w-full items-center gap-3 rounded-2xl px-4 text-right transition',
         active
-          ? 'bg-emerald-50 text-emerald-600'
+          ? 'bg-emerald-50 text-emerald-600 shadow-[inset_3px_0_0_#10B981]'
           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900',
       )}
     >
@@ -63,13 +68,33 @@ interface SidebarProps {
   className?: string;
   mobile?: boolean;
   onClose?: () => void;
+  activePage?: string;
+  onNavigate?: (itemId: string) => void;
+}
+
+function isItemActive(itemId: string, activePage?: string) {
+  if (itemId === 'activity') {
+    return activePage === 'activities';
+  }
+
+  return itemId === activePage;
 }
 
 export function Sidebar({
   className = '',
   mobile = false,
   onClose,
+  activePage = 'groups',
+  onNavigate,
 }: SidebarProps) {
+  const handleNavigate = (itemId: string) => {
+    onNavigate?.(itemId);
+
+    if (mobile) {
+      onClose?.();
+    }
+  };
+
   return (
     <aside
       className={cn(
@@ -109,9 +134,11 @@ export function Sidebar({
           {primaryNavItems.map((item) => (
             <SidebarItem
               key={item.id}
+              id={item.id}
               label={item.label}
               icon={item.icon}
-              active={item.active}
+              active={isItemActive(item.id, activePage)}
+              onNavigate={handleNavigate}
             />
           ))}
         </nav>
@@ -122,14 +149,16 @@ export function Sidebar({
           {secondaryNavItems.map((item) => (
             <SidebarItem
               key={item.id}
+              id={item.id}
               label={item.label}
               icon={item.icon}
+              onNavigate={handleNavigate}
             />
           ))}
         </nav>
 
         <div className="mt-auto pt-8 text-right text-xs text-slate-400">
-          Hamdong UI v0.2
+          Hamdong UI v0.3
         </div>
       </div>
     </aside>
