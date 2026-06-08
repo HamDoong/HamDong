@@ -114,8 +114,8 @@ const balances = [
 ];
 
 const useCases = [
-  'سفرهای دوستانه و خانوادگی',
   'هم‌خانه‌ای و زندگی مشترک',
+  'سفرهای دوستانه و خانوادگی',
   'رستوران، کافه و خرید گروهی',
   'سفرها و رویدادهای چندپرداختی',
 ];
@@ -431,13 +431,13 @@ export function LandingPage({ onStart }: LandingPageProps) {
         id="home"
         className="relative z-10 mx-auto grid max-w-[1180px] items-center gap-5 px-5 pb-4 pt-4 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-8 lg:px-10 lg:pb-6"
       >
-        <div className="max-w-2xl justify-self-end text-center lg:text-right">
+        <div className="w-full max-w-2xl justify-self-center text-center lg:justify-self-end lg:text-right">
           <div className="hero-eyebrow mx-auto inline-flex items-center gap-2 rounded-full border border-orange-200/70 bg-white/[0.78] px-5 py-2.5 text-sm font-extrabold text-orange-600 shadow-[0_14px_34px_rgba(249,115,22,0.1)] backdrop-blur lg:mx-0">
             <Sparkles className="h-4 w-4" fill="currentColor" />
             <span>مدیریت و تسویه هزینه‌های مشترک، شفاف و خودکار</span>
           </div>
 
-          <h1 className="mt-7 text-[2.65rem] font-black leading-[1.28] text-slate-950 sm:text-5xl lg:text-6xl">
+          <h1 className="hero-title mt-7 text-[2.65rem] font-black leading-[1.28] text-slate-950 sm:text-5xl lg:text-6xl">
             همدنگ،
             <span className="hero-title-accent block">
               <span className="hero-title-accent-main">تسویه شفاف</span>
@@ -492,24 +492,24 @@ export function LandingPage({ onStart }: LandingPageProps) {
         id="features"
         className="feature-showcase-section relative z-10 mx-auto max-w-[1180px] px-5 pb-16 pt-10 sm:px-8 lg:px-10"
       >
-        <div className="balance-cluster order-1 lg:order-2">
+        <div className="balance-cluster order-2 lg:order-2">
           <BalancePanel />
         </div>
 
-        <div className="feature-copy order-2 lg:order-1">
-          <div className="text-center lg:text-right">
+        <div className="feature-copy order-1 lg:order-1">
+          <div className="text-right">
             <h2 className="text-3xl font-black leading-[1.55] text-slate-950 sm:text-4xl">
               از خرج‌های پراکنده
               <span className="block text-orange-600">تا یک تسویه روشن</span>
             </h2>
-            <ul className="mt-9 space-y-5">
+            <ul className="mr-0 ml-auto mt-9 flex w-full max-w-[360px] flex-col items-stretch gap-5 lg:mx-0">
               {useCases.map((item) => (
                 <li
                   key={item}
-                  className="flex items-center justify-center gap-3 text-base font-bold text-slate-600 lg:justify-start"
+                  className="flex w-full items-center justify-start gap-3 text-right text-base font-bold text-slate-600"
                 >
                   <CheckCircle2 className="h-5 w-5 shrink-0 text-orange-600" />
-                  {item}
+                  <span className="block flex-1 text-right">{item}</span>
                 </li>
               ))}
             </ul>
