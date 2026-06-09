@@ -95,11 +95,42 @@ export async function listGroupExpenses(
   groupId: string,
   filters: ListGroupExpensesFilters = {},
 ) {
-  const data = await apiRequest<
-    BackendExpense[] | { results?: BackendExpense[]; data?: BackendExpense[]; items?: BackendExpense[] }
-  >(`/groups/${groupId}/expenses/${buildQuery(filters)}`);
+  const normalizedFilters = { ...filters };
 
-  return unwrapList(data);
+  // Some backend versions reject pagination query params for this endpoint.
+  // Keep date/user filters, but do not force page_size unless the caller really needs it.
+  if (normalizedFilters.page_size === undefined) {
+    delete normalizedFilters.page_size;
+  }
+
+  const path = `/groups/${groupId}/expenses/${buildQuery(normalizedFilters)}`;
+
+  try {
+    const data = await apiRequest<
+      BackendExpense[] | { results?: BackendExpense[]; data?: BackendExpense[]; items?: BackendExpense[] }
+    >(path);
+
+    return unwrapList(data);
+  } catch (error) {
+    const hasQuery = buildQuery(normalizedFilters).length > 0;
+
+    // Fallback for strict/older expense-service builds: retry without query params.
+    if (hasQuery) {
+      try {
+        const data = await apiRequest<
+          BackendExpense[] | { results?: BackendExpense[]; data?: BackendExpense[]; items?: BackendExpense[] }
+        >(`/groups/${groupId}/expenses/`);
+
+        return unwrapList(data);
+      } catch (fallbackError) {
+        console.warn('Expense list request failed without query params too:', fallbackError);
+        return [];
+      }
+    }
+
+    console.warn('Expense list request failed and was ignored for this group:', error);
+    return [];
+  }
 }
 
 export async function createGroupExpense(groupId: string, input: CreateExpenseInput) {

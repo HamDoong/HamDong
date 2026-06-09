@@ -1,24 +1,19 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
   Edit3,
   Eye,
-  Filter,
-  Grid2X2,
   Loader2,
   Plus,
   RefreshCw,
   Search,
-  SlidersHorizontal,
   Trash2,
   TrendingDown,
   TrendingUp,
   User,
   Users,
-  WalletCards,
   X,
 } from 'lucide-react';
 import {
@@ -153,6 +148,34 @@ function getParticipantName(participant?: ExpenseParticipant) {
 
 function getGroupTitle(group?: BackendGroup) {
   return group?.title || 'گروه بدون عنوان';
+}
+
+function isActiveGroup(group: BackendGroup) {
+  return String(group.status || 'ACTIVE').toUpperCase() !== 'ARCHIVED';
+}
+
+function normalizeText(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function matchesGroupSelection(group: BackendGroup, selection: string) {
+  if (selection === 'all') return true;
+
+  const normalizedSelection = normalizeText(selection);
+
+  return (
+    String(group.id) === selection ||
+    normalizeText(group.title || '') === normalizedSelection
+  );
+}
+
+function getSelectedGroupValue(group: BackendGroup) {
+  return String(group.id);
+}
+
+function getApiErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return 'Unknown API error';
 }
 
 function getExpenseKind(expense: BackendExpense, currentUserId?: string | null) {
@@ -299,6 +322,7 @@ export function ActivitiesPage() {
   async function loadExpenses() {
     if (groups.length === 0) {
       setExpenses([]);
+      setError(null);
       return;
     }
 
@@ -306,15 +330,21 @@ export function ActivitiesPage() {
       setLoadingExpenses(true);
       setError(null);
 
+      const activeGroups = groups.filter(isActiveGroup);
       const targetGroups =
         selectedGroupId === 'all'
-          ? groups
-          : groups.filter((group) => group.id === selectedGroupId);
+          ? activeGroups
+          : groups.filter((group) => matchesGroupSelection(group, selectedGroupId));
 
-      const responses = await Promise.all(
+      if (targetGroups.length === 0) {
+        setExpenses([]);
+        setError(null);
+        return;
+      }
+
+      const responses = await Promise.allSettled(
         targetGroups.map(async (group) => {
           const groupExpenses = await listGroupExpenses(group.id, {
-            page_size: 100,
             from_date: dateInputToIso(fromDate),
             to_date: dateInputToIso(toDate),
           });
@@ -326,8 +356,31 @@ export function ActivitiesPage() {
         }),
       );
 
+      const successfulResponses = responses
+        .filter((response): response is PromiseFulfilledResult<UiExpense[]> => response.status === 'fulfilled')
+        .map((response) => response.value);
+
+      const failedResponses = responses.filter(
+        (response): response is PromiseRejectedResult => response.status === 'rejected',
+      );
+
+      if (failedResponses.length > 0) {
+        console.warn(
+          'Some group expense requests failed and were skipped:',
+          failedResponses.map((response) => getApiErrorMessage(response.reason)),
+        );
+      }
+
+      if (successfulResponses.length === 0 && failedResponses.length > 0) {
+        // Some group expense endpoints can return 400/403 depending on membership or archived state.
+        // Do not break the page; show an empty state instead of a red blocking error.
+        setExpenses([]);
+        setError(null);
+        return;
+      }
+
       setExpenses(
-        responses
+        successfulResponses
           .flat()
           .sort((a, b) => {
             const dateA = new Date(a.expense_date || a.created_at || 0).getTime();
@@ -410,40 +463,7 @@ export function ActivitiesPage() {
     });
   }, [currentUserId, expenses, searchTerm, selectedType]);
 
-  const summary = useMemo(() => {
-    let received = 0;
-    let paid = 0;
-    let settled = 0;
-
-    expenses.forEach((expense) => {
-      const total = getExpenseTotal(expense);
-      const kind = getExpenseKind(expense, currentUserId);
-
-      if (kind === 'paid') {
-        paid += total;
-      } else {
-        const myShare = expense.participants?.find(
-          (participant) => participant.user_id === currentUserId,
-        )?.total_share_minor;
-        received += myShare ?? total;
-      }
-
-      const status = (expense.status || '').toLowerCase();
-      if (status.includes('settled') || status.includes('closed')) {
-        settled += total;
-      }
-    });
-
-    return {
-      received,
-      paid,
-      settled,
-      net: received - paid,
-    };
-  }, [currentUserId, expenses]);
-
   const groupedExpenses = useMemo(() => groupExpensesByDate(filteredExpenses), [filteredExpenses]);
-  const activeGroup = groups.find((group) => group.id === selectedGroupId);
 
   function resetFilters() {
     setSelectedGroupId('all');
@@ -454,7 +474,9 @@ export function ActivitiesPage() {
   }
 
   function openCreateModal() {
-    const initialGroupId = selectedGroupId === 'all' ? groups[0]?.id || '' : selectedGroupId;
+    const firstActiveGroupId = groups.find(isActiveGroup)?.id || groups[0]?.id || '';
+    const selectedGroup = groups.find((group) => matchesGroupSelection(group, selectedGroupId));
+    const initialGroupId = selectedGroupId === 'all' ? String(firstActiveGroupId) : String(selectedGroup?.id || selectedGroupId);
 
     setModalMode('create');
     setEditingExpenseId(null);
@@ -661,10 +683,28 @@ export function ActivitiesPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
           <section className="space-y-6">
-            <div className="rounded-3xl border border-border bg-white p-4 shadow-soft">
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+            <div className="rounded-3xl border border-border bg-white p-5 shadow-soft">
+              <div className="mb-5 flex flex-col gap-2 text-right sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-extrabold text-text">فیلتر فعالیت‌ها</h2>
+                  <p className="mt-1 text-sm leading-6 text-muted">
+                    جستجو و فیلترها همین‌جا بالای لیست هستند تا صفحه خلوت‌تر بماند.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  پاک کردن فیلترها
+                </button>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(180px,0.9fr)_160px_160px]">
                 <div className="relative">
                   <Search className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                   <input
@@ -676,14 +716,40 @@ export function ActivitiesPage() {
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  پاک کردن فیلترها
-                </button>
+                <div className="relative">
+                  <Users className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+                  <ChevronDown className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+                  <select
+                    value={selectedGroupId}
+                    onChange={(event) => setSelectedGroupId(event.target.value)}
+                    className="h-12 w-full appearance-none rounded-2xl border border-border bg-white px-11 text-sm font-semibold text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                  >
+                    <option value="all">همه گروه‌ها</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={getSelectedGroupValue(group)}>{group.title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(event) => setFromDate(event.target.value)}
+                    className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    title="از تاریخ"
+                  />
+                </div>
+
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(event) => setToDate(event.target.value)}
+                    className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    title="تا تاریخ"
+                  />
+                </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -707,24 +773,6 @@ export function ActivitiesPage() {
                     {label}
                   </button>
                 ))}
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-emerald-100 bg-emerald-50/50 p-5 text-right shadow-soft">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-600">
-                  <CheckCircle2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-emerald-800">
-                    نمایش {toPersianNumber(filteredExpenses.length)} فعالیت
-                  </h2>
-                  <p className="mt-1 text-xs leading-6 text-emerald-700/80">
-                    {selectedGroupId === 'all'
-                      ? 'فعالیت‌های همه گروه‌ها نمایش داده می‌شود.'
-                      : `فعالیت‌های گروه ${getGroupTitle(activeGroup)} نمایش داده می‌شود.`}
-                  </p>
-                </div>
               </div>
             </div>
 
@@ -839,111 +887,6 @@ export function ActivitiesPage() {
             ) : null}
           </section>
 
-          <aside className="space-y-6">
-            <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-              <div className="mb-5 flex items-center justify-between">
-                <div className="text-right">
-                  <h2 className="text-xl font-extrabold text-text">فیلترها</h2>
-                  <p className="mt-1 text-sm text-muted">داده‌ها از expense-service خوانده می‌شود.</p>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                  <SlidersHorizontal className="h-5 w-5" />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-text">گروه</label>
-                  <div className="relative">
-                    <Users className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-                    <ChevronDown className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-                    <select
-                      value={selectedGroupId}
-                      onChange={(event) => setSelectedGroupId(event.target.value)}
-                      className="h-12 w-full appearance-none rounded-2xl border border-border bg-white px-11 text-sm font-semibold text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                    >
-                      <option value="all">همه گروه‌ها</option>
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>{group.title}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-text">از تاریخ</label>
-                    <input
-                      type="date"
-                      value={fromDate}
-                      onChange={(event) => setFromDate(event.target.value)}
-                      className="h-12 w-full rounded-2xl border border-border bg-white px-3 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-text">تا تاریخ</label>
-                    <input
-                      type="date"
-                      value={toDate}
-                      onChange={(event) => setToDate(event.target.value)}
-                      className="h-12 w-full rounded-2xl border border-border bg-white px-3 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={loadExpenses}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.18)] transition hover:-translate-y-0.5"
-                >
-                  <Filter className="h-4.5 w-4.5" />
-                  اعمال فیلتر
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-xl font-extrabold text-text">خلاصه فعالیت‌ها</h2>
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                  <Grid2X2 className="h-5 w-5" />
-                </div>
-              </div>
-
-              <div className="space-y-4 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">دریافت‌ها</span>
-                  <span className="font-extrabold text-emerald-600">{formatSignedMoney(summary.received)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">پرداخت‌ها</span>
-                  <span className="font-extrabold text-rose-500">-{formatMoney(summary.paid)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">تسویه‌ها</span>
-                  <span className="font-extrabold text-sky-600">{formatMoney(summary.settled)}</span>
-                </div>
-                <div className="border-t border-border pt-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-text">خالص جریان</span>
-                    <span className={summary.net >= 0 ? 'font-extrabold text-emerald-600' : 'font-extrabold text-rose-500'}>
-                      {formatSignedMoney(summary.net)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-emerald-100 bg-emerald-50/50 p-6 text-right shadow-soft">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-600">
-                <WalletCards className="h-5 w-5" />
-              </div>
-              <h2 className="text-lg font-extrabold text-text">Expense API متصل شد</h2>
-              <p className="mt-2 text-sm leading-7 text-muted">
-                این صفحه از endpointهای لیست، ایجاد، جزئیات، ویرایش و حذف هزینه استفاده می‌کند.
-              </p>
-            </div>
-          </aside>
         </div>
       </div>
 
@@ -988,7 +931,7 @@ export function ActivitiesPage() {
                   >
                     <option value="">انتخاب گروه</option>
                     {groups.map((group) => (
-                      <option key={group.id} value={group.id}>{group.title}</option>
+                      <option key={group.id} value={getSelectedGroupValue(group)}>{group.title}</option>
                     ))}
                   </select>
                 </div>
