@@ -445,7 +445,7 @@ services:
   notification-consumer:
     build: ./Backend/services/notification-service
     env_file: ./.env
-    command: ["python", "manage.py", "consume_notification_events"]
+    command: ["python", "manage.py", "consume_identity_events"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
@@ -493,7 +493,7 @@ services:
   notification-reminder-consumer:
     build: ./Backend/services/notification-service
     env_file: ./.env
-    command: ["python", "manage.py", "consume_notification_events"]
+    command: ["python", "manage.py", "consume_reminder_events"]
     environment:
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}

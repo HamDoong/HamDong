@@ -3,6 +3,10 @@ from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated
+
+from apps.notifications.infrastructure.jwt_authentication import JWTAuthentication
 
 from apps.notifications.api.serializers import (
     NotificationMessageSerializer,
@@ -22,6 +26,11 @@ from apps.notifications.infrastructure.providers.base import (
 def _is_local_debug() -> bool:
     return bool(settings.DEBUG or settings.APP_ENV == "local")
 
+def _error_response(code: str, message: str, http_status: int) -> Response:
+    return Response(
+        {"error": {"code": code, "message": message}},
+        status=http_status,
+    )
 
 class HealthView(APIView):
     authentication_classes = []
@@ -104,9 +113,21 @@ class TestSmsView(APIView):
         )
 
 
-class MessagesView(APIView):
-    authentication_classes = []
-    permission_classes = []
+class AuthenticatedNotificationAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def handle_exception(self, exc):
+        if isinstance(exc, (AuthenticationFailed, NotAuthenticated)):
+            return _error_response(
+                "NOT_AUTHENTICATED",
+                "Authentication credentials were not provided.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+        return super().handle_exception(exc)
+
+
+class MessagesView(AuthenticatedNotificationAPIView):
 
     @extend_schema(
         tags=["Notifications"],

@@ -26,7 +26,20 @@ class FakePublisher:
     def __init__(self):
         self.events = []
 
-    def publish(self, event):
+    def publish_event(self, event):
+        self.events.append(event)
+        return True
+
+    def publish(self, *args):
+        if len(args) == 1:
+            event = args[0]
+        else:
+            event_type, data, routing_key = args
+            event = {
+                "event_type": event_type,
+                "data": data,
+                "routing_key": routing_key,
+            }
         self.events.append(event)
         return True
 
@@ -236,7 +249,7 @@ def test_create_expense_with_payer_not_in_group_should_fail(api_client, expense_
     )
 
     assert response.status_code == 400
-    assert response.data["error"]["code"] == "INVALID_PAYER"
+    assert response.data["error"]["code"] == "PAYER_NOT_GROUP_MEMBER"
 
 
 def test_create_expense_with_participant_not_in_group_should_fail(api_client, expense_context):
@@ -250,7 +263,7 @@ def test_create_expense_with_participant_not_in_group_should_fail(api_client, ex
     )
 
     assert response.status_code == 400
-    assert response.data["error"]["code"] == "INVALID_PARTICIPANT"
+    assert response.data["error"]["code"] == "PARTICIPANT_NOT_GROUP_MEMBER"
 
 
 def test_sum_participant_total_shares_equals_expense_total_amount(expense_context):
@@ -282,7 +295,7 @@ def test_expense_detail_only_for_active_member(api_client, expense_context):
     denied = authenticate(APIClient(), uuid4()).get(f"/api/v1/expenses/{expense.id}/")
 
     assert allowed.status_code == 200
-    assert allowed.data["id"] == expense.id
+    assert allowed.data["id"] == str(expense.id)
     assert denied.status_code == 403
 
 
@@ -320,7 +333,8 @@ def test_delete_expense_by_creator(api_client, expense_context):
         f"/api/v1/expenses/{expense.id}/"
     )
 
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.data["status"] == Expense.STATUS_DELETED
     assert Expense.objects.get(id=expense.id).status == Expense.STATUS_DELETED
 
 
