@@ -28,6 +28,29 @@ import {
   type BackendExpense,
 } from '../lib/expenseApi';
 import {
+  activateSettlementPlan,
+  cancelSettlement,
+  cancelSettlementPlan,
+  confirmPlanItem,
+  confirmSettlement,
+  createGroupSettlement,
+  generateSettlementPlan,
+  getGroupBalances,
+  getGroupDebts,
+  getMyGroupBalance,
+  getSettlementPlan,
+  listGroupSettlements,
+  rejectPlanItem,
+  rejectSettlement,
+  reportPlanItemPaid,
+  type BalanceItem,
+  type DebtItem,
+  type MyBalanceResponse,
+  type SettlementItem,
+  type SettlementPlan,
+  type SettlementPlanItem,
+} from '../lib/settlementApi';
+import {
   archiveGroup,
   createGroupInvite,
   getGroupDetail,
@@ -103,6 +126,29 @@ function formatMoney(minor = 0) {
   return `${absValue.toLocaleString('fa-IR')} تومان`;
 }
 
+function formatSignedMoney(minor = 0) {
+  if (minor > 0) return `+${formatMoney(minor)}`;
+  if (minor < 0) return `-${formatMoney(minor)}`;
+  return formatMoney(0);
+}
+
+function getSettlementStatusLabel(status?: string) {
+  if (!status) return 'نامشخص';
+  if (status === 'PENDING') return 'در انتظار';
+  if (status === 'REPORTED') return 'گزارش پرداخت';
+  if (status === 'CONFIRMED') return 'تأیید شده';
+  if (status === 'REJECTED') return 'رد شده';
+  if (status === 'CANCELLED') return 'لغو شده';
+  if (status === 'ACTIVE') return 'فعال';
+  if (status === 'DRAFT') return 'پیش‌نویس';
+  if (status === 'COMPLETED') return 'تکمیل شده';
+  return status;
+}
+
+function isOpenSettlementStatus(status?: string) {
+  return !status || ['PENDING', 'REPORTED', 'ACTIVE', 'DRAFT'].includes(status);
+}
+
 function parseAmountToMinor(value: string) {
   const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
   const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
@@ -152,6 +198,19 @@ function getCurrentUserId(user: CurrentUser | null) {
 function getUserDisplayFromId(userId: string, members: BackendGroupMember[]) {
   const member = members.find((item) => getMemberUserId(item) === userId);
   return member ? getMemberName(member) : 'عضو گروه';
+}
+
+function getBalanceDisplayName(balance: BalanceItem, members: BackendGroupMember[]) {
+  return balance.display_name || balance.phone_number || getUserDisplayFromId(balance.user_id, members);
+}
+
+function getDebtPartyName(userId: string, members: BackendGroupMember[]) {
+  return getUserDisplayFromId(userId, members);
+}
+
+function getPlanPartyName(item: SettlementPlanItem, type: 'payer' | 'receiver', members: BackendGroupMember[]) {
+  if (type === 'payer') return item.payer_display_name || getUserDisplayFromId(item.payer_user_id, members);
+  return item.receiver_display_name || getUserDisplayFromId(item.receiver_user_id, members);
 }
 
 function buildExpenseStats(expenses: BackendExpense[], members: BackendGroupMember[]) {
@@ -213,6 +272,11 @@ export function GroupDetailPage({
   const [group, setGroup] = useState<BackendGroup | null>(null);
   const [members, setMembers] = useState<BackendGroupMember[]>([]);
   const [expenses, setExpenses] = useState<BackendExpense[]>([]);
+  const [balances, setBalances] = useState<BalanceItem[]>([]);
+  const [myBalance, setMyBalance] = useState<MyBalanceResponse | null>(null);
+  const [debts, setDebts] = useState<DebtItem[]>([]);
+  const [settlementPlan, setSettlementPlan] = useState<SettlementPlan | null>(null);
+  const [settlements, setSettlements] = useState<SettlementItem[]>([]);
   const [invite, setInvite] = useState<CreatedInvite | null>(null);
 
   const [title, setTitle] = useState('');
@@ -224,12 +288,17 @@ export function GroupDetailPage({
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expensePayerId, setExpensePayerId] = useState('');
   const [expenseParticipantIds, setExpenseParticipantIds] = useState<string[]>([]);
+  const [manualReceiverId, setManualReceiverId] = useState('');
+  const [manualAmount, setManualAmount] = useState('');
+  const [manualDescription, setManualDescription] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
   const [expensesLoading, setExpensesLoading] = useState(true);
+  const [settlementLoading, setSettlementLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expenseSaving, setExpenseSaving] = useState(false);
+  const [settlementSaving, setSettlementSaving] = useState(false);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -247,6 +316,9 @@ export function GroupDetailPage({
   const moneyStats = useMemo(() => buildExpenseStats(expenses, members), [expenses, members]);
   const activeExpenses = expenses.filter((expense) => expense.status !== 'DELETED' && expense.status !== 'CANCELLED');
   const totalExpenseMinor = activeExpenses.reduce((sum, expense) => sum + getExpenseTotal(expense), 0);
+  const openDebts = debts.filter((debt) => isOpenSettlementStatus(debt.status) && (debt.amount_minor || 0) > 0);
+  const currentUserDebt = openDebts.find((debt) => debt.debtor_user_id === currentUserId);
+  const openPlanItems = settlementPlan?.items?.filter((item) => isOpenSettlementStatus(item.status)) || [];
 
   async function loadGroup() {
     try {
@@ -311,10 +383,40 @@ export function GroupDetailPage({
     }
   }
 
+  async function loadSettlementData() {
+    try {
+      setSettlementLoading(true);
+
+      const [balancesResult, myBalanceResult, debtsResult, planResult, settlementsResult] = await Promise.allSettled([
+        getGroupBalances(groupId),
+        getMyGroupBalance(groupId),
+        getGroupDebts(groupId),
+        getSettlementPlan(groupId),
+        listGroupSettlements(groupId),
+      ]);
+
+      if (balancesResult.status === 'fulfilled') setBalances(balancesResult.value.balances || []);
+      if (myBalanceResult.status === 'fulfilled') setMyBalance(myBalanceResult.value);
+      if (debtsResult.status === 'fulfilled') setDebts(debtsResult.value.debts || []);
+      if (planResult.status === 'fulfilled') setSettlementPlan(planResult.value);
+      if (settlementsResult.status === 'fulfilled') setSettlements(settlementsResult.value || []);
+    } catch (err) {
+      console.error(err);
+      notify({
+        type: 'error',
+        title: 'دریافت تسویه‌ها ناموفق بود',
+        description: getBackendMessage(err) || 'Network و Console را بررسی کن.',
+      });
+    } finally {
+      setSettlementLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadGroup();
     loadMembers();
     loadExpenses();
+    loadSettlementData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId]);
 
@@ -579,12 +681,129 @@ export function GroupDetailPage({
     }
   }
 
+  async function handleCreateManualSettlement(receiverUserId?: string, amountMinor?: number) {
+    const targetReceiverId = receiverUserId || manualReceiverId;
+    const targetAmountMinor = amountMinor ?? parseAmountToMinor(manualAmount);
+
+    if (!targetReceiverId) {
+      notify({ type: 'error', title: 'دریافت‌کننده مشخص نیست', description: 'یک عضو را برای تسویه انتخاب کن.' });
+      return;
+    }
+
+    if (!targetAmountMinor || targetAmountMinor <= 0) {
+      notify({ type: 'error', title: 'مبلغ تسویه معتبر نیست', description: 'مبلغ را به عدد وارد کن.' });
+      return;
+    }
+
+    try {
+      setSettlementSaving(true);
+      await createGroupSettlement(groupId, {
+        receiver_user_id: targetReceiverId,
+        amount_minor: targetAmountMinor,
+        currency: 'IRR',
+        description: manualDescription || 'تسویه دستی از فرانت همدنگ',
+      });
+      setManualAmount('');
+      setManualDescription('');
+      await loadSettlementData();
+      notify({ type: 'success', title: 'تسویه ثبت شد', description: 'در انتظار تأیید دریافت‌کننده قرار گرفت.' });
+    } catch (err) {
+      console.error(err);
+      notify({ type: 'error', title: 'ثبت تسویه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+    } finally {
+      setSettlementSaving(false);
+    }
+  }
+
   function handlePayClick(stat: MemberMoneyStat) {
+    const backendDebt = currentUserDebt;
+    if (backendDebt) {
+      handleCreateManualSettlement(backendDebt.creditor_user_id, backendDebt.amount_minor);
+      return;
+    }
+
     notify({
       type: 'info',
-      title: 'پرداخت هنوز وصل نشده',
-      description: `${formatMoney(Math.abs(stat.netMinor))} بدهی برای پرداخت آماده است. بعد از آماده شدن بک‌اند پرداخت، همین دکمه را وصل می‌کنیم.`,
+      title: 'بدهی قابل پرداخت پیدا نشد',
+      description: `${formatMoney(Math.abs(stat.netMinor))} بدهی در محاسبه فرانت دیده شد، اما debt رسمی از settlement-service پیدا نشد.`,
     });
+  }
+
+  async function handleGenerateSettlementPlan() {
+    try {
+      setSettlementSaving(true);
+      const plan = await generateSettlementPlan(groupId);
+      setSettlementPlan(plan);
+      await loadSettlementData();
+      notify({ type: 'success', title: 'برنامه تسویه ساخته شد', description: 'حداقل انتقال‌های لازم برای تسویه گروه محاسبه شد.' });
+    } catch (err) {
+      console.error(err);
+      notify({ type: 'error', title: 'ساخت برنامه تسویه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+    } finally {
+      setSettlementSaving(false);
+    }
+  }
+
+  async function handleActivatePlan() {
+    if (!settlementPlan?.id) return;
+    try {
+      setSettlementSaving(true);
+      await activateSettlementPlan(settlementPlan.id);
+      await loadSettlementData();
+      notify({ type: 'success', title: 'برنامه فعال شد', description: 'اعضا می‌توانند پرداخت آیتم‌های برنامه را گزارش کنند.' });
+    } catch (err) {
+      console.error(err);
+      notify({ type: 'error', title: 'فعال‌سازی برنامه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+    } finally {
+      setSettlementSaving(false);
+    }
+  }
+
+  async function handleCancelPlan() {
+    if (!settlementPlan?.id) return;
+    try {
+      setSettlementSaving(true);
+      await cancelSettlementPlan(settlementPlan.id);
+      await loadSettlementData();
+      notify({ type: 'success', title: 'برنامه لغو شد', description: 'برنامه تسویه دیگر فعال نیست.' });
+    } catch (err) {
+      console.error(err);
+      notify({ type: 'error', title: 'لغو برنامه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+    } finally {
+      setSettlementSaving(false);
+    }
+  }
+
+  async function handlePlanItemAction(item: SettlementPlanItem, action: 'paid' | 'confirm' | 'reject') {
+    try {
+      setSettlementSaving(true);
+      if (action === 'paid') await reportPlanItemPaid(item.id);
+      if (action === 'confirm') await confirmPlanItem(item.id);
+      if (action === 'reject') await rejectPlanItem(item.id);
+      await loadSettlementData();
+      notify({ type: 'success', title: 'وضعیت آیتم بروزرسانی شد', description: 'اطلاعات تسویه دوباره دریافت شد.' });
+    } catch (err) {
+      console.error(err);
+      notify({ type: 'error', title: 'بروزرسانی آیتم ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+    } finally {
+      setSettlementSaving(false);
+    }
+  }
+
+  async function handleSettlementAction(settlement: SettlementItem, action: 'confirm' | 'reject' | 'cancel') {
+    try {
+      setSettlementSaving(true);
+      if (action === 'confirm') await confirmSettlement(settlement.id);
+      if (action === 'reject') await rejectSettlement(settlement.id);
+      if (action === 'cancel') await cancelSettlement(settlement.id);
+      await loadSettlementData();
+      notify({ type: 'success', title: 'تسویه بروزرسانی شد', description: 'لیست تسویه‌های گروه دوباره دریافت شد.' });
+    } catch (err) {
+      console.error(err);
+      notify({ type: 'error', title: 'بروزرسانی تسویه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+    } finally {
+      setSettlementSaving(false);
+    }
   }
 
   async function handleCreateInvite() {
@@ -661,7 +880,7 @@ export function GroupDetailPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => { loadGroup(); loadMembers(); loadExpenses(); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+            <button type="button" onClick={() => { loadGroup(); loadMembers(); loadExpenses(); loadSettlementData(); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
               <RefreshCw className="h-4 w-4" /> بروزرسانی
             </button>
 
@@ -779,6 +998,213 @@ export function GroupDetailPage({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
+              <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-right">
+                  <h2 className="text-2xl font-bold text-text">تسویه حساب گروه</h2>
+                  <p className="mt-1 text-sm text-muted">بالانس واقعی، بدهی‌ها و برنامه تسویه از settlement-service دریافت می‌شود.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateSettlementPlan}
+                  disabled={settlementSaving}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <HandCoins className="h-4 w-4" />
+                  ساخت برنامه تسویه
+                </button>
+              </div>
+
+              {settlementLoading ? (
+                <div className="rounded-2xl border border-border bg-slate-50 p-5 text-center text-sm text-muted">در حال دریافت اطلاعات تسویه...</div>
+              ) : null}
+
+              {!settlementLoading ? (
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-right">
+                    <div className="text-sm text-muted">وضعیت شما</div>
+                    <div className={["mt-2 text-xl font-extrabold", (myBalance?.net_balance_minor || 0) < 0 ? 'text-rose-600' : (myBalance?.net_balance_minor || 0) > 0 ? 'text-emerald-700' : 'text-text'].join(' ')}>
+                      {formatSignedMoney(myBalance?.net_balance_minor || 0)}
+                    </div>
+                    <div className="mt-1 text-xs text-muted">{getSettlementStatusLabel(myBalance?.status)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-white p-4 text-right">
+                    <div className="text-sm text-muted">بدهی‌های باز</div>
+                    <div className="mt-2 text-xl font-extrabold text-text">{openDebts.length.toLocaleString('fa-IR')} مورد</div>
+                    <div className="mt-1 text-xs text-muted">جمع: {formatMoney(openDebts.reduce((sum, debt) => sum + (debt.amount_minor || 0), 0))}</div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-white p-4 text-right">
+                    <div className="text-sm text-muted">برنامه تسویه</div>
+                    <div className="mt-2 text-xl font-extrabold text-text">{getSettlementStatusLabel(settlementPlan?.status)}</div>
+                    <div className="mt-1 text-xs text-muted">{(settlementPlan?.items?.length || 0).toLocaleString('fa-IR')} انتقال پیشنهادی</div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                <div className="rounded-2xl border border-border bg-white p-4">
+                  <div className="mb-3 text-right">
+                    <h3 className="text-lg font-bold text-text">بدهی‌های گروه</h3>
+                    <p className="mt-1 text-xs text-muted">چه کسی باید به چه کسی پرداخت کند.</p>
+                  </div>
+                  {openDebts.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted">بدهی بازی وجود ندارد.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {openDebts.map((debt) => {
+                        const isMine = debt.debtor_user_id === currentUserId;
+                        return (
+                          <div key={debt.id} className="rounded-2xl border border-border bg-slate-50 p-3 text-right">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-bold text-text">
+                                  {getDebtPartyName(debt.debtor_user_id, members)} ← {getDebtPartyName(debt.creditor_user_id, members)}
+                                </div>
+                                <div className="mt-1 text-xs text-muted">{getSettlementStatusLabel(debt.status)}</div>
+                              </div>
+                              <div className="text-left font-extrabold text-rose-600">{formatMoney(debt.amount_minor)}</div>
+                            </div>
+                            {isMine ? (
+                              <button
+                                type="button"
+                                onClick={() => handleCreateManualSettlement(debt.creditor_user_id, debt.amount_minor)}
+                                disabled={settlementSaving}
+                                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                              >
+                                <HandCoins className="h-4 w-4" />
+                                پرداخت این بدهی
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-white p-4">
+                  <div className="mb-3 text-right">
+                    <h3 className="text-lg font-bold text-text">ثبت تسویه دستی</h3>
+                    <p className="mt-1 text-xs text-muted">وقتی خارج از برنامه تسویه پرداخت کردی، اینجا ثبت کن.</p>
+                  </div>
+                  <div className="space-y-3">
+                    <select
+                      value={manualReceiverId}
+                      onChange={(event) => setManualReceiverId(event.target.value)}
+                      className="h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    >
+                      <option value="">دریافت‌کننده را انتخاب کن</option>
+                      {members.filter((member) => getMemberUserId(member) !== currentUserId).map((member) => {
+                        const userId = getMemberUserId(member);
+                        return <option key={userId} value={userId}>{getMemberName(member)}</option>;
+                      })}
+                    </select>
+                    <input
+                      dir="rtl"
+                      value={manualAmount}
+                      onChange={(event) => setManualAmount(event.target.value)}
+                      placeholder="مبلغ تسویه، مثلاً 120000"
+                      className="h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    />
+                    <input
+                      dir="rtl"
+                      value={manualDescription}
+                      onChange={(event) => setManualDescription(event.target.value)}
+                      placeholder="توضیح اختیاری"
+                      className="h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCreateManualSettlement()}
+                      disabled={settlementSaving}
+                      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.18)] transition hover:-translate-y-0.5 disabled:opacity-60"
+                    >
+                      ثبت تسویه
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-border bg-white p-4">
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-right">
+                    <h3 className="text-lg font-bold text-text">برنامه تسویه هوشمند</h3>
+                    <p className="mt-1 text-xs text-muted">کمترین تعداد انتقال برای تسویه گروه.</p>
+                  </div>
+                  {settlementPlan?.id ? (
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handleActivatePlan} disabled={settlementSaving} className="h-10 rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60">فعال‌سازی</button>
+                      <button type="button" onClick={handleCancelPlan} disabled={settlementSaving} className="h-10 rounded-xl bg-rose-50 px-3 text-xs font-bold text-rose-600 transition hover:bg-rose-100 disabled:opacity-60">لغو برنامه</button>
+                    </div>
+                  ) : null}
+                </div>
+
+                {!settlementPlan?.items?.length ? (
+                  <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted">هنوز برنامه تسویه‌ای ساخته نشده است.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {settlementPlan.items.map((item) => {
+                      const isPayer = item.payer_user_id === currentUserId;
+                      const isReceiver = item.receiver_user_id === currentUserId;
+                      return (
+                        <div key={item.id} className="rounded-2xl border border-border bg-slate-50 p-3 text-right">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="text-sm font-bold text-text">
+                                {getPlanPartyName(item, 'payer', members)} باید به {getPlanPartyName(item, 'receiver', members)} پرداخت کند
+                              </div>
+                              <div className="mt-1 text-xs text-muted">{getSettlementStatusLabel(item.status)}</div>
+                            </div>
+                            <div className="font-extrabold text-emerald-700">{formatMoney(item.amount_minor)}</div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {isPayer ? <button type="button" onClick={() => handlePlanItemAction(item, 'paid')} disabled={settlementSaving} className="h-9 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-60">گزارش پرداخت</button> : null}
+                            {isReceiver ? <button type="button" onClick={() => handlePlanItemAction(item, 'confirm')} disabled={settlementSaving} className="h-9 rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-700 disabled:opacity-60">تأیید دریافت</button> : null}
+                            {isReceiver ? <button type="button" onClick={() => handlePlanItemAction(item, 'reject')} disabled={settlementSaving} className="h-9 rounded-xl bg-rose-50 px-3 text-xs font-bold text-rose-600 disabled:opacity-60">رد پرداخت</button> : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-border bg-white p-4">
+                <div className="mb-3 text-right">
+                  <h3 className="text-lg font-bold text-text">تسویه‌های ثبت‌شده</h3>
+                  <p className="mt-1 text-xs text-muted">پرداخت‌های دستی و وضعیت تأیید آن‌ها.</p>
+                </div>
+                {settlements.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted">تسویه‌ای ثبت نشده است.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {settlements.map((settlement) => {
+                      const isReceiver = settlement.receiver_user_id === currentUserId;
+                      const isPayer = settlement.payer_user_id === currentUserId;
+                      return (
+                        <div key={settlement.id} className="rounded-2xl border border-border bg-slate-50 p-3 text-right">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="text-sm font-bold text-text">
+                                {getDebtPartyName(settlement.payer_user_id, members)} ← {getDebtPartyName(settlement.receiver_user_id, members)}
+                              </div>
+                              <div className="mt-1 text-xs text-muted">{getSettlementStatusLabel(settlement.status)} {settlement.description ? `• ${settlement.description}` : ''}</div>
+                            </div>
+                            <div className="font-extrabold text-emerald-700">{formatMoney(settlement.amount_minor)}</div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {isReceiver ? <button type="button" onClick={() => handleSettlementAction(settlement, 'confirm')} disabled={settlementSaving} className="h-9 rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-700 disabled:opacity-60">تأیید</button> : null}
+                            {isReceiver ? <button type="button" onClick={() => handleSettlementAction(settlement, 'reject')} disabled={settlementSaving} className="h-9 rounded-xl bg-rose-50 px-3 text-xs font-bold text-rose-600 disabled:opacity-60">رد</button> : null}
+                            {isPayer ? <button type="button" onClick={() => handleSettlementAction(settlement, 'cancel')} disabled={settlementSaving} className="h-9 rounded-xl bg-slate-100 px-3 text-xs font-bold text-slate-700 disabled:opacity-60">لغو</button> : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
