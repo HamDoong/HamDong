@@ -81,20 +81,44 @@ function unwrapList<T>(data: T[] | { results?: T[]; data?: T[] }) {
   return data.results || data.data || [];
 }
 
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function extractTokenFromPath(pathname: string) {
+  const match = pathname.match(/(?:^|\/)(?:invite|invites)\/([^/?#]+)/i);
+  return match?.[1] || '';
+}
+
 export function extractInviteToken(value: string) {
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/^['"]|['"]$/g, '');
 
   if (!trimmed) return '';
 
   try {
     const url = new URL(trimmed);
-    const pathnameMatch = url.pathname.match(/\/invites\/([^/?#]+)/);
-    const queryToken = url.searchParams.get('token') || url.searchParams.get('invite');
+    const pathToken = extractTokenFromPath(url.pathname);
+    const queryToken =
+      url.searchParams.get('token') ||
+      url.searchParams.get('invite') ||
+      url.searchParams.get('invite_token');
 
-    return decodeURIComponent(pathnameMatch?.[1] || queryToken || trimmed);
+    return safeDecode(pathToken || queryToken || '');
   } catch {
-    const match = trimmed.match(/\/invites\/([^/?#]+)/);
-    return decodeURIComponent(match?.[1] || trimmed);
+    const pathToken = extractTokenFromPath(trimmed);
+
+    if (pathToken) {
+      return safeDecode(pathToken);
+    }
+
+    const withoutQuery = trimmed.split(/[?#]/)[0];
+    const lastSegment = withoutQuery.split('/').filter(Boolean).pop();
+
+    return safeDecode(lastSegment || trimmed);
   }
 }
 

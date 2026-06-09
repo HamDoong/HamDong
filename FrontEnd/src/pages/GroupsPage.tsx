@@ -1,16 +1,24 @@
-import { Archive, CheckCircle2, Link2, Plus, Users } from 'lucide-react';
+import { Archive, CheckCircle2, HandCoins, Link2, Plus, Users } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import { AccountSummary } from '../components/AccountSummary';
 import { GroupCard } from '../components/GroupCard';
-import { RecentActivities } from '../components/RecentActivities';
-import { RecentMembers } from '../components/RecentMembers';
 import { extractInviteToken } from '../lib/groupApi';
 import type { Group, GroupStatus } from '../types';
 
 type GroupFilter = 'ACTIVE' | 'ARCHIVED';
 
+export interface GroupBalanceSummary {
+  groupId: string;
+  groupName: string;
+  status?: GroupStatus;
+  paidMinor: number;
+  shareMinor: number;
+  netMinor: number;
+}
+
 interface GroupsPageProps {
   groups: Group[];
+  groupBalances?: GroupBalanceSummary[];
+  balancesLoading?: boolean;
   loading?: boolean;
   error?: string | null;
   onCreateGroup: () => void;
@@ -19,23 +27,16 @@ interface GroupsPageProps {
   onDeleteGroup: (group: Group) => void;
 }
 
-function CarouselDots() {
-  return (
-    <div className="my-8 flex items-center justify-center gap-2.5">
-      <span className="h-1.5 w-10 rounded-full bg-emerald-500" />
-      <span className="h-1.5 w-5 rounded-full bg-slate-200" />
-      <span className="h-1.5 w-5 rounded-full bg-slate-200" />
-      <span className="h-1.5 w-5 rounded-full bg-slate-200" />
-    </div>
-  );
+function formatMoney(minor = 0) {
+  return `${Math.abs(Math.round(minor)).toLocaleString('fa-IR')} تومان`;
 }
 
 function JoinByInviteCard({ onOpenInvite }: { onOpenInvite: (tokenOrLink: string) => void }) {
   const [inviteValue, setInviteValue] = useState('');
 
-  const handleSubmit = () => {
-    const token = extractInviteToken(inviteValue);
+  const token = extractInviteToken(inviteValue);
 
+  const handleSubmit = () => {
     if (!token) return;
 
     onOpenInvite(token);
@@ -48,7 +49,7 @@ function JoinByInviteCard({ onOpenInvite }: { onOpenInvite: (tokenOrLink: string
         <div className="text-right">
           <h2 className="text-xl font-extrabold text-text">پیوستن با لینک دعوت</h2>
           <p className="mt-1 text-sm leading-7 text-muted">
-            لینک دعوتی که دریافت کردی را اینجا وارد کن تا جزئیات گروه را ببینی.
+            لینک دعوتی که دریافت کردی را وارد کن تا جزئیات گروه را ببینی.
           </p>
         </div>
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
@@ -56,27 +57,112 @@ function JoinByInviteCard({ onOpenInvite }: { onOpenInvite: (tokenOrLink: string
         </div>
       </div>
 
-      <div className="relative">
-        <input
-          dir="ltr"
-          value={inviteValue}
-          onChange={(event) => setInviteValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') handleSubmit();
-          }}
-          placeholder="https://.../invites/token"
-          className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-        />
-      </div>
+      <input
+        dir="ltr"
+        value={inviteValue}
+        onChange={(event) => setInviteValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') handleSubmit();
+        }}
+        placeholder="https://.../invite/token"
+        className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+      />
 
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!extractInviteToken(inviteValue)}
+        disabled={!token}
         className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(0,168,107,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
       >
         بررسی دعوت
       </button>
+    </div>
+  );
+}
+
+function GroupDebtsSummaryCard({
+  summaries,
+  loading,
+  onOpenGroup,
+}: {
+  summaries: GroupBalanceSummary[];
+  loading: boolean;
+  onOpenGroup: (groupId: string) => void;
+}) {
+  const activeSummaries = summaries.filter((item) => item.status !== 'ARCHIVED');
+  const debtItems = activeSummaries.filter((item) => item.netMinor < 0);
+  const creditItems = activeSummaries.filter((item) => item.netMinor > 0);
+  const totalDebtMinor = debtItems.reduce((sum, item) => sum + Math.abs(item.netMinor), 0);
+  const totalCreditMinor = creditItems.reduce((sum, item) => sum + item.netMinor, 0);
+
+  return (
+    <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="text-right">
+          <h2 className="text-xl font-extrabold text-text">خلاصه حساب گروه‌ها</h2>
+          <p className="mt-1 text-sm leading-7 text-muted">
+            وضعیت بدهکاری و طلبکاری شما بر اساس هزینه‌های ثبت‌شده.
+          </p>
+        </div>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+          <HandCoins className="h-5 w-5" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-rose-50 px-4 py-3 text-right">
+          <div className="text-xs font-semibold text-rose-500">کل بدهی شما</div>
+          <div className="mt-1 text-base font-extrabold text-rose-600">{formatMoney(totalDebtMinor)}</div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-right">
+          <div className="text-xs font-semibold text-emerald-600">کل طلب شما</div>
+          <div className="mt-1 text-base font-extrabold text-emerald-700">{formatMoney(totalCreditMinor)}</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-4 rounded-2xl border border-border bg-slate-50 p-4 text-center text-sm text-muted">
+          در حال محاسبه حساب گروه‌ها...
+        </div>
+      ) : null}
+
+      {!loading && activeSummaries.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-border p-5 text-center text-sm leading-7 text-muted">
+          هنوز هزینه‌ای برای محاسبه حساب گروه‌ها ثبت نشده است.
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-3">
+        {activeSummaries.map((summary) => {
+          const isDebt = summary.netMinor < 0;
+          const isCredit = summary.netMinor > 0;
+
+          return (
+            <button
+              key={summary.groupId}
+              type="button"
+              onClick={() => onOpenGroup(summary.groupId)}
+              className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-white px-4 py-3 text-right transition hover:border-emerald-200 hover:bg-emerald-50/30"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-text">{summary.groupName}</div>
+                <div className="mt-1 text-xs text-muted">
+                  {isDebt ? 'برای پرداخت بدهی وارد گروه شو' : isCredit ? 'در این گروه طلبکار هستی' : 'این گروه تسویه است'}
+                </div>
+              </div>
+
+              <div className="shrink-0 text-left">
+                <div className={['text-sm font-extrabold', isDebt ? 'text-rose-600' : isCredit ? 'text-emerald-600' : 'text-slate-500'].join(' ')}>
+                  {formatMoney(summary.netMinor)}
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  {isDebt ? 'بدهکار' : isCredit ? 'طلبکار' : 'تسویه'}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -116,6 +202,8 @@ function FilterButton({
 
 export function GroupsPage({
   groups,
+  groupBalances = [],
+  balancesLoading = false,
   loading = false,
   error = null,
   onCreateGroup,
@@ -146,7 +234,7 @@ export function GroupsPage({
                 گروه‌ها
               </h1>
               <p className="mt-2 text-base text-muted">
-                مدیریت گروه‌های شما و مشاهده جزئیات آن‌ها
+                مدیریت گروه‌ها، دعوت اعضا و مشاهده وضعیت حساب هر گروه
               </p>
             </div>
 
@@ -162,20 +250,8 @@ export function GroupsPage({
 
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-border bg-white p-3 shadow-soft">
             <div className="flex flex-wrap gap-2">
-              <FilterButton
-                active={filter === 'ACTIVE'}
-                icon={<CheckCircle2 className="h-4 w-4" />}
-                label="گروه‌های فعال"
-                count={activeCount}
-                onClick={() => setFilter('ACTIVE')}
-              />
-              <FilterButton
-                active={filter === 'ARCHIVED'}
-                icon={<Archive className="h-4 w-4" />}
-                label="گروه‌های آرشیو شده"
-                count={archivedCount}
-                onClick={() => setFilter('ARCHIVED')}
-              />
+              <FilterButton active={filter === 'ACTIVE'} icon={<CheckCircle2 className="h-4 w-4" />} label="گروه‌های فعال" count={activeCount} onClick={() => setFilter('ACTIVE')} />
+              <FilterButton active={filter === 'ARCHIVED'} icon={<Archive className="h-4 w-4" />} label="گروه‌های آرشیو شده" count={archivedCount} onClick={() => setFilter('ARCHIVED')} />
             </div>
             <span className="px-2 text-xs font-semibold text-muted">
               نمایش فعلی: {filter === 'ACTIVE' ? 'فعال' : 'آرشیو شده'}
@@ -208,11 +284,7 @@ export function GroupsPage({
                   : 'اولین گروهت را بساز تا هزینه‌ها، اعضا و دعوت‌ها را مدیریت کنی.'}
               </p>
               {filter === 'ACTIVE' ? (
-                <button
-                  type="button"
-                  onClick={onCreateGroup}
-                  className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700"
-                >
+                <button type="button" onClick={onCreateGroup} className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700">
                   ساخت اولین گروه
                 </button>
               ) : null}
@@ -222,26 +294,17 @@ export function GroupsPage({
           {!loading && visibleGroups.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 2xl:grid-cols-3">
               {visibleGroups.map((group) => (
-                <GroupCard
-                  key={group.id}
-                  group={group}
-                  onOpen={() => onOpenGroup(String(group.id))}
-                  onDelete={onDeleteGroup}
-                />
+                <GroupCard key={group.id} group={group} onOpen={() => onOpenGroup(String(group.id))} onDelete={onDeleteGroup} />
               ))}
             </div>
           ) : null}
-
-          {visibleGroups.length > 3 ? <CarouselDots /> : null}
         </div>
       </section>
 
       <aside className="px-4 pb-8 sm:px-6 xl:w-[354px] xl:px-8 xl:py-8">
         <div className="space-y-6">
           <JoinByInviteCard onOpenInvite={onOpenInvite} />
-          <AccountSummary />
-          <RecentMembers />
-          <RecentActivities />
+          <GroupDebtsSummaryCard summaries={groupBalances} loading={balancesLoading} onOpenGroup={onOpenGroup} />
         </div>
       </aside>
     </main>
