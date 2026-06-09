@@ -14,6 +14,7 @@ import {
   type BackendGroup,
   type BackendGroupType,
 } from './lib/groupApi';
+import { getPendingNotificationCount } from './lib/notificationApi';
 import { getCurrentUser, type CurrentUser } from './lib/userApi';
 import { ActivitiesPage } from './pages/ActivitiesPage';
 import {
@@ -23,10 +24,11 @@ import {
 import { GroupDetailPage } from './pages/GroupDetailPage';
 import { GroupsPage, type GroupBalanceSummary } from './pages/GroupsPage';
 import { InviteJoinPage } from './pages/InviteJoinPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { WalletPage } from './pages/WalletPage';
 import type { Group } from './types';
 
-type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet';
+type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications';
 type DashboardGroup = Group;
 
 function getExpenseTotal(expense: BackendExpense) {
@@ -169,11 +171,12 @@ function getSidebarActivePage(page: AppPage) {
   return 'groups';
 }
 
-function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet'> {
+function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet' | 'notifications'> {
   const hash = window.location.hash.replace('#', '');
 
   if (hash === 'activities') return 'activities';
   if (hash === 'wallet') return 'wallet';
+  if (hash === 'notifications') return 'notifications';
 
   return 'groups';
 }
@@ -193,6 +196,7 @@ function AppContent() {
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [currentUserPhone, setCurrentUserPhone] = useState('کاربر');
+  const [notificationBadgeCount, setNotificationBadgeCount] = useState(0);
 
   async function loadInitialData() {
     let backendGroups: BackendGroup[] = [];
@@ -243,6 +247,11 @@ function AppContent() {
     }
   }
 
+  async function loadNotificationBadge() {
+    const count = await getPendingNotificationCount();
+    setNotificationBadgeCount(count);
+  }
+
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 1024px)');
 
@@ -274,6 +283,7 @@ function AppContent() {
 
   useEffect(() => {
     loadInitialData();
+    loadNotificationBadge();
   }, []);
 
   useEffect(() => {
@@ -320,11 +330,26 @@ function AppContent() {
       return;
     }
 
+    if (itemId === 'notifications') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('notifications');
+      setBrowserPath('/Dashboard#notifications');
+      return;
+    }
+
     notify({
       type: 'info',
       title: 'این بخش هنوز آماده نشده',
       description: 'فعلاً صفحه گروه‌ها، فعالیت‌ها و کیف پول برای UI فعال هستند.',
     });
+  };
+
+  const handleOpenNotifications = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('notifications');
+    setBrowserPath('/Dashboard#notifications');
   };
 
   const handleCreateGroupComplete = async (payload: CreatedGroupPayload) => {
@@ -512,7 +537,12 @@ function AppContent() {
         <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
         <div className="min-w-0">
-          <TopBar onMenuClick={() => setMobileDrawerOpen(true)} displayName={currentUserPhone} />
+          <TopBar
+            onMenuClick={() => setMobileDrawerOpen(true)}
+            displayName={currentUserPhone}
+            unreadNotificationCount={notificationBadgeCount}
+            onOpenNotifications={handleOpenNotifications}
+          />
 
           {page === 'groups' ? (
             <GroupsPage
@@ -530,6 +560,9 @@ function AppContent() {
 
           {page === 'activities' ? <ActivitiesPage /> : null}
           {page === 'wallet' ? <WalletPage /> : null}
+          {page === 'notifications' ? (
+            <NotificationsPage onUnreadCountChange={setNotificationBadgeCount} />
+          ) : null}
 
           {page === 'create-group' ? (
             <CreateGroupWizard onBack={() => setPage('groups')} onComplete={handleCreateGroupComplete} />
