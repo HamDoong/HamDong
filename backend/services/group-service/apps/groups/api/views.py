@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -12,37 +12,34 @@ from apps.groups.api.serializers import (
     CreateInviteSerializer,
     ErrorResponseSerializer,
     GroupSerializer,
+    InviteAcceptResponseSerializer,
     InviteCreateResponseSerializer,
     InvitePreviewSerializer,
     MemberSerializer,
     MessageSerializer,
+    RestoreGroupSerializer,
     UpdateGroupSerializer,
 )
 from apps.groups.application.use_cases import (
     ArchiveGroupUseCase,
     CreateGroupUseCase,
+    DeleteGroupUseCase,
     GetGroupDetailUseCase,
     InviteService,
     LeaveGroupUseCase,
     ListMembersUseCase,
     ListMyGroupsUseCase,
     RemoveMemberUseCase,
+    RestoreGroupUseCase,
     UpdateGroupUseCase,
 )
-from apps.groups.domain import rules
 from apps.groups.domain.models import GroupMember
 from apps.groups.infrastructure.jwt_authentication import JWTAuthentication
-from apps.groups.infrastructure.repositories import (
-    GroupInviteRepository,
-    GroupRepository,
-)
+from apps.groups.infrastructure.repositories import GroupInviteRepository, GroupRepository
 
 
 def _error_response(code: str, message: str, http_status: int) -> Response:
-    return Response(
-        {"error": {"code": code, "message": message}},
-        status=http_status,
-    )
+    return Response({"error": {"code": code, "message": message}}, status=http_status)
 
 
 def _mask_phone(phone_number: str | None) -> str | None:
@@ -59,46 +56,33 @@ class GroupListCreateView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = CreateGroupSerializer
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Create group",
-        description="Create a new group and return the created group with the caller role.",
-        request=CreateGroupSerializer,
-        responses={201: GroupSerializer, 401: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Create group", request=CreateGroupSerializer, responses={201: GroupSerializer, 401: ErrorResponseSerializer})
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            if serializer.errors.get("title_parts") == ["INVALID_GROUP_TITLE_PARTS"]:
+                return _error_response("INVALID_GROUP_TITLE_PARTS", "Group title parts are invalid.", status.HTTP_400_BAD_REQUEST)
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
 
-        group = CreateGroupUseCase().execute(
-            title=serializer.validated_data["title"],
-            description=serializer.validated_data.get("description", ""),
-            group_type=serializer.validated_data.get("group_type", "GENERAL"),
-            creator=request.user,
-        )
-        ctx = {"my_role_map": {str(group.id): "OWNER"}}
-        return Response(
-            GroupSerializer(group, context=ctx).data,
-            status=status.HTTP_201_CREATED,
-        )
+        try:
+            group = CreateGroupUseCase().execute(
+                title=serializer.validated_data.get("title"),
+                title_parts=serializer.validated_data.get("title_parts"),
+                description=serializer.validated_data.get("description", ""),
+                group_type=serializer.validated_data.get("group_type", "GENERAL"),
+                creator=request.user,
+            )
+        except ValueError:
+            return _error_response("INVALID_GROUP_TITLE_PARTS", "Group title parts are invalid.", status.HTTP_400_BAD_REQUEST)
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="List groups",
-        description="List groups where the authenticated user is an active member.",
-        responses={200: GroupSerializer(many=True), 401: ErrorResponseSerializer},
-    )
+        return Response(GroupSerializer(group, context={"my_role_map": {str(group.id): "OWNER"}}).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(tags=["Groups"], summary="List groups", responses={200: GroupSerializer(many=True), 401: ErrorResponseSerializer})
     def get(self, request, *args, **kwargs):
         groups = ListMyGroupsUseCase().execute(request.user)
-        member_qs = GroupMember.objects.filter(
-            group__in=groups,
-            user_id=request.user.sub,
-            status="ACTIVE",
-        )
+        member_qs = GroupMember.objects.filter(group__in=groups, user_id=request.user.sub, status="ACTIVE")
         my_role_map = {str(member.group_id): member.role for member in member_qs}
-        return Response(
-            GroupSerializer(groups, many=True, context={"my_role_map": my_role_map}).data
-        )
+        return Response(GroupSerializer(groups, many=True, context={"my_role_map": my_role_map}).data)
 
 
 class GroupDetailView(GenericAPIView):
@@ -109,87 +93,58 @@ class GroupDetailView(GenericAPIView):
     def get_object(self, group_id):
         return GroupRepository.get_by_id(group_id)
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Get group detail",
-        description="Return a single group visible to an active member.",
-        responses={
-            200: GroupSerializer,
-            401: ErrorResponseSerializer,
-            403: ErrorResponseSerializer,
-            404: ErrorResponseSerializer,
-        },
-    )
+    @extend_schema(tags=["Groups"], summary="Get group detail", responses={200: GroupSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def get(self, request, group_id):
         group = self.get_object(group_id)
-        if not group:
+        if not group or group.status == "DELETED":
             return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
 
         try:
             group = GetGroupDetailUseCase().execute(group, request.user)
         except PermissionError:
-            return _error_response(
-                "NOT_GROUP_MEMBER",
-                "You are not an active member of this group.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("NOT_GROUP_MEMBER", "You are not an active member of this group.", status.HTTP_403_FORBIDDEN)
 
-        member = GroupMember.objects.filter(
-            group=group,
-            user_id=request.user.sub,
-            status="ACTIVE",
-        ).first()
-        ctx = {"my_role_map": {str(group.id): member.role if member else None}}
-        return Response(GroupSerializer(group, context=ctx).data)
+        member = GroupMember.objects.filter(group=group, user_id=request.user.sub, status="ACTIVE").first()
+        return Response(GroupSerializer(group, context={"my_role_map": {str(group.id): member.role if member else None}}).data)
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Update group",
-        description="Update mutable group fields when the caller is allowed to manage the group.",
-        request=UpdateGroupSerializer,
-        responses={
-            200: GroupSerializer,
-            401: ErrorResponseSerializer,
-            403: ErrorResponseSerializer,
-            404: ErrorResponseSerializer,
-        },
-    )
+    @extend_schema(tags=["Groups"], summary="Update group", request=UpdateGroupSerializer, responses={200: GroupSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def patch(self, request, group_id):
         group = self.get_object(group_id)
-        if not group:
+        if not group or group.status == "DELETED":
             return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
 
         serializer = self.get_serializer(data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            if serializer.errors.get("title_parts") == ["INVALID_GROUP_TITLE_PARTS"]:
+                return _error_response("INVALID_GROUP_TITLE_PARTS", "Group title parts are invalid.", status.HTTP_400_BAD_REQUEST)
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             group = UpdateGroupUseCase().execute(group, request.user, **serializer.validated_data)
         except PermissionError:
-            return _error_response(
-                "PERMISSION_DENIED",
-                "You do not have permission to update this group.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("PERMISSION_DENIED", "You do not have permission to update this group.", status.HTTP_403_FORBIDDEN)
+        except ValueError:
+            return _error_response("INVALID_GROUP_TITLE_PARTS", "Group title parts are invalid.", status.HTTP_400_BAD_REQUEST)
 
-        member = GroupMember.objects.filter(
-            group=group,
-            user_id=request.user.sub,
-            status="ACTIVE",
-        ).first()
-        ctx = {"my_role_map": {str(group.id): member.role if member else None}}
-        return Response(GroupSerializer(group, context=ctx).data)
+        member = GroupMember.objects.filter(group=group, user_id=request.user.sub, status="ACTIVE").first()
+        return Response(GroupSerializer(group, context={"my_role_map": {str(group.id): member.role if member else None}}).data)
+
+    def delete(self, request, group_id):
+        group = self.get_object(group_id)
+        if not group:
+            return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
+        try:
+            DeleteGroupUseCase().execute(group, request.user)
+        except PermissionError:
+            return _error_response("GROUP_DELETE_FORBIDDEN", "Only group owner can delete this group.", status.HTTP_403_FORBIDDEN)
+        return Response({"message": "Group deleted successfully."}, status=status.HTTP_200_OK)
 
 
 class GroupArchiveView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Archive group",
-        description="Archive a group when the caller has permission.",
-        responses={200: MessageSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Archive group", responses={200: MessageSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, group_id):
         group = GroupRepository.get_by_id(group_id)
         if not group:
@@ -198,13 +153,28 @@ class GroupArchiveView(APIView):
         try:
             ArchiveGroupUseCase().execute(group, request.user)
         except PermissionError:
-            return _error_response(
-                "PERMISSION_DENIED",
-                "You do not have permission to archive this group.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("PERMISSION_DENIED", "You do not have permission to archive this group.", status.HTTP_403_FORBIDDEN)
 
         return Response({"message": "Group archived successfully."}, status=status.HTTP_200_OK)
+
+
+class GroupRestoreView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, group_id):
+        group = GroupRepository.get_by_id(group_id)
+        if not group:
+            return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
+        try:
+            group = RestoreGroupUseCase().execute(group, request.user)
+        except PermissionError:
+            return _error_response("GROUP_RESTORE_FORBIDDEN", "Only group owner or admin can restore this group.", status.HTTP_403_FORBIDDEN)
+        except ValueError as exc:
+            if str(exc) == "GROUP_NOT_ARCHIVED":
+                return _error_response("GROUP_NOT_ARCHIVED", "Only archived groups can be restored.", status.HTTP_409_CONFLICT)
+            return _error_response("GROUP_DELETED_CANNOT_RESTORE", "Deleted groups cannot be restored.", status.HTTP_409_CONFLICT)
+        return Response(RestoreGroupSerializer(group).data, status=status.HTTP_200_OK)
 
 
 class CreateInviteView(GenericAPIView):
@@ -212,13 +182,7 @@ class CreateInviteView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = CreateInviteSerializer
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Create group invite",
-        description="Create an invite link for the target group.",
-        request=CreateInviteSerializer,
-        responses={201: InviteCreateResponseSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Create group invite", request=CreateInviteSerializer, responses={201: InviteCreateResponseSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, group_id):
         group = GroupRepository.get_by_id(group_id)
         if not group:
@@ -236,38 +200,21 @@ class CreateInviteView(GenericAPIView):
                 invite_code=serializer.validated_data.get("invite_code"),
             )
         except PermissionError:
-            return _error_response(
-                "PERMISSION_DENIED",
-                "You do not have permission to create invites for this group.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("PERMISSION_DENIED", "You do not have permission to create invites for this group.", status.HTTP_403_FORBIDDEN)
         except ValueError:
             return _error_response("INVALID_REQUEST", "Invalid invite request.", status.HTTP_400_BAD_REQUEST)
 
         base = getattr(settings, "INVITE_BASE_URL", None)
-        if base:
-            invite_url = f"{base.rstrip('/')}/api/v1/groups/invites/{raw_token}"
-        else:
-            invite_url = request.build_absolute_uri(f"/api/v1/groups/invites/{raw_token}")
+        invite_url = f"{base.rstrip('/')}/api/v1/groups/invites/{raw_token}" if base else request.build_absolute_uri(f"/api/v1/groups/invites/{raw_token}")
 
-        return Response(
-            InviteCreateResponseSerializer(
-                {"invite_id": str(invite.id), "invite_url": invite_url}
-            ).data,
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(InviteCreateResponseSerializer({"invite_id": str(invite.id), "invite_url": invite_url}).data, status=status.HTTP_201_CREATED)
 
 
 class InvitePreviewView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Get invite detail",
-        description="Return safe invite preview information by invite token.",
-        responses={200: InvitePreviewSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Get invite detail", responses={200: InvitePreviewSerializer, 404: ErrorResponseSerializer})
     def get(self, request, token):
         invite = InviteService().preview_invite(token)
         if not invite:
@@ -293,51 +240,51 @@ class AcceptInviteView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Accept invite",
-        description="Accept a group invite token as the authenticated user.",
-        responses={200: MessageSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Accept invite", responses={200: InviteAcceptResponseSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, token):
         invite = InviteService().preview_invite(token)
         if not invite:
             return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
 
         try:
-            result = InviteService().accept_invite(invite, request.user)
-        except PermissionError as exc:
-            return _error_response("INVALID_INVITE", str(exc), status.HTTP_400_BAD_REQUEST)
+            member = InviteService().accept_invite(invite, request.user)
+        except PermissionError:
+            return _error_response("INVALID_INVITE", "Invite is not valid.", status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            if str(exc) == "ALREADY_GROUP_MEMBER":
+                return _error_response("ALREADY_GROUP_MEMBER", "You are already an active member of this group.", status.HTTP_409_CONFLICT)
+            if str(exc) == "NEW_INVITE_REQUIRED":
+                return _error_response("NEW_INVITE_REQUIRED", "Removed members need a new invite to rejoin.", status.HTTP_409_CONFLICT)
+            return _error_response("GROUP_NOT_JOINABLE", "This group cannot be joined.", status.HTTP_409_CONFLICT)
 
-        if result == "ALREADY_GROUP_MEMBER":
-            return Response({"message": "User is already a group member."}, status=status.HTTP_200_OK)
-
-        return Response({"message": "Invite accepted successfully."}, status=status.HTTP_200_OK)
+        return Response(
+            InviteAcceptResponseSerializer(
+                {
+                    "group_id": invite.group.id,
+                    "member_id": member.id,
+                    "user_id": member.user_id,
+                    "status": member.status,
+                    "message": "You have joined the group successfully.",
+                }
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class RevokeInviteView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Revoke invite",
-        description="Revoke a group invite by invite id.",
-        responses={200: MessageSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Revoke invite", responses={200: MessageSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, group_id, invite_id):
         invite = GroupInviteRepository.get_by_id(invite_id)
-        if not invite or str(invite.group.id) != str(group_id):
+        if not invite or str(invite.group_id) != str(group_id):
             return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
 
         try:
             InviteService().revoke_invite(invite, request.user)
         except PermissionError:
-            return _error_response(
-                "PERMISSION_DENIED",
-                "You do not have permission to revoke this invite.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("PERMISSION_DENIED", "You do not have permission to revoke this invite.", status.HTTP_403_FORBIDDEN)
 
         return Response({"message": "Invite revoked successfully."}, status=status.HTTP_200_OK)
 
@@ -346,37 +293,31 @@ class MembersListView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="List group members",
-        description="List active group members with masked phone numbers.",
-        responses={200: MemberSerializer(many=True), 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="List group members", responses={200: MemberSerializer(many=True), 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def get(self, request, group_id):
         group = GroupRepository.get_by_id(group_id)
-        if not group:
+        if not group or group.status == "DELETED":
             return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
 
-        if not rules.is_active_member(group, request.user.sub):
-            return _error_response(
-                "NOT_GROUP_MEMBER",
-                "You are not an active member of this group.",
-                status.HTTP_403_FORBIDDEN,
-            )
+        if not GroupMember.objects.filter(group=group, user_id=request.user.sub, status="ACTIVE").exists():
+            return _error_response("NOT_GROUP_MEMBER", "You are not an active member of this group.", status.HTTP_403_FORBIDDEN)
 
         members = ListMembersUseCase().execute(group)
         return Response(
-            [
-                {
-                    "id": member.id,
-                    "user_id": member.user_id,
-                    "display_name_snapshot": member.display_name_snapshot,
-                    "role": member.role,
-                    "joined_at": member.joined_at,
-                    "phone_number": _mask_phone(member.phone_number),
-                }
-                for member in members
-            ]
+            MemberSerializer(
+                [
+                    {
+                        "id": member.id,
+                        "user_id": member.user_id,
+                        "display_name_snapshot": member.display_name_snapshot,
+                        "role": member.role,
+                        "joined_at": member.joined_at,
+                        "phone_number": _mask_phone(member.phone_number),
+                    }
+                    for member in members
+                ],
+                many=True,
+            ).data
         )
 
 
@@ -384,12 +325,7 @@ class RemoveMemberView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Remove member",
-        description="Remove a member from the group when the caller has the required role.",
-        responses={200: MessageSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Remove member", responses={200: MessageSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, group_id, member_id):
         group = GroupRepository.get_by_id(group_id)
         if not group:
@@ -398,11 +334,7 @@ class RemoveMemberView(APIView):
         try:
             RemoveMemberUseCase().execute(group, request.user, member_id)
         except PermissionError:
-            return _error_response(
-                "PERMISSION_DENIED",
-                "You do not have permission to remove this member.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("PERMISSION_DENIED", "You do not have permission to remove this member.", status.HTTP_403_FORBIDDEN)
         except ValueError:
             return _error_response("MEMBER_NOT_FOUND", "Member not found.", status.HTTP_404_NOT_FOUND)
 
@@ -413,12 +345,7 @@ class LeaveGroupView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Leave group",
-        description="Leave a group as the authenticated member.",
-        responses={200: MessageSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 404: ErrorResponseSerializer},
-    )
+    @extend_schema(tags=["Groups"], summary="Leave group", responses={200: MessageSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, group_id):
         group = GroupRepository.get_by_id(group_id)
         if not group:
@@ -427,11 +354,7 @@ class LeaveGroupView(APIView):
         try:
             LeaveGroupUseCase().execute(group, request.user)
         except PermissionError:
-            return _error_response(
-                "PERMISSION_DENIED",
-                "You do not have permission to leave this group.",
-                status.HTTP_403_FORBIDDEN,
-            )
+            return _error_response("PERMISSION_DENIED", "You do not have permission to leave this group.", status.HTTP_403_FORBIDDEN)
         except ValueError:
             return _error_response("NOT_GROUP_MEMBER", "You are not an active member of this group.", status.HTTP_400_BAD_REQUEST)
 
@@ -442,12 +365,7 @@ class HealthView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @extend_schema(
-        tags=["Groups"],
-        summary="Health check",
-        description="Return the service health payload for the group service.",
-        responses={200: OpenApiResponse(description="Service health response")},
-    )
+    @extend_schema(tags=["Groups"], summary="Health check", responses={200: OpenApiResponse(description="Service health response")})
     def get(self, request, *args, **kwargs):
         return Response(
             {

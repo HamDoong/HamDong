@@ -1,10 +1,18 @@
-from datetime import timedelta
 """Database repositories for notification-service."""
 
+from datetime import timedelta
+
+from django.conf import settings
+from django.utils import timezone
+
 from apps.notifications.domain.models import (
-    NotificationMessage,
+    InboxMessage,
+    InboxMessageStatusChoices,
     NotificationJob,
     NotificationJobStatusChoices,
+    NotificationMessage,
+    OutboxMessage,
+    OutboxMessageStatusChoices,
     ProviderDeliveryLog,
     SmsTemplate,
 )
@@ -16,21 +24,27 @@ class NotificationRepository:
         return NotificationMessage.objects.create(**kwargs)
 
     @staticmethod
-    def update_notification_message(
-        notification_message: NotificationMessage, **kwargs
-    ) -> NotificationMessage:
+    def update_notification_message(notification_message: NotificationMessage, **kwargs) -> NotificationMessage:
         for key, value in kwargs.items():
             setattr(notification_message, key, value)
         notification_message.save()
         return notification_message
 
     @staticmethod
-    def create_delivery_log(**kwargs) -> ProviderDeliveryLog:
-        return ProviderDeliveryLog.objects.create(**kwargs)
+    def get_notification_message(notification_id):
+        return NotificationMessage.objects.filter(id=notification_id, is_deleted=False).first()
 
     @staticmethod
     def list_recent_messages(limit: int = 20):
-        return NotificationMessage.objects.all()[:limit]
+        return NotificationMessage.objects.filter(is_deleted=False)[:limit]
+
+    @staticmethod
+    def list_for_user(user_id, limit: int = 20):
+        return NotificationMessage.objects.filter(recipient_user_id=user_id, is_deleted=False).order_by("-created_at")[:limit]
+
+    @staticmethod
+    def create_delivery_log(**kwargs) -> ProviderDeliveryLog:
+        return ProviderDeliveryLog.objects.create(**kwargs)
 
     @staticmethod
     def ensure_template(code: str, title: str, body: str) -> SmsTemplate:
@@ -65,18 +79,6 @@ class NotificationRepository:
             status=NotificationJobStatusChoices.SENT,
             **kwargs,
         )
-
-
-from django.conf import settings
-from django.utils import timezone
-from apps.notifications.domain.models import (
-    InboxMessage,
-    InboxMessageStatusChoices,
-    NotificationJob,
-    NotificationJobStatusChoices,
-    OutboxMessage,
-    OutboxMessageStatusChoices,
-)
 
 
 class OutboxRepository:
@@ -177,4 +179,3 @@ class InboxRepository:
             },
         )
         return obj
-

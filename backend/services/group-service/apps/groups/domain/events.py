@@ -8,6 +8,8 @@ EVENT_ROUTING_KEYS = {
     "GroupCreated": "group.created",
     "GroupUpdated": "group.updated",
     "GroupArchived": "group.archived",
+    "GroupRestored": "group.restored",
+    "GroupDeleted": "group.deleted",
     "GroupInviteCreated": "group.invite.created",
     "GroupInviteAccepted": "group.invite.accepted",
     "GroupInviteRevoked": "group.invite.revoked",

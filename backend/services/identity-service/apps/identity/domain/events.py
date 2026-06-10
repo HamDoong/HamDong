@@ -37,43 +37,77 @@ class DomainEvent:
 
 class SendOtpSmsRequested(DomainEvent):
     def __init__(self, phone_number: str, code: str, purpose: str = "login", expires_in: int = 120):
-        super().__init__("SendOtpSmsRequested", {
-            "phone_number": phone_number,
-            "code": code,
-            "purpose": purpose,
-            "expires_in": expires_in,
-        })
+        super().__init__(
+            "SendOtpSmsRequested",
+            {
+                "phone_number": phone_number,
+                "code": code,
+                "purpose": purpose,
+                "expires_in": expires_in,
+            },
+        )
 
 
 class UserCreated(DomainEvent):
-    def __init__(self, user_id: str, phone_number: str, display_name: str = None, first_name: str | None = None, last_name: str | None = None, role: str = "USER", is_active: bool = True):
-        super().__init__("UserCreated", {
-            "user_id": str(user_id),
-            "phone_number": phone_number,
-            "display_name": display_name,
-            "first_name": first_name,
-            "last_name": last_name,
-            "role": role,
-            "is_active": is_active,
-        })
+    def __init__(
+        self,
+        user_id: str,
+        phone_number: str,
+        display_name: str = None,
+        art_name: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        role: str = "USER",
+        is_active: bool = True,
+    ):
+        super().__init__(
+            "UserCreated",
+            {
+                "user_id": str(user_id),
+                "phone_number": phone_number,
+                "display_name": display_name,
+                "art_name": art_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": role,
+                "is_active": is_active,
+            },
+        )
 
 
 class UserUpdated(DomainEvent):
-    def __init__(self, user_id: str, phone_number: str, display_name: str = None, first_name: str | None = None, last_name: str | None = None, role: str = "USER", is_active: bool = True):
-        super().__init__("UserUpdated", {
-            "user_id": str(user_id),
-            "phone_number": phone_number,
-            "display_name": display_name,
-            "first_name": first_name,
-            "last_name": last_name,
-            "role": role,
-            "is_active": is_active,
-        })
+    def __init__(
+        self,
+        user_id: str,
+        phone_number: str,
+        display_name: str = None,
+        art_name: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        role: str = "USER",
+        is_active: bool = True,
+    ):
+        super().__init__(
+            "UserUpdated",
+            {
+                "user_id": str(user_id),
+                "phone_number": phone_number,
+                "display_name": display_name,
+                "art_name": art_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": role,
+                "is_active": is_active,
+            },
+        )
 
 
 class UserLoggedIn(DomainEvent):
     def __init__(self, user_id: str, phone_number: str):
-        super().__init__("UserLoggedIn", {
-            "user_id": str(user_id),
-            "phone_number": phone_number,
-        })
+        super().__init__(
+            "UserLoggedIn",
+            {
+                "user_id": str(user_id),
+                "phone_number": phone_number,
+            },
+        )

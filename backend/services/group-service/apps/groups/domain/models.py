@@ -1,4 +1,5 @@
 import uuid
+
 from django.db import models
 from django.utils import timezone
 
@@ -34,21 +35,32 @@ class GroupStatusChoices(models.TextChoices):
 class Group(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
+    title_parts = models.JSONField(default=list, blank=True)
     description = models.TextField(null=True, blank=True)
     group_type = models.CharField(max_length=32, choices=GroupTypeChoices.choices)
     status = models.CharField(
-        max_length=32, choices=GroupStatusChoices.choices, default=GroupStatusChoices.ACTIVE
+        max_length=32,
+        choices=GroupStatusChoices.choices,
+        default=GroupStatusChoices.ACTIVE,
     )
     created_by_user_id = models.UUIDField()
     created_by_phone_number = models.CharField(max_length=32)
+    deleted_by_user_id = models.UUIDField(null=True, blank=True)
     member_count = models.PositiveIntegerField(default=0)
     version = models.PositiveIntegerField(default=1)
+    restored_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "groups"
+
+    @property
+    def display_title(self) -> str:
+        if self.title:
+            return self.title
+        return " ".join([part for part in self.title_parts if part]).strip()
 
 
 class GroupMemberRoleChoices(models.TextChoices):
@@ -134,7 +146,6 @@ class OutboxMessage(models.Model):
         indexes = [models.Index(fields=["status", "available_at"]), models.Index(fields=["routing_key"])]
 
 
-
 class InboxMessageStatusChoices(models.TextChoices):
     PROCESSED = "PROCESSED", "Processed"
     FAILED = "FAILED", "Failed"
@@ -157,4 +168,3 @@ class InboxMessage(models.Model):
     class Meta:
         db_table = "groups_inbox_messages"
         indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
-

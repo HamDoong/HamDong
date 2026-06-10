@@ -10,6 +10,9 @@ from apps.notifications.infrastructure.event_envelope import build_event_envelop
 
 
 ROUTING_KEYS = {
+    "NotificationCreated": "notification.created",
+    "NotificationUpdated": "notification.updated",
+    "NotificationDeleted": "notification.deleted",
     "NotificationSent": "notification.sent",
     "NotificationFailed": "notification.failed",
     "SmsSent": "notification.sms.sent",

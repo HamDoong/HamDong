@@ -10,7 +10,7 @@
 ### Health endpoint
 GET {{baseUrl}}/api/v1/groups/health/
 
-### Create group
+### Create group with title
 POST {{baseUrl}}/api/v1/groups/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -21,6 +21,17 @@ Content-Type: application/json
   "group_type": "EVENT"
 }
 
+### Create group with title_parts
+POST {{baseUrl}}/api/v1/groups/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title_parts": ["سفر", "شمال", "تابستان"],
+  "description": "سفر چندروزه",
+  "group_type": "TRIP"
+}
+
 ### List groups
 GET {{baseUrl}}/api/v1/groups/
 Authorization: Bearer {{accessToken}}
@@ -29,17 +40,16 @@ Authorization: Bearer {{accessToken}}
 GET {{baseUrl}}/api/v1/groups/{{groupId}}/
 Authorization: Bearer {{accessToken}}
 
-### Update group
+### Update group title_parts
 PATCH {{baseUrl}}/api/v1/groups/{{groupId}}/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "title": "شام جمعه - ویرایش"
+  "title_parts": ["شام", "جمعه", "دوستان"]
 }
 
 ### Create invite
-# If the API returns invite_url, copy the token from the end of the URL into @inviteToken.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
@@ -74,4 +84,12 @@ Authorization: Bearer {{accessToken}}
 
 ### Archive group
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/archive/
+Authorization: Bearer {{accessToken}}
+
+### Restore group
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/restore/
+Authorization: Bearer {{accessToken}}
+
+### Delete group
+DELETE {{baseUrl}}/api/v1/groups/{{groupId}}/
 Authorization: Bearer {{accessToken}}
