@@ -14,6 +14,7 @@ from apps.settlements.infrastructure.repositories import (
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
     InboxRepository,
+    ProcessedEventRepository,
     UserProjectionRepository,
 )
 
@@ -60,6 +61,89 @@ class SettlementEventConsumer:
             return
         handler(payload["event_type"], payload["data"] or {})
         InboxRepository.mark_processed(event_id, payload["event_type"], payload["source_service"], payload["routing_key"], payload)
+
+    def _legacy_process(self, payload, handler):
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid event payload.")
+        event_id = payload.get("event_id")
+        event_type = payload.get("event_type")
+        if not event_id or not event_type:
+            raise ValueError("Invalid event payload.")
+        if ProcessedEventRepository.was_processed(event_id):
+            return False
+        handler(event_type, payload.get("data") or {})
+        ProcessedEventRepository.mark_processed(
+            event_id,
+            event_type,
+            payload.get("source_service") or "",
+        )
+        return True
+
+    def process_identity_payload(self, payload: dict):
+        return self._legacy_process(payload, self._handle_identity)
+
+    def process_group_payload(self, payload: dict):
+        return self._legacy_process(payload, self._handle_group)
+
+    def process_expense_payload(self, payload: dict):
+        return self._legacy_process(payload, self._handle_expense)
+
+    def _callback_identity(self, ch, method, properties, body):
+        payload = None
+        try:
+            payload = self._parse(body)
+            self.process_identity_payload(payload)
+        except Exception as exc:
+            logger.exception("Failed to process identity event")
+            if isinstance(payload, dict) and payload.get("event_id"):
+                InboxRepository.mark_failed(
+                    payload["event_id"],
+                    payload.get("event_type", "UNKNOWN"),
+                    payload.get("source_service", ""),
+                    payload.get("routing_key", ""),
+                    payload,
+                    str(exc),
+                )
+        finally:
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    def _callback_group(self, ch, method, properties, body):
+        payload = None
+        try:
+            payload = self._parse(body)
+            self.process_group_payload(payload)
+        except Exception as exc:
+            logger.exception("Failed to process group event")
+            if isinstance(payload, dict) and payload.get("event_id"):
+                InboxRepository.mark_failed(
+                    payload["event_id"],
+                    payload.get("event_type", "UNKNOWN"),
+                    payload.get("source_service", ""),
+                    payload.get("routing_key", ""),
+                    payload,
+                    str(exc),
+                )
+        finally:
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    def _callback_expense(self, ch, method, properties, body):
+        payload = None
+        try:
+            payload = self._parse(body)
+            self.process_expense_payload(payload)
+        except Exception as exc:
+            logger.exception("Failed to process expense event")
+            if isinstance(payload, dict) and payload.get("event_id"):
+                InboxRepository.mark_failed(
+                    payload["event_id"],
+                    payload.get("event_type", "UNKNOWN"),
+                    payload.get("source_service", ""),
+                    payload.get("routing_key", ""),
+                    payload,
+                    str(exc),
+                )
+        finally:
+            ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def _handle_identity(self, event_type, data):
         if event_type in ("UserCreated", "UserUpdated"):
