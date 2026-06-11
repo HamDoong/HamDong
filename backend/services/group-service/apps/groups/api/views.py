@@ -129,6 +129,7 @@ class GroupDetailView(GenericAPIView):
         member = GroupMember.objects.filter(group=group, user_id=request.user.sub, status="ACTIVE").first()
         return Response(GroupSerializer(group, context={"my_role_map": {str(group.id): member.role if member else None}}).data)
 
+    @extend_schema(tags=["Groups"], summary="Delete group", responses={200: MessageSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def delete(self, request, group_id):
         group = self.get_object(group_id)
         if not group:
@@ -162,6 +163,7 @@ class GroupRestoreView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(tags=["Groups"], summary="Restore group", responses={200: RestoreGroupSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer})
     def post(self, request, group_id):
         group = GroupRepository.get_by_id(group_id)
         if not group:
