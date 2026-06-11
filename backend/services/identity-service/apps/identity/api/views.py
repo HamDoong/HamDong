@@ -3,8 +3,8 @@
 import logging
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import status
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -35,6 +35,25 @@ from apps.identity.application.use_cases import (
 from apps.identity.infrastructure.repositories import UserRepository
 
 logger = logging.getLogger(__name__)
+
+
+AuthTokenResponseSerializer = inline_serializer(
+    name="AuthTokenResponseSerializer",
+    fields={
+        "access_token": serializers.CharField(),
+        "refresh_token": serializers.CharField(),
+        "token_type": serializers.CharField(),
+        "expires_in": serializers.IntegerField(),
+        "user": UserSerializer(),
+    },
+)
+
+MessageResponseSerializer = inline_serializer(
+    name="IdentityMessageResponseSerializer",
+    fields={
+        "message": serializers.CharField(),
+    },
+)
 
 
 def _error_response(code: str, message: str, http_status: int, details=None) -> Response:
@@ -176,6 +195,7 @@ class PasswordSetView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(tags=["Auth"], summary="Set password", request=PasswordSetSerializer, responses={200: MessageResponseSerializer})
     def post(self, request):
         user = UserRepository.get_by_id(request.user.id)
         if not user:
@@ -205,6 +225,7 @@ class PasswordLoginView(APIView):
     authentication_classes = []
     permission_classes = []
 
+    @extend_schema(tags=["Auth"], summary="Login with password", request=PasswordLoginSerializer, responses={200: AuthTokenResponseSerializer})
     def post(self, request):
         serializer = PasswordLoginSerializer(data=request.data)
         if not serializer.is_valid():
@@ -227,6 +248,7 @@ class PasswordChangeView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(tags=["Auth"], summary="Change password", request=PasswordChangeSerializer, responses={200: MessageResponseSerializer})
     def post(self, request):
         user = UserRepository.get_by_id(request.user.id)
         if not user:
