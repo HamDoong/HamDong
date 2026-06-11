@@ -1,4 +1,11 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+} from 'react-router-dom';
 import { MobileDrawer } from './components/MobileDrawer';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -9,8 +16,8 @@ import {
 } from './pages/CreateGroupWizard';
 import { GroupsPage } from './pages/GroupsPage';
 import { LandingPage } from './pages/LandingPage';
+import { LoginPage } from './pages/LoginPage';
 
-type AppPage = 'landing' | 'groups' | 'create-group';
 type DashboardGroup = (typeof mockGroups)[number];
 
 function mapCreatedGroupToDashboardGroup(
@@ -41,8 +48,37 @@ function mapCreatedGroupToDashboardGroup(
   };
 }
 
-export default function App() {
-  const [page, setPage] = useState<AppPage>('landing');
+type DashboardLayoutProps = {
+  children: ReactNode;
+  mobileDrawerOpen: boolean;
+  onMenuClick: () => void;
+  onMobileDrawerClose: () => void;
+};
+
+function DashboardLayout({
+  children,
+  mobileDrawerOpen,
+  onMenuClick,
+  onMobileDrawerClose,
+}: DashboardLayoutProps) {
+  return (
+    <div dir="rtl" className="min-h-screen bg-background text-text">
+      <MobileDrawer open={mobileDrawerOpen} onClose={onMobileDrawerClose} />
+
+      <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
+        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" />
+
+        <div className="min-w-0">
+          <TopBar onMenuClick={onMenuClick} />
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const navigate = useNavigate();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [groupItems, setGroupItems] = useState<DashboardGroup[]>(mockGroups);
 
@@ -77,43 +113,66 @@ export default function App() {
 
   const handleCreateGroupComplete = (payload: CreatedGroupPayload) => {
     setGroupItems((prev) => [mapCreatedGroupToDashboardGroup(payload), ...prev]);
-    setPage('groups');
+    navigate('/groups');
   };
 
-  if (page === 'landing') {
-    return (
-      <div dir="rtl" className="min-h-screen bg-background text-text">
-        <LandingPage onStart={() => setPage('groups')} />
-      </div>
-    );
-  }
-
   return (
-    <div dir="rtl" className="min-h-screen bg-background text-text">
-      <MobileDrawer
-        open={mobileDrawerOpen}
-        onClose={() => setMobileDrawerOpen(false)}
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <div dir="rtl" className="min-h-screen bg-background text-text">
+            <LandingPage />
+          </div>
+        }
       />
-
-      <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" />
-
-        <div className="min-w-0">
-          <TopBar onMenuClick={() => setMobileDrawerOpen(true)} />
-
-          {page === 'groups' ? (
+      <Route
+        path="/login"
+        element={
+          <div dir="rtl" className="min-h-screen bg-background text-text">
+            <LoginPage onLogin={() => navigate('/groups')} />
+          </div>
+        }
+      />
+      <Route
+        path="/groups"
+        element={
+          <DashboardLayout
+            mobileDrawerOpen={mobileDrawerOpen}
+            onMenuClick={() => setMobileDrawerOpen(true)}
+            onMobileDrawerClose={() => setMobileDrawerOpen(false)}
+          >
             <GroupsPage
               groups={groupItems}
-              onCreateGroup={() => setPage('create-group')}
+              onCreateGroup={() => navigate('/groups/new')}
             />
-          ) : (
+          </DashboardLayout>
+        }
+      />
+      <Route
+        path="/groups/new"
+        element={
+          <DashboardLayout
+            mobileDrawerOpen={mobileDrawerOpen}
+            onMenuClick={() => setMobileDrawerOpen(true)}
+            onMobileDrawerClose={() => setMobileDrawerOpen(false)}
+          >
             <CreateGroupWizard
-              onBack={() => setPage('groups')}
+              onBack={() => navigate('/groups')}
               onComplete={handleCreateGroupComplete}
             />
-          )}
-        </div>
-      </div>
-    </div>
+          </DashboardLayout>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
   );
 }

@@ -16,10 +16,7 @@ import {
   WalletCards,
   UsersRound,
 } from 'lucide-react';
-
-type LandingPageProps = {
-  onStart: () => void;
-};
+import { Link } from 'react-router-dom';
 
 type FeatureItem = {
   icon: LucideIcon;
@@ -207,60 +204,62 @@ function ExpenseCard({
 function HeroMockup() {
   return (
     <div className="hero-mockup" aria-label="نمایی از مدیریت هزینه‌های گروهی">
-      <div className="hero-phone">
-        <div className="hero-phone-screen">
-          <div className="hero-phone-status" aria-hidden="true">
-            <span>9:41</span>
-            <span>LTE</span>
-          </div>
-
-          <div className="hero-phone-top rounded-t-[2rem] px-7 pb-10 pt-7 text-white">
-            <div className="flex items-center justify-between">
-              <ArrowLeft className="h-6 w-6" />
-              <MoreVertical className="h-6 w-6" />
+      <div className="hero-mockup-stage">
+        <div className="hero-phone">
+          <div className="hero-phone-screen">
+            <div className="hero-phone-status" aria-hidden="true">
+              <span>9:41</span>
+              <span>LTE</span>
             </div>
-            <div className="mt-14 text-center">
-              <p className="text-xl font-extrabold">رویداد سفر شمال</p>
-              <p className="mt-1 text-sm font-semibold text-white/80">7 عضو</p>
-              <div className="mt-5 flex items-center justify-center gap-2">
-                <span className="grid h-8 min-w-8 place-items-center rounded-full bg-slate-900 px-2 text-xs font-bold">
-                  +3
-                </span>
-                <AvatarStack compact />
+
+            <div className="hero-phone-top rounded-t-[2rem] px-7 pb-10 pt-7 text-white">
+              <div className="flex items-center justify-between">
+                <ArrowLeft className="h-6 w-6" />
+                <MoreVertical className="h-6 w-6" />
+              </div>
+              <div className="mt-14 text-center">
+                <p className="text-xl font-extrabold">رویداد سفر شمال</p>
+                <p className="mt-1 text-sm font-semibold text-white/80">7 عضو</p>
+                <div className="mt-5 flex items-center justify-center gap-2">
+                  <span className="grid h-8 min-w-8 place-items-center rounded-full bg-slate-900 px-2 text-xs font-bold">
+                    +3
+                  </span>
+                  <AvatarStack compact />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="-mt-7 rounded-t-[2rem] bg-white px-7 py-8 shadow-[0_-10px_30px_rgba(15,23,42,0.05)]">
-            <p className="text-center text-sm font-semibold text-slate-500">
-              مجموع هزینه‌ها
-            </p>
-            <p className="mt-3 text-center text-3xl font-black text-slate-950">
-              24,580,000
-            </p>
-            <p className="mt-1 text-center text-sm font-bold text-slate-500">تومان</p>
+            <div className="hero-phone-summary -mt-7 rounded-t-[2rem] bg-white px-7 py-8 shadow-[0_-10px_30px_rgba(15,23,42,0.05)]">
+              <p className="text-center text-sm font-semibold text-slate-500">
+                مجموع هزینه‌ها
+              </p>
+              <p className="mt-3 text-center text-3xl font-black text-slate-950">
+                24,580,000
+              </p>
+              <p className="mt-1 text-center text-sm font-bold text-slate-500">تومان</p>
 
-            <div className="mt-7 h-4 rounded-full bg-slate-100 p-1 shadow-inner">
-              <div className="h-full w-[68%] rounded-full bg-primary-gradient shadow-[0_6px_18px_rgba(0,168,107,0.28)]" />
-            </div>
-            <div className="mt-5 flex items-center justify-between text-sm font-bold">
-              <div>
-                <p className="text-slate-500">پرداخت شده</p>
-                <p className="mt-1 text-slate-950">18,450,000</p>
+              <div className="mt-7 h-4 rounded-full bg-slate-100 p-1 shadow-inner">
+                <div className="h-full w-[68%] rounded-full bg-primary-gradient shadow-[0_6px_18px_rgba(0,168,107,0.28)]" />
               </div>
-              <div className="text-left">
-                <p className="text-slate-500">باقی‌مانده</p>
-                <p className="mt-1 text-slate-950">6,130,000</p>
+              <div className="mt-5 flex items-center justify-between text-sm font-bold">
+                <div>
+                  <p className="text-slate-500">پرداخت شده</p>
+                  <p className="mt-1 text-slate-950">18,450,000</p>
+                </div>
+                <div className="text-left">
+                  <p className="text-slate-500">باقی‌مانده</p>
+                  <p className="mt-1 text-slate-950">6,130,000</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="hero-expense-stack" aria-label="نمونه هزینه‌های ثبت شده">
-        {expenseCards.map((item, index) => (
-          <ExpenseCard key={item.title} item={item} index={index} />
-        ))}
+        <div className="hero-expense-stack" aria-label="نمونه هزینه‌های ثبت شده">
+          {expenseCards.map((item, index) => (
+            <ExpenseCard key={item.title} item={item} index={index} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -382,7 +381,7 @@ function BalancePanel() {
   );
 }
 
-export function LandingPage({ onStart }: LandingPageProps) {
+export function LandingPage() {
   return (
     <main className="landing-page relative min-h-screen overflow-hidden text-slate-950">
       <div className="landing-wave-lines" aria-hidden="true" />
@@ -402,7 +401,7 @@ export function LandingPage({ onStart }: LandingPageProps) {
         <Logo />
 
         <nav
-          className="hidden h-12 items-center gap-1 rounded-full border border-white/90 bg-white/[0.68] p-1 text-sm font-extrabold text-slate-600 shadow-[0_16px_38px_rgba(15,23,42,0.07)] backdrop-blur lg:flex"
+          className="hidden h-12 items-center gap-1 rounded-full border border-white/90 bg-white/[0.68] p-1 text-sm font-extrabold text-slate-600 shadow-[0_18px_44px_rgba(20,60,50,0.13)] backdrop-blur lg:flex"
           aria-label="ناوبری اصلی"
         >
           <a className="inline-flex h-10 items-center rounded-full bg-emerald-50 px-4 text-primary" href="#home">
@@ -417,13 +416,12 @@ export function LandingPage({ onStart }: LandingPageProps) {
         </nav>
 
         <div className="landing-actions flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onStart}
-            className="landing-login-button hidden h-12 items-center px-6 text-sm font-extrabold shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:inline-flex"
+          <Link
+            to="/login"
+            className="landing-login-button inline-flex h-10 items-center whitespace-nowrap px-4 text-xs font-extrabold shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:h-12 sm:px-6 sm:text-sm"
           >
             ورود / ثبت‌نام
-          </button>
+          </Link>
         </div>
       </header>
 
@@ -465,16 +463,15 @@ export function LandingPage({ onStart }: LandingPageProps) {
           </div>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start">
-            <button
-              type="button"
-              onClick={onStart}
+            <Link
+              to="/login"
               className="inline-flex h-14 min-w-[190px] items-center justify-center gap-3 rounded-[20px] bg-primary-gradient px-6 text-base font-extrabold text-white shadow-button transition hover:-translate-y-1"
             >
               شروع حساب‌وکتاب
               <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-slate-950">
                 <ArrowLeft className="h-5 w-5" />
               </span>
-            </button>
+            </Link>
           </div>
 
           <p className="mx-auto mt-4 max-w-md text-sm font-bold leading-7 text-slate-500 lg:mx-0">
@@ -497,19 +494,19 @@ export function LandingPage({ onStart }: LandingPageProps) {
         </div>
 
         <div className="feature-copy order-1 lg:order-1">
-          <div className="text-right">
+          <div className="text-center lg:text-right">
             <h2 className="text-3xl font-black leading-[1.55] text-slate-950 sm:text-4xl">
               از خرج‌های پراکنده
               <span className="block text-orange-600">تا یک تسویه روشن</span>
             </h2>
-            <ul className="mr-0 ml-auto mt-9 flex w-full max-w-[360px] flex-col items-stretch gap-5 lg:mx-0">
+            <ul className="mx-auto mt-9 flex w-fit max-w-full flex-col items-stretch gap-5 lg:mx-0 lg:w-full lg:max-w-[360px]">
               {useCases.map((item) => (
                 <li
                   key={item}
-                  className="flex w-full items-center justify-start gap-3 text-right text-base font-bold text-slate-600"
+                  className="flex w-full items-center justify-center gap-2.5 text-center text-sm font-bold text-slate-600 sm:text-[0.95rem] lg:justify-start lg:gap-3 lg:text-right lg:text-base"
                 >
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-orange-600" />
-                  <span className="block flex-1 text-right">{item}</span>
+                  <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-orange-600 lg:h-5 lg:w-5" />
+                  <span className="block text-center leading-8 lg:flex-1 lg:text-right">{item}</span>
                 </li>
               ))}
             </ul>
@@ -531,16 +528,15 @@ export function LandingPage({ onStart }: LandingPageProps) {
 
           <div className="mt-7 flex flex-col items-center justify-center gap-4 sm:flex-row lg:mt-0 lg:justify-end">
             <AvatarStack compact />
-            <button
-              type="button"
-              onClick={onStart}
+            <Link
+              to="/login"
               className="inline-flex h-14 min-w-[190px] items-center justify-center gap-3 rounded-[20px] bg-white px-6 text-base font-extrabold text-emerald-700 shadow-[0_18px_38px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5"
             >
               شروع حساب‌وکتاب
               <span className="grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-slate-950">
                 <ArrowLeft className="h-5 w-5" />
               </span>
-            </button>
+            </Link>
           </div>
         </div>
       </section>
