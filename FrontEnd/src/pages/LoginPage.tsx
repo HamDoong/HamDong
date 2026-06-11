@@ -17,6 +17,7 @@ import './LoginPage.css';
 
 type LoginPageProps = {
   onLogin: () => void;
+  onSignUp?: () => void;
 };
 
 type BenefitItem = {
@@ -43,7 +44,7 @@ const benefitItems: BenefitItem[] = [
   },
 ];
 
-const phoneDigitOnlyPattern = /[^0-9۰-۹٠-٩]/g;
+export const phoneDigitOnlyPattern = /[^0-9۰-۹٠-٩]/g;
 
 function GoogleIcon() {
   return (
@@ -101,7 +102,7 @@ function BenefitList() {
   );
 }
 
-function LoginForm({ onLogin }: LoginPageProps) {
+function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const PasswordIcon = passwordVisible ? Eye : EyeOff;
@@ -193,13 +194,13 @@ function LoginForm({ onLogin }: LoginPageProps) {
 
       <p className="login-register">
         حساب کاربری ندارید؟
-        <button type="button">ثبت‌نام کنید</button>
+        <button type="button" onClick={onSignUp}>ثبت‌نام کنید</button>
       </p>
     </form>
   );
 }
 
-function LoginFooter() {
+export function LoginFooter() {
   return (
     <footer className="login-footer">
       <div className="login-footer-meta">
@@ -225,39 +226,45 @@ function LoginFooter() {
   );
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+export function AuthShowcase() {
+  return (
+    <div className="login-showcase">
+      <div className="login-copy">
+        <h2>
+          خرج گروهی
+          <span>بدون دردسر!</span>
+        </h2>
+      </div>
+
+      <BenefitList />
+
+      <div className="login-visual-stage" aria-hidden="true">
+        <div className="login-settled-badge">
+          <strong>تسویه شد</strong>
+          <span>
+            <Check />
+          </span>
+        </div>
+        <img
+          src="/login/wallet-coins-receipt.png"
+          alt=""
+          className="login-wallet-asset"
+          loading="eager"
+          fetchPriority="high"
+        />
+      </div>
+    </div>
+  );
+}
+
+export function LoginPage({ onLogin, onSignUp }: LoginPageProps) {
   return (
     <main className="login-page" dir="rtl">
       <section className="login-main">
-        <div className="login-showcase">
-          <div className="login-copy">
-            <h2>
-              خرج گروهی
-              <span>بدون دردسر!</span>
-            </h2>
-          </div>
-
-          <BenefitList />
-
-          <div className="login-visual-stage" aria-hidden="true">
-            <div className="login-settled-badge">
-              <strong>تسویه شد</strong>
-              <span>
-                <Check />
-              </span>
-            </div>
-            <img
-              src="/login/wallet-coins-receipt.png"
-              alt=""
-              className="login-wallet-asset"
-              loading="eager"
-              fetchPriority="high"
-            />
-          </div>
-        </div>
+        <AuthShowcase />
 
         <div className="login-form-panel">
-          <LoginForm onLogin={onLogin} />
+          <LoginForm onLogin={onLogin} onSignUp={onSignUp} />
         </div>
       </section>
       <LoginFooter />

@@ -352,6 +352,22 @@
   margin-top: 1.18rem;
 }
 
+.login-card-signup .login-field {
+  margin-top: 1.25rem;
+}
+
+.login-card-signup .login-field + .login-field {
+  margin-top: 1rem;
+}
+
+.login-field-error {
+  margin-top: 0.22rem;
+  color: #f04438;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.8;
+}
+
 .login-input-wrap {
   position: relative;
   display: flex;

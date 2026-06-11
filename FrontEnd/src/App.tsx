@@ -17,6 +17,7 @@ import {
 import { GroupsPage } from './pages/GroupsPage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
+import { SignUpPage } from './pages/SignUpPage';
 
 type DashboardGroup = (typeof mockGroups)[number];
 
@@ -130,7 +131,21 @@ function AppRoutes() {
         path="/login"
         element={
           <div dir="rtl" className="min-h-screen bg-background text-text">
-            <LoginPage onLogin={() => navigate('/groups')} />
+            <LoginPage
+              onLogin={() => navigate('/groups')}
+              onSignUp={() => navigate('/signup')}
+            />
+          </div>
+        }
+      />
+      <Route
+        path="/signup"
+        element={
+          <div dir="rtl" className="min-h-screen bg-background text-text">
+            <SignUpPage
+              onLogin={() => navigate('/login')}
+              onSignUp={() => navigate('/groups')}
+            />
           </div>
         }
       />
