@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -6,82 +6,261 @@ import {
   Routes,
   useNavigate,
 } from 'react-router-dom';
+import { FeedbackProvider, useFeedback } from './components/feedback/FeedbackProvider';
 import { MobileDrawer } from './components/MobileDrawer';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
+import { listGroupExpenses, type BackendExpense } from './lib/expenseApi';
+import {
+  archiveGroup,
+  createGroup,
+  extractInviteToken,
+  getGroupDetail,
+  getMyGroups,
+  type BackendGroup,
+  type BackendGroupType,
+} from './lib/groupApi';
+import { getPendingNotificationCount } from './lib/notificationApi';
+import { getCurrentUser, type CurrentUser } from './lib/userApi';
+import { ActivitiesPage } from './pages/ActivitiesPage';
 import {
   CreateGroupWizard,
   type CreatedGroupPayload,
 } from './pages/CreateGroupWizard';
-import { GroupsPage } from './pages/GroupsPage';
+import { GroupDetailPage } from './pages/GroupDetailPage';
+import { GroupsPage, type GroupBalanceSummary } from './pages/GroupsPage';
+import { InviteJoinPage } from './pages/InviteJoinPage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { SignUpPage } from './pages/SignUpPage';
+import { WalletPage } from './pages/WalletPage';
+import type { Group } from './types';
 
-type DashboardGroup = (typeof mockGroups)[number];
+type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications';
+type DashboardGroup = Group;
 
-function mapCreatedGroupToDashboardGroup(
-  payload: CreatedGroupPayload,
-): DashboardGroup {
-  const baseGroup = mockGroups[0]!;
-  const normalizedAmount = payload.amount.replace(/[^\d-]/g, '');
-  const amountValue = Number(normalizedAmount || '0');
-
-  const illustration: DashboardGroup['illustration'] =
-    payload.groupType === 'travel'
-      ? 'trip'
-      : payload.groupType === 'food'
-        ? 'cafe'
-        : payload.groupType === 'home'
-          ? 'home'
-          : baseGroup.illustration;
-
-  return {
-    ...baseGroup,
-    id: Date.now(),
-    name: payload.name || 'گروه جدید',
-    membersLabel: `${payload.memberCount.toLocaleString('fa-IR')} عضو • فعال`,
-    statusLabel: amountValue > 0 ? 'شما طلبکار هستید' : 'تراز این گروه صفر است',
-    amount: `${amountValue > 0 ? '+' : ''}${amountValue.toLocaleString('fa-IR')} تومان`,
-    tone: amountValue < 0 ? 'negative' : 'positive',
-    illustration,
-  };
-}
-
-type DashboardLayoutProps = {
-  children: ReactNode;
-  mobileDrawerOpen: boolean;
-  onMenuClick: () => void;
-  onMobileDrawerClose: () => void;
-};
-
-function DashboardLayout({
-  children,
-  mobileDrawerOpen,
-  onMenuClick,
-  onMobileDrawerClose,
-}: DashboardLayoutProps) {
+function getExpenseTotal(expense: BackendExpense) {
   return (
-    <div dir="rtl" className="min-h-screen bg-background text-text">
-      <MobileDrawer open={mobileDrawerOpen} onClose={onMobileDrawerClose} />
-
-      <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" />
-
-        <div className="min-w-0">
-          <TopBar onMenuClick={onMenuClick} />
-          {children}
-        </div>
-      </div>
-    </div>
+    expense.total_amount_minor ??
+    (expense.base_amount_minor || 0) +
+      (expense.tax_amount_minor || 0) +
+      (expense.service_fee_amount_minor || 0)
   );
 }
 
-function AppRoutes() {
-  const navigate = useNavigate();
+function getParticipantShare(participant: NonNullable<BackendExpense['participants']>[number]) {
+  return (
+    participant.total_share_minor ??
+    (participant.base_share_minor || 0) +
+      (participant.tax_share_minor || 0) +
+      (participant.service_fee_share_minor || 0)
+  );
+}
+
+function formatCardMoney(minor = 0) {
+  const sign = minor > 0 ? '+' : minor < 0 ? '-' : '';
+  return `${sign}${Math.abs(Math.round(minor)).toLocaleString('fa-IR')} تومان`;
+}
+
+function getIllustrationFromBackendGroup(group: BackendGroup): DashboardGroup['illustration'] {
+  if (group.group_type === 'EVENT') return 'trip';
+
+  const title = group.title || '';
+
+  if (title.includes('خانه')) return 'home';
+  if (title.includes('سفر')) return 'trip';
+
+  return 'cafe';
+}
+
+function mapBackendGroupToDashboardGroup(
+  group: BackendGroup,
+  balance?: GroupBalanceSummary,
+): DashboardGroup {
+  const baseGroup = mockGroups[0]!;
+
+  const memberCount =
+    group.member_count ??
+    group.members_count ??
+    group.members?.length ??
+    1;
+
+  const netMinor = balance?.netMinor ?? 0;
+  const balanceLabel =
+    netMinor < 0
+      ? 'شما بدهکار هستید'
+      : netMinor > 0
+        ? 'شما طلبکار هستید'
+        : group.my_role
+          ? `نقش شما: ${group.my_role}`
+          : 'تسویه';
+
+  return {
+    ...baseGroup,
+    id: group.id,
+    name: group.title,
+    membersLabel: `${memberCount.toLocaleString('fa-IR')} عضو • ${
+      group.status === 'ARCHIVED' ? 'آرشیو شده' : 'فعال'
+    }`,
+    statusLabel: balanceLabel,
+    amount: formatCardMoney(netMinor),
+    tone: netMinor < 0 ? 'negative' : 'positive',
+    illustration: getIllustrationFromBackendGroup(group),
+    status: group.status,
+    role: group.my_role,
+    description: group.description,
+  };
+}
+
+function getUserShareForExpense(expense: BackendExpense, userId: string, memberCount = 1) {
+  if (expense.participants?.length) {
+    const participant = expense.participants.find((item) => item.user_id === userId);
+    return participant ? getParticipantShare(participant) : 0;
+  }
+
+  const safeMemberCount = Math.max(memberCount, 1);
+  return Math.round(getExpenseTotal(expense) / safeMemberCount);
+}
+
+async function buildGroupBalanceSummary(
+  group: BackendGroup,
+  currentUser: CurrentUser | null,
+): Promise<GroupBalanceSummary> {
+  const userId = currentUser?.id ? String(currentUser.id) : '';
+  const expenses = await listGroupExpenses(group.id, { page_size: 100 }).catch(() => []);
+  const activeExpenses = expenses.filter(
+    (expense) => expense.status !== 'DELETED' && expense.status !== 'CANCELLED',
+  );
+
+  const paidMinor = activeExpenses.reduce((sum, expense) => {
+    return expense.payer_user_id === userId ? sum + getExpenseTotal(expense) : sum;
+  }, 0);
+
+  const memberCount = group.member_count ?? group.members_count ?? group.members?.length ?? 1;
+  const shareMinor = userId
+    ? activeExpenses.reduce((sum, expense) => {
+        return sum + getUserShareForExpense(expense, userId, memberCount);
+      }, 0)
+    : 0;
+
+  return {
+    groupId: group.id,
+    groupName: group.title,
+    status: group.status,
+    paidMinor,
+    shareMinor,
+    netMinor: paidMinor - shareMinor,
+  };
+}
+
+function mapWizardGroupTypeToBackendType(
+  groupType: CreatedGroupPayload['groupType'],
+): BackendGroupType {
+  if (groupType === 'travel') return 'EVENT';
+  return 'GENERAL';
+}
+
+function getInviteTokenFromLocation() {
+  const pathMatch = window.location.pathname.match(/\/invites\/([^/?#]+)/);
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryToken = searchParams.get('token') || searchParams.get('invite');
+  const hashMatch = window.location.hash.match(/\/invites\/([^/?#]+)/);
+
+  return extractInviteToken(pathMatch?.[1] || queryToken || hashMatch?.[1] || '');
+}
+
+function setBrowserPath(path: string) {
+  window.history.pushState({}, '', path);
+}
+
+function getSidebarActivePage(page: AppPage) {
+  if (page === 'activities') return 'activities';
+  if (page === 'wallet') return 'wallet';
+  return 'groups';
+}
+
+function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet' | 'notifications'> {
+  const hash = window.location.hash.replace('#', '');
+
+  if (hash === 'activities') return 'activities';
+  if (hash === 'wallet') return 'wallet';
+  if (hash === 'notifications') return 'notifications';
+
+  return 'groups';
+}
+
+function AppContent() {
+  const { notify, confirm } = useFeedback();
+  const initialInviteToken = useMemo(() => getInviteTokenFromLocation(), []);
+
+  const [page, setPage] = useState<AppPage>(initialInviteToken ? 'invite-join' : getPageFromHash());
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [groupItems, setGroupItems] = useState<DashboardGroup[]>(mockGroups);
+  const [groupItems, setGroupItems] = useState<DashboardGroup[]>([]);
+  const [groupBalances, setGroupBalances] = useState<GroupBalanceSummary[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState(initialInviteToken);
+
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [currentUserPhone, setCurrentUserPhone] = useState('کاربر');
+  const [notificationBadgeCount, setNotificationBadgeCount] = useState(0);
+
+  async function loadInitialData() {
+    let backendGroups: BackendGroup[] = [];
+    let currentUser: CurrentUser | null = null;
+
+    try {
+      setLoadingGroups(true);
+      setGroupsError(null);
+
+      backendGroups = await getMyGroups();
+      setGroupItems(backendGroups.map((group) => mapBackendGroupToDashboardGroup(group)));
+    } catch (error) {
+      console.error(error);
+      setGroupsError('خطا در دریافت گروه‌ها از بک‌اند');
+    } finally {
+      setLoadingGroups(false);
+    }
+
+    try {
+      currentUser = await getCurrentUser();
+
+      const phone =
+        currentUser.phone_number ||
+        currentUser.phone ||
+        currentUser.username ||
+        'کاربر';
+
+      setCurrentUserPhone(phone);
+    } catch (error) {
+      console.warn('Could not load current user profile. Keeping fallback display name.', error);
+    }
+
+    if (backendGroups.length > 0) {
+      try {
+        setBalancesLoading(true);
+        const summaries = await Promise.all(
+          backendGroups.map((group) => buildGroupBalanceSummary(group, currentUser)),
+        );
+
+        const summaryMap = new Map(summaries.map((item) => [item.groupId, item]));
+        setGroupBalances(summaries);
+        setGroupItems(backendGroups.map((group) => mapBackendGroupToDashboardGroup(group, summaryMap.get(group.id))));
+      } finally {
+        setBalancesLoading(false);
+      }
+    } else {
+      setGroupBalances([]);
+    }
+  }
+
+  async function loadNotificationBadge() {
+    const count = await getPendingNotificationCount();
+    setNotificationBadgeCount(count);
+  }
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 1024px)');
@@ -112,82 +291,363 @@ function AppRoutes() {
     };
   }, [mobileDrawerOpen]);
 
-  const handleCreateGroupComplete = (payload: CreatedGroupPayload) => {
-    setGroupItems((prev) => [mapCreatedGroupToDashboardGroup(payload), ...prev]);
-    navigate('/groups');
+  useEffect(() => {
+    loadInitialData();
+    loadNotificationBadge();
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const tokenFromUrl = getInviteTokenFromLocation();
+
+      if (tokenFromUrl) {
+        setInviteToken(tokenFromUrl);
+        setPage('invite-join');
+        setSelectedGroupId(null);
+      } else {
+        setPage(getPageFromHash());
+        setInviteToken('');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleSidebarNavigate = (itemId: string) => {
+    if (itemId === 'groups') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('groups');
+      setBrowserPath('/Dashboard#');
+      loadInitialData();
+      return;
+    }
+
+    if (itemId === 'activity' || itemId === 'activities') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('activities');
+      setBrowserPath('/Dashboard#activities');
+      return;
+    }
+
+    if (itemId === 'wallet') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('wallet');
+      setBrowserPath('/Dashboard#wallet');
+      return;
+    }
+
+    if (itemId === 'notifications') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('notifications');
+      setBrowserPath('/Dashboard#notifications');
+      return;
+    }
+
+    notify({
+      type: 'info',
+      title: 'این بخش هنوز آماده نشده',
+      description: 'فعلاً صفحه گروه‌ها، فعالیت‌ها و کیف پول برای UI فعال هستند.',
+    });
+  };
+
+  const handleOpenNotifications = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('notifications');
+    setBrowserPath('/Dashboard#notifications');
+  };
+
+  const handleCreateGroupComplete = async (payload: CreatedGroupPayload) => {
+    try {
+      const backendGroup = await createGroup({
+        title: payload.name || 'گروه جدید',
+        description: payload.description || '',
+        group_type: mapWizardGroupTypeToBackendType(payload.groupType),
+      });
+
+      const mappedGroup = mapBackendGroupToDashboardGroup(backendGroup);
+
+      setGroupItems((prev) => [mappedGroup, ...prev]);
+      setGroupBalances((prev) => [
+        {
+          groupId: backendGroup.id,
+          groupName: backendGroup.title,
+          status: backendGroup.status,
+          paidMinor: 0,
+          shareMinor: 0,
+          netMinor: 0,
+        },
+        ...prev,
+      ]);
+
+      setSelectedGroupId(backendGroup.id);
+      setPage('group-detail');
+      setBrowserPath('/Dashboard#');
+
+      notify({
+        type: 'success',
+        title: 'گروه ساخته شد',
+        description: 'حالا می‌تونی اعضا، دعوت‌ها و تنظیمات گروه را مدیریت کنی.',
+      });
+    } catch (error) {
+      console.error(error);
+      notify({
+        type: 'error',
+        title: 'ایجاد گروه ناموفق بود',
+        description: 'Network و Console را بررسی کن.',
+      });
+    }
+  };
+
+  const handleOpenGroup = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    setPage('group-detail');
+    setBrowserPath('/Dashboard#');
+  };
+
+  const handleOpenInvite = (tokenOrLink: string) => {
+    const token = extractInviteToken(tokenOrLink);
+
+    if (!token) {
+      notify({
+        type: 'error',
+        title: 'لینک دعوت نامعتبر است',
+        description: 'لینک یا توکن دعوت را دوباره بررسی کن.',
+      });
+      return;
+    }
+
+    setInviteToken(token);
+    setSelectedGroupId(null);
+    setPage('invite-join');
+    setBrowserPath(`/invites/${encodeURIComponent(token)}`);
+  };
+
+  const handleDeleteGroupFromCard = async (group: Group) => {
+    if (group.status === 'ARCHIVED') {
+      notify({
+        type: 'info',
+        title: 'این گروه قبلاً آرشیو شده',
+        description: 'گروه‌های آرشیو شده از لیست فعال‌ها جدا شده‌اند.',
+      });
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: 'حذف گروه از لیست فعال‌ها؟',
+      description: 'این عملیات گروه را از لیست گروه‌های فعال حذف می‌کند و به بخش گروه‌های آرشیو شده منتقل می‌کند.',
+      confirmText: 'حذف از لیست',
+      cancelText: 'انصراف',
+      tone: 'danger',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await archiveGroup(String(group.id));
+
+      try {
+        const refreshedGroup = await getGroupDetail(String(group.id));
+        handleGroupUpdated(refreshedGroup);
+      } catch {
+        setGroupItems((prev) =>
+          prev.map((item) =>
+            String(item.id) === String(group.id)
+              ? {
+                  ...item,
+                  status: 'ARCHIVED',
+                  membersLabel: item.membersLabel.replace('فعال', 'آرشیو شده'),
+                }
+              : item,
+          ),
+        );
+        setGroupBalances((prev) =>
+          prev.map((item) =>
+            item.groupId === String(group.id) ? { ...item, status: 'ARCHIVED' } : item,
+          ),
+        );
+      }
+
+      notify({
+        type: 'success',
+        title: 'گروه حذف شد',
+        description: 'گروه از لیست فعال‌ها حذف شد و در آرشیو قرار گرفت.',
+      });
+    } catch (error) {
+      console.error(error);
+      notify({
+        type: 'error',
+        title: 'حذف گروه ناموفق بود',
+        description: 'Network و Console را بررسی کن.',
+      });
+    }
+  };
+
+  const handleBackToGroups = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('groups');
+    setBrowserPath('/Dashboard#');
+    loadInitialData();
+  };
+
+  const handleInviteAccepted = async () => {
+    setInviteToken('');
+    setPage('groups');
+    setBrowserPath('/Dashboard#');
+    await loadInitialData();
+  };
+
+  const handleGroupUpdated = (group: BackendGroup) => {
+    setGroupBalances((prev) =>
+      prev.map((item) =>
+        item.groupId === group.id
+          ? {
+              ...item,
+              groupName: group.title,
+              status: group.status,
+            }
+          : item,
+      ),
+    );
+
+    setGroupItems((prev) => {
+      const balance = groupBalances.find((item) => item.groupId === group.id);
+      const mappedGroup = mapBackendGroupToDashboardGroup(group, balance);
+      const exists = prev.some((item) => String(item.id) === group.id);
+
+      if (!exists) {
+        return [mappedGroup, ...prev];
+      }
+
+      return prev.map((item) =>
+        String(item.id) === group.id ? mappedGroup : item,
+      );
+    });
+  };
+
+  const handleGroupRemoved = (groupId: string) => {
+    setGroupItems((prev) => prev.filter((item) => String(item.id) !== groupId));
+    setGroupBalances((prev) => prev.filter((item) => item.groupId !== groupId));
+    setSelectedGroupId(null);
+    setPage('groups');
+    setBrowserPath('/Dashboard#');
   };
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <div dir="rtl" className="min-h-screen bg-background text-text">
-            <LandingPage />
-          </div>
-        }
-      />
-      <Route
-        path="/login"
-        element={
-          <div dir="rtl" className="min-h-screen bg-background text-text">
-            <LoginPage
-              onLogin={() => navigate('/groups')}
-              onSignUp={() => navigate('/signup')}
-            />
-          </div>
-        }
-      />
-      <Route
-        path="/signup"
-        element={
-          <div dir="rtl" className="min-h-screen bg-background text-text">
-            <SignUpPage
-              onLogin={() => navigate('/login')}
-              onSignUp={() => navigate('/groups')}
-            />
-          </div>
-        }
-      />
-      <Route
-        path="/groups"
-        element={
-          <DashboardLayout
-            mobileDrawerOpen={mobileDrawerOpen}
+    <div dir="rtl" className="min-h-screen bg-background text-text">
+      <MobileDrawer open={mobileDrawerOpen} onClose={() => setMobileDrawerOpen(false)} activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
+
+      <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
+        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
+
+        <div className="min-w-0">
+          <TopBar
             onMenuClick={() => setMobileDrawerOpen(true)}
-            onMobileDrawerClose={() => setMobileDrawerOpen(false)}
-          >
+            displayName={currentUserPhone}
+            unreadNotificationCount={notificationBadgeCount}
+            onOpenNotifications={handleOpenNotifications}
+          />
+
+          {page === 'groups' ? (
             <GroupsPage
               groups={groupItems}
-              onCreateGroup={() => navigate('/groups/new')}
+              groupBalances={groupBalances}
+              balancesLoading={balancesLoading}
+              loading={loadingGroups}
+              error={groupsError}
+              onCreateGroup={() => setPage('create-group')}
+              onOpenGroup={handleOpenGroup}
+              onOpenInvite={handleOpenInvite}
+              onDeleteGroup={handleDeleteGroupFromCard}
             />
-          </DashboardLayout>
-        }
-      />
-      <Route
-        path="/groups/new"
-        element={
-          <DashboardLayout
-            mobileDrawerOpen={mobileDrawerOpen}
-            onMenuClick={() => setMobileDrawerOpen(true)}
-            onMobileDrawerClose={() => setMobileDrawerOpen(false)}
-          >
-            <CreateGroupWizard
-              onBack={() => navigate('/groups')}
-              onComplete={handleCreateGroupComplete}
-            />
-          </DashboardLayout>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+          ) : null}
+
+          {page === 'activities' ? <ActivitiesPage /> : null}
+          {page === 'wallet' ? <WalletPage /> : null}
+          {page === 'notifications' ? (
+            <NotificationsPage onUnreadCountChange={setNotificationBadgeCount} />
+          ) : null}
+
+          {page === 'create-group' ? (
+            <CreateGroupWizard onBack={() => setPage('groups')} onComplete={handleCreateGroupComplete} />
+          ) : null}
+
+          {page === 'group-detail' && selectedGroupId ? (
+            <GroupDetailPage groupId={selectedGroupId} onBack={handleBackToGroups} onGroupUpdated={handleGroupUpdated} onGroupRemoved={handleGroupRemoved} />
+          ) : null}
+
+          {page === 'invite-join' ? (
+            <InviteJoinPage initialToken={inviteToken} onBack={handleBackToGroups} onAccepted={handleInviteAccepted} />
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <FeedbackProvider>
+        <AppRoutes />
+      </FeedbackProvider>
     </BrowserRouter>
+  );
+}
+
+function AuthPageFrame({ children }: { children: ReactNode }) {
+  return (
+    <div dir="rtl" className="min-h-screen bg-background text-text">
+      {children}
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const navigate = useNavigate();
+
+  return (
+    <Routes>
+      <Route
+        path="/"
+        element={
+          <AuthPageFrame>
+            <LandingPage />
+          </AuthPageFrame>
+        }
+      />
+      <Route
+        path="/login"
+        element={
+          <AuthPageFrame>
+            <LoginPage
+              onLogin={() => navigate('/Dashboard')}
+              onSignUp={() => navigate('/signup')}
+            />
+          </AuthPageFrame>
+        }
+      />
+      <Route
+        path="/signup"
+        element={
+          <AuthPageFrame>
+            <SignUpPage
+              onLogin={() => navigate('/login')}
+              onSignUp={() => navigate('/Dashboard')}
+            />
+          </AuthPageFrame>
+        }
+      />
+      <Route path="/Dashboard/*" element={<AppContent />} />
+      <Route path="/invites/:token" element={<AppContent />} />
+      <Route path="/groups/*" element={<Navigate to="/Dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

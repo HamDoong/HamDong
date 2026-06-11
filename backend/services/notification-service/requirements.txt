@@ -15,3 +15,5 @@ black
 pytest
 pytest-django
 debugpy
+cryptography
+PyJWT[crypto]

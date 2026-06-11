@@ -91,6 +91,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.media_files.infrastructure.exception_handlers.api_exception_handler",
 }
 
 SPECTACULAR_SETTINGS = {
@@ -133,3 +134,10 @@ IDENTITY_PUBLIC_KEY_PATH = os.getenv("IDENTITY_PUBLIC_KEY_PATH", "")
 JWT_ISSUER = os.getenv("JWT_ISSUER", "hamdong.identity-service")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "hamdong.services")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "RS256")
+
+EVENT_OUTBOX_BATCH_SIZE = int(os.getenv("EVENT_OUTBOX_BATCH_SIZE", "50"))
+EVENT_OUTBOX_POLL_INTERVAL_SECONDS = int(os.getenv("EVENT_OUTBOX_POLL_INTERVAL_SECONDS", "5"))
+EVENT_MAX_RETRY_COUNT = int(os.getenv("EVENT_MAX_RETRY_COUNT", "5"))
+EVENT_DLQ_SUFFIX = os.getenv("EVENT_DLQ_SUFFIX", ".dlq")
+EVENT_RETRY_DELAY_SECONDS = os.getenv("EVENT_RETRY_DELAY_SECONDS", "10,30,60")
+NOTIFICATION_REMINDER_QUEUE = os.getenv("NOTIFICATION_REMINDER_QUEUE", "notification.reminders")

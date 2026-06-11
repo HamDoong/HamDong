@@ -5,6 +5,7 @@ export type GroupIllustrationType = 'trip' | 'home' | 'cafe';
 export type GroupTypeOption = 'trip' | 'food' | 'home' | 'other';
 export type ContactCategory = 'friends' | 'frequent';
 export type CreateGroupStep = 1 | 2 | 3;
+export type GroupStatus = 'ACTIVE' | 'ARCHIVED';
 
 export interface NavItem {
   id: string;
@@ -14,13 +15,16 @@ export interface NavItem {
 }
 
 export interface Group {
-  id: number;
+  id: string | number;
   name: string;
   membersLabel: string;
   statusLabel: string;
   amount: string;
   tone: BalanceTone;
   illustration: GroupIllustrationType;
+  status?: GroupStatus;
+  role?: string;
+  description?: string;
 }
 
 export interface SummaryItem {

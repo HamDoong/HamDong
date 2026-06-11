@@ -1,57 +1,266 @@
-### HamDong demo API tests
 @baseUrl = http://localhost:8080
 
-# 1) Request OTP
+@aliPhone = 09120000001
+@saraPhone = 09120000002
+@rezaPhone = 09120000003
+
+@aliOtp =
+@saraOtp =
+@rezaOtp =
+
+@aliAccessToken =
+@saraAccessToken =
+@rezaAccessToken =
+
+@aliRefreshToken =
+@saraRefreshToken =
+@rezaRefreshToken =
+
+@aliUserId =
+@saraUserId =
+@rezaUserId =
+
+@groupId =
+@inviteToken =
+@inviteId =
+
+@mediaFileId =
+@expenseId =
+
+@settlementPlanId =
+@settlementPlanItemId =
+@manualSettlementId =
+
+### 0. Gateway health checks
+GET {{baseUrl}}/api/v1/auth/health/
+
+###
+GET {{baseUrl}}/api/v1/groups/health/
+
+###
+GET {{baseUrl}}/api/v1/expenses/health/
+
+###
+GET {{baseUrl}}/api/v1/media/health/
+
+###
+GET {{baseUrl}}/api/v1/settlements/health/
+
+###
+GET {{baseUrl}}/api/v1/notifications/health/
+
+### 1. Request OTP for Ali
+# If DEBUG=true the response may include debug_otp. Copy it into @aliOtp.
 POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "+15555550123"
+  "phone_number": "{{aliPhone}}"
 }
 
-# 2) Verify OTP (replace with code from logs)
+### 2. Verify OTP for Ali
 POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "+15555550123",
-  "code": "000000"
+  "phone_number": "{{aliPhone}}",
+  "code": "{{aliOtp}}"
 }
 
-# 3) Create a group (requires Authorization: Bearer <token>)
+> {%
+client.global.set("aliAccessToken", response.body.access_token);
+client.global.set("aliRefreshToken", response.body.refresh_token);
+client.global.set("aliUserId", response.body.user.id);
+%}
+
+### 3. Request OTP for Sara
+# If DEBUG=true the response may include debug_otp. Copy it into @saraOtp.
+POST {{baseUrl}}/api/v1/auth/otp/request/
+Content-Type: application/json
+
+{
+  "phone_number": "{{saraPhone}}"
+}
+
+### 4. Verify OTP for Sara
+POST {{baseUrl}}/api/v1/auth/otp/verify/
+Content-Type: application/json
+
+{
+  "phone_number": "{{saraPhone}}",
+  "code": "{{saraOtp}}"
+}
+
+> {%
+client.global.set("saraAccessToken", response.body.access_token);
+client.global.set("saraRefreshToken", response.body.refresh_token);
+client.global.set("saraUserId", response.body.user.id);
+%}
+
+### 5. Request OTP for Reza
+# If DEBUG=true the response may include debug_otp. Copy it into @rezaOtp.
+POST {{baseUrl}}/api/v1/auth/otp/request/
+Content-Type: application/json
+
+{
+  "phone_number": "{{rezaPhone}}"
+}
+
+### 6. Verify OTP for Reza
+POST {{baseUrl}}/api/v1/auth/otp/verify/
+Content-Type: application/json
+
+{
+  "phone_number": "{{rezaPhone}}",
+  "code": "{{rezaOtp}}"
+}
+
+> {%
+client.global.set("rezaAccessToken", response.body.access_token);
+client.global.set("rezaRefreshToken", response.body.refresh_token);
+client.global.set("rezaUserId", response.body.user.id);
+%}
+
+### 7. Ali creates group
+# Ali creates a group.
 POST {{baseUrl}}/api/v1/groups/
+Authorization: Bearer {{aliAccessToken}}
 Content-Type: application/json
-Authorization: Bearer {{accessToken}}
 
 {
-  "title": "Demo Group",
-  "group_type": "GENERAL"
+  "title": "شام جمعه",
+  "description": "دورهمی دوستانه",
+  "group_type": "EVENT"
 }
 
-# 4) Create an expense in the group
+> {%
+client.global.set("groupId", response.body.id);
+%}
+
+### 8. Ali creates invite
+# Ali creates an invite.
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
+Authorization: Bearer {{aliAccessToken}}
+Content-Type: application/json
+
+{
+  "expires_in_hours": 48,
+  "max_uses": 5
+}
+
+> {%
+client.global.set("inviteId", response.body.invite_id);
+const inviteUrl = response.body.invite_url || "";
+if (inviteUrl) {
+  client.global.set("inviteToken", inviteUrl.split("/").pop());
+}
+%}
+
+### 9. Sara accepts invite
+POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
+Authorization: Bearer {{saraAccessToken}}
+
+### 10. Reza accepts invite
+POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
+Authorization: Bearer {{rezaAccessToken}}
+
+### 11. List members
+# Wait briefly here if downstream membership projections are still catching up.
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/members/
+Authorization: Bearer {{aliAccessToken}}
+
+### 12. Optional upload receipt by Sara
+# Optional fixture path: api-tests/fixtures/receipt.jpg
+# If the fixture is missing, skip this request and continue the rest of the demo.
+POST {{baseUrl}}/api/v1/media/receipts/
+Authorization: Bearer {{saraAccessToken}}
+Content-Type: multipart/form-data; boundary=WebKitFormBoundary7MA4YWxkTrZu0gW
+
+--WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="group_id"
+
+{{groupId}}
+--WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="receipt.jpg"
+Content-Type: image/jpeg
+
+< ./fixtures/receipt.jpg
+--WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+> {%
+if (response.body && response.body.id) {
+  client.global.set("mediaFileId", response.body.id);
+}
+%}
+
+### 13. Sara creates equal split expense
+# Sara creates an equal split expense.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Authorization: Bearer {{saraAccessToken}}
 Content-Type: application/json
-Authorization: Bearer {{accessToken}}
 
 {
-  "title": "Lunch",
-  "amount": 45.50,
-  "paid_by": "{{memberId}}",
-  "participants": ["{{memberId}}"]
+  "title": "شام رستوران",
+  "description": "شام جمعه",
+  "payer_user_id": "{{saraUserId}}",
+  "base_amount_minor": 900000,
+  "currency": "IRR",
+  "split_method": "EQUAL",
+  "participant_user_ids": [
+    "{{aliUserId}}",
+    "{{saraUserId}}",
+    "{{rezaUserId}}"
+  ],
+  "tax_type": "NONE",
+  "service_fee_type": "NONE"
 }
 
-# 5) Generate settlement plan
+> {%
+client.global.set("expenseId", response.body.id);
+%}
+
+### 14. List expenses
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/expenses/
+Authorization: Bearer {{aliAccessToken}}
+
+### 15. Ali gets group balances
+# Wait a few seconds for RabbitMQ consumers to process events before running this request.
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
+Authorization: Bearer {{aliAccessToken}}
+
+### 16. Ali generates settlement plan
+# Ali generates smart settlement plan.
 POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
-Content-Type: application/json
-Authorization: Bearer {{accessToken}}
+Authorization: Bearer {{aliAccessToken}}
 
-{}
+> {%
+client.global.set("settlementPlanId", response.body.id);
+if (response.body.items && response.body.items.length > 0) {
+  client.global.set("settlementPlanItemId", response.body.items[0].id);
+}
+%}
 
-# 6) Trigger SMS test endpoint
-POST {{baseUrl}}/api/v1/notifications/sms/test/
+### 17. Ali activates settlement plan
+POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/activate/
+Authorization: Bearer {{aliAccessToken}}
+
+### 18. Ali reports his plan item as paid
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/report-paid/
+Authorization: Bearer {{aliAccessToken}}
 Content-Type: application/json
 
 {
-  "to": "+15555550123",
-  "message": "Test SMS from HamDong"
+  "description": "Ali transferred his share."
 }
+
+> {%
+client.global.set("manualSettlementId", response.body.manual_settlement_id);
+%}
+
+### 19. Sara confirms the plan item
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/confirm/
+Authorization: Bearer {{saraAccessToken}}
+
+### 20. Ali gets final balances
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
+Authorization: Bearer {{aliAccessToken}}

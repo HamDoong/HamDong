@@ -18,7 +18,7 @@ Excluded from Phase 5
 - Receipt upload/media storage, settlement/payment/wallet, reminders, frontend UI, debt ledger.
 
 Running locally
-1. Configure `.env` (see `backend/.env.example`).
+1. Configure `.env` (see `Backend/.env.example`).
 2. Start services via `docker-compose up --build`.
 
 Testing

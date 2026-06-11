@@ -81,7 +81,7 @@ python manage.py consume_events
 
 ## Storage Provider Abstraction
 
-Media storage is abstracted behind a `StorageProvider` interface so the service can support different backends without changing the upload and download flow.
+Media storage is abstracted behind a `StorageProvider` interface so the service can support different Backends without changing the upload and download flow.
 
 Current providers:
 

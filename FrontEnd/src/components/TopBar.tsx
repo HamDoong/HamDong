@@ -1,7 +1,13 @@
 import { Bell, ChevronDown, Menu, Search } from 'lucide-react';
 import { LogoMark } from './Sidebar';
 
-function HeaderAvatar({ compact = false }: { compact?: boolean }) {
+function HeaderAvatar({
+  compact = false,
+  label = 'ک',
+}: {
+  compact?: boolean;
+  label?: string;
+}) {
   return (
     <div
       className={[
@@ -9,7 +15,7 @@ function HeaderAvatar({ compact = false }: { compact?: boolean }) {
         compact ? 'h-10 w-10' : 'h-11 w-11',
       ].join(' ')}
     >
-      ع
+      {label.slice(0, 1)}
     </div>
   );
 }
@@ -31,9 +37,17 @@ function DesktopSearch() {
 
 interface TopBarProps {
   onMenuClick: () => void;
+  displayName?: string;
+  unreadNotificationCount?: number;
+  onOpenNotifications?: () => void;
 }
 
-export function TopBar({ onMenuClick }: TopBarProps) {
+export function TopBar({
+  onMenuClick,
+  displayName = 'کاربر',
+  unreadNotificationCount = 0,
+  onOpenNotifications,
+}: TopBarProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-border/90 bg-white/95 backdrop-blur">
       <div className="flex h-[78px] items-center justify-between px-4 sm:h-[86px] sm:px-6 lg:hidden">
@@ -56,11 +70,16 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={onOpenNotifications}
             className="relative hidden h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 sm:flex"
             aria-label="اعلان‌ها"
           >
             <Bell className="h-5 w-5" strokeWidth={1.9} />
-            <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+            {unreadNotificationCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                {unreadNotificationCount > 9 ? '۹+' : unreadNotificationCount.toLocaleString('fa-IR')}
+              </span>
+            ) : null}
           </button>
 
           <button
@@ -68,7 +87,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             className="flex items-center rounded-full transition hover:bg-slate-50"
             aria-label="حساب کاربری"
           >
-            <HeaderAvatar compact />
+            <HeaderAvatar compact label={displayName} />
           </button>
         </div>
       </div>
@@ -79,17 +98,25 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             type="button"
             className="flex items-center gap-3 rounded-full px-1 transition hover:bg-slate-50"
           >
-            <HeaderAvatar />
-            <span className="text-[17px] font-semibold text-slate-800">علی احمدی</span>
+            <HeaderAvatar label={displayName} />
+            <span className="text-[17px] font-semibold text-slate-800">
+              {displayName}
+            </span>
             <ChevronDown className="h-4 w-4 text-slate-500" />
           </button>
 
           <button
             type="button"
+            onClick={onOpenNotifications}
             className="relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+            aria-label="اعلان‌ها"
           >
             <Bell className="h-5 w-5" strokeWidth={1.9} />
-            <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+            {unreadNotificationCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                {unreadNotificationCount > 9 ? '۹+' : unreadNotificationCount.toLocaleString('fa-IR')}
+              </span>
+            ) : null}
           </button>
         </div>
 

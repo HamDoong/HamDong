@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.media_files.api.serializers import MediaListItemSerializer, MediaMetadataSerializer, MessageSerializer, ReceiptUploadSerializer
+from apps.media_files.api.serializers import MediaListResponseSerializer, MediaMetadataSerializer, MessageSerializer, ReceiptUploadSerializer
 from apps.media_files.application.file_validator import FileTooLargeError, GroupNotFoundError, InvalidFileTypeError, MediaFileNotFoundError, MediaPermissionDeniedError, NotGroupMemberError
 from apps.media_files.application.use_cases import DeleteMediaUseCase, DownloadMediaUseCase, GetMediaDetailUseCase, ListGroupMediaUseCase, UploadReceiptUseCase
 from apps.media_files.infrastructure.jwt_authentication import JWTAuthentication
@@ -112,7 +112,7 @@ class ListGroupMediaView(APIView):
         tags=["Media"],
         summary="List group media",
         description="List active media files for an active group member, optionally filtered by file type.",
-        responses={200: MediaListItemSerializer(many=True)},
+        responses={200: MediaListResponseSerializer},
     )
     def get(self, request, group_id, *args, **kwargs):
         file_type = request.query_params.get("file_type")

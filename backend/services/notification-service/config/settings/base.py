@@ -96,9 +96,31 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
+IDENTITY_JWKS_URL = env(
+    "IDENTITY_JWKS_URL",
+    default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json",
+)
+IDENTITY_PUBLIC_KEY_PATH = env(
+    "IDENTITY_PUBLIC_KEY_PATH",
+    default="/app/keys/public.pem",
+)
+JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
+JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
+JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "notification-service API",
     "VERSION": SERVICE_VERSION,
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        }
+    },
+    "SECURITY": [{"BearerAuth": []}],
 }
 
 IDENTITY_RABBITMQ_EXCHANGE = env(
@@ -125,6 +147,20 @@ SMS_TEMPLATE_SETTLEMENT_REMINDER = env(
     "SMS_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER"
 )
 
+SMS_TEMPLATE_PAYMENT_REMINDER = env(
+    "SMS_TEMPLATE_PAYMENT_REMINDER",
+    default="PAYMENT_REMINDER",
+)
+
+SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER = env(
+    "SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER",
+    default="SETTLEMENT_CONFIRMATION_REMINDER",
+)
+
+SMS_TEMPLATE_PLAN_ITEM_REMINDER = env(
+    "SMS_TEMPLATE_PLAN_ITEM_REMINDER",
+    default="PLAN_ITEM_REMINDER",
+)
 SMS_CIRCUIT_FAIL_MAX = env("SMS_CIRCUIT_FAIL_MAX", default=5, cast=int)
 SMS_CIRCUIT_RESET_TIMEOUT_SECONDS = env(
     "SMS_CIRCUIT_RESET_TIMEOUT_SECONDS", default=60, cast=int
@@ -147,3 +183,12 @@ SETTLEMENT_REMINDER_DLQ = env(
 )
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+EVENT_OUTBOX_BATCH_SIZE = env.int("EVENT_OUTBOX_BATCH_SIZE", default=50)
+EVENT_OUTBOX_POLL_INTERVAL_SECONDS = env.int("EVENT_OUTBOX_POLL_INTERVAL_SECONDS", default=5)
+EVENT_MAX_RETRY_COUNT = env.int("EVENT_MAX_RETRY_COUNT", default=5)
+EVENT_DLQ_SUFFIX = env("EVENT_DLQ_SUFFIX", default=".dlq")
+EVENT_RETRY_DELAY_SECONDS = env("EVENT_RETRY_DELAY_SECONDS", default="10,30,60")
+REMINDER_ENABLED = env.bool("REMINDER_ENABLED", default=True)
+NOTIFICATION_REMINDER_QUEUE = env("NOTIFICATION_REMINDER_QUEUE", default="notification.reminders")
+SETTLEMENT_REMINDER_EXCHANGE = env("SETTLEMENT_REMINDER_EXCHANGE", default="hamdong.settlement")

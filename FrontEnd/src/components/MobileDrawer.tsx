@@ -4,11 +4,15 @@ import { Sidebar } from './Sidebar';
 interface MobileDrawerProps {
   open: boolean;
   onClose: () => void;
+  activePage?: string;
+  onNavigate?: (itemId: string) => void;
 }
 
 export function MobileDrawer({
   open,
   onClose,
+  activePage,
+  onNavigate,
 }: MobileDrawerProps) {
   useEffect(() => {
     if (!open) {
@@ -52,7 +56,12 @@ export function MobileDrawer({
           open ? 'translate-x-0' : 'translate-x-full',
         ].join(' ')}
       >
-        <Sidebar mobile onClose={onClose} />
+        <Sidebar
+          mobile
+          onClose={onClose}
+          activePage={activePage}
+          onNavigate={onNavigate}
+        />
       </div>
     </div>
   );

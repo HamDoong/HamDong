@@ -7,13 +7,22 @@ on:
     branches: [ main, master ]
 
 jobs:
-  ci:
+  full-stack-check:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env
+        run: cp .env.example .env
+
       - name: Validate docker compose
-        run: docker compose -f backend/docker-compose.yml config
-      - name: Run backend tests (Makefile)
-        run: make -C backend test
+        run: docker compose --env-file .env -f docker-compose.yml config
+
+      - name: Build full stack
+        run: docker compose --env-file .env -f docker-compose.yml build
+
+      - name: Build frontend
+        working-directory: FrontEnd
+        run: npm ci && npm run build

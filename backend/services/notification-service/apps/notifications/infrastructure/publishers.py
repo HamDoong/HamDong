@@ -1,1 +1,1 @@
-"""RabbitMQ publishers for notification-service."""
+from apps.notifications.infrastructure.rabbitmq_publisher import RabbitMQPublisher

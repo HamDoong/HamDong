@@ -1,42 +1,65 @@
-from typing import List, Dict
-from .rounding import split_integer_minor
+"""Base-share split calculation for expenses."""
+
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+from apps.expenses.application.rounding import split_integer_minor
 
 
-def equal_split(participant_ids: List[str], base_amount_minor: int, order: str = "sorted") -> Dict[str, int]:
-    """Split `base_amount_minor` equally across participant_ids.
+INVALID_SPLIT_AMOUNT = "INVALID_SPLIT_AMOUNT"
 
-    Returns dict mapping user_id (str) -> base_share_minor (int).
-    """
-    if not participant_ids:
-        raise ValueError("no participants")
-    if base_amount_minor < 0:
+
+def equal_split(participant_user_ids: Iterable[Any], base_amount_minor: int) -> dict[str, int]:
+    """Return base shares for an EQUAL split."""
+    user_ids = [str(user_id) for user_id in participant_user_ids or []]
+    if not user_ids:
+        raise ValueError("participant_user_ids required")
+
+    if len(set(user_ids)) != len(user_ids):
+        raise ValueError("DUPLICATE_PARTICIPANT")
+
+    normalized_base_amount_minor = int(base_amount_minor)
+    if normalized_base_amount_minor < 0:
         raise ValueError("base_amount_minor must be non-negative")
 
-    shares = split_integer_minor(base_amount_minor, participant_ids, deterministic_order=("input" if order == "input" else "sorted"))
-    return {str(uid): int(share) for uid, share in zip(participant_ids, shares)}
+    shares = split_integer_minor(normalized_base_amount_minor, user_ids, deterministic_order="sorted")
+    result = dict(zip(user_ids, shares, strict=True))
+
+    if sum(result.values()) != normalized_base_amount_minor:
+        raise AssertionError("equal split produced an invalid total")
+
+    return result
 
 
-def custom_split(participants: List[Dict], base_amount_minor: int) -> Dict[str, int]:
-    """participants: list of dicts with user_id and base_share_minor
-
-    Validates that the sum of participant shares equals base_amount_minor.
-    Returns dict mapping user_id -> base_share_minor.
-    """
-    if not participants:
+def custom_split(participants: Iterable[Mapping[str, Any]], base_amount_minor: int) -> dict[str, int]:
+    """Return base shares for a CUSTOM_AMOUNT split."""
+    rows = list(participants or [])
+    if not rows:
         raise ValueError("participants required")
-    total = 0
-    result = {}
-    for p in participants:
-        user_id = str(p.get("user_id"))
-        if user_id is None:
-            raise ValueError("participant must include user_id")
-        share = int(p.get("base_share_minor", 0))
-        if share < 0:
-            raise ValueError("participant share cannot be negative")
-        total += share
-        result[user_id] = share
 
-    if total != int(base_amount_minor):
-        raise ValueError("INVALID_SPLIT_AMOUNT")
+    normalized_base_amount_minor = int(base_amount_minor)
+    if normalized_base_amount_minor < 0:
+        raise ValueError("base_amount_minor must be non-negative")
+
+    result: dict[str, int] = {}
+    total = 0
+
+    for row in rows:
+        if "user_id" not in row or "base_share_minor" not in row:
+            raise ValueError("participants require user_id and base_share_minor")
+
+        user_id = str(row["user_id"])
+        if user_id in result:
+            raise ValueError("DUPLICATE_PARTICIPANT")
+
+        share = int(row["base_share_minor"])
+        if share < 0:
+            raise ValueError("base_share_minor must be non-negative")
+
+        result[user_id] = share
+        total += share
+
+    if total != normalized_base_amount_minor:
+        raise ValueError(INVALID_SPLIT_AMOUNT)
 
     return result

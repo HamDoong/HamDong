@@ -1,49 +1,91 @@
-"""JWKS / public key loader for group-service."""
+from __future__ import annotations
 
-import time
 import json
-from typing import Optional, Dict
+import os
+import time
+from pathlib import Path
+from threading import Lock
+from typing import Any
 
 import httpx
 from django.conf import settings
-
-_cached_jwks: Optional[Dict] = None
-_cached_at: float = 0.0
-_cache_ttl = 600  # seconds
+from jwt import algorithms
 
 
-def get_jwks() -> Optional[Dict]:
-    global _cached_jwks, _cached_at
-    now = time.time()
-    if _cached_jwks and (now - _cached_at) < _cache_ttl:
-        return _cached_jwks
+class JWKSClientError(RuntimeError):
+    """Raised when a verifier service cannot load a usable JWT public key."""
 
-    # Prefer local public key file for development
-    pub_path = getattr(settings, "IDENTITY_PUBLIC_KEY_PATH", None)
-    if pub_path:
+
+class JWKSClient:
+    def __init__(self, jwks_url: str | None = None, public_key_path: str | None = None, cache_ttl: int = 600):
+        self.jwks_url = jwks_url or os.getenv("IDENTITY_JWKS_URL") or getattr(settings, "IDENTITY_JWKS_URL", "")
+        self.public_key_path = public_key_path or os.getenv("IDENTITY_PUBLIC_KEY_PATH") or getattr(settings, "IDENTITY_PUBLIC_KEY_PATH", "")
+        self.cache_ttl = int(os.getenv("JWKS_CACHE_TTL", cache_ttl))
+        self._cache: dict[str, Any] = {}
+        self._lock = Lock()
+
+    def _load_pem(self) -> str | None:
+        if not self.public_key_path:
+            return None
+        path = Path(self.public_key_path)
+        if not path.exists():
+            return None
+        return path.read_text(encoding="utf-8")
+
+    def _fetch_jwks(self) -> dict[str, Any]:
+        if not self.jwks_url:
+            raise JWKSClientError("JWT public key is not available.")
         try:
-            with open(pub_path, "r", encoding="utf-8") as fh:
-                pem = fh.read()
-            # return a JWKS-like dict using a single key (consumer will load PEM directly)
-            _cached_jwks = {"pem": pem}
-            _cached_at = now
-            return _cached_jwks
-        except Exception:
-            # fallthrough to HTTP JWKS
-            pass
+            response = httpx.get(self.jwks_url, timeout=5.0)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            raise JWKSClientError("JWT public key is not available.") from exc
 
-    jwks_url = getattr(settings, "IDENTITY_JWKS_URL", None)
-    if not jwks_url:
-        return None
+        keys = data.get("keys")
+        if not isinstance(keys, list) or not keys:
+            raise JWKSClientError("JWT public key is not available.")
+        return data
 
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            resp = client.get(jwks_url)
-            if resp.status_code == 200:
-                _cached_jwks = resp.json()
-                _cached_at = now
-                return _cached_jwks
-    except Exception:
-        return None
+    def _get_cached_jwks(self) -> dict[str, Any]:
+        now = time.time()
+        with self._lock:
+            entry = self._cache.get("jwks")
+            if entry and (now - entry["fetched_at"]) < self.cache_ttl:
+                return entry["value"]
+            jwks = self._fetch_jwks()
+            self._cache["jwks"] = {"value": jwks, "fetched_at": now}
+            return jwks
 
-    return None
+    def get_public_key(self, kid: str | None = None, header: dict | None = None):
+        pem = self._load_pem()
+        if pem:
+            return pem
+
+        jwks = self._get_cached_jwks()
+        keys = jwks.get("keys", [])
+        if kid is None and len(keys) == 1:
+            return algorithms.RSAAlgorithm.from_jwk(json.dumps(keys[0]))
+
+        for key in keys:
+            if key.get("kid") == kid:
+                return algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
+        raise JWKSClientError("JWT public key is not available.")
+
+    def clear_cache(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
+
+_default_jwks_client: JWKSClient | None = None
+
+
+def get_default_jwks_client() -> JWKSClient:
+    global _default_jwks_client
+    if _default_jwks_client is None:
+        _default_jwks_client = JWKSClient()
+    return _default_jwks_client
+
+
+def get_jwks():
+    return get_default_jwks_client()._get_cached_jwks()

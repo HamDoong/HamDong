@@ -1,16 +1,44 @@
 {
   "$schema": "../schemas/event_envelope.schema.json",
   "service": "notification-service",
-  "description": "Notification service reminder delivery events.",
   "events": [
     {
-      "event_type": "NotificationJobCreated",
-      "routing_key": "notification.job.created",
-      "data_example": {
-        "event_id": "00000000-0000-0000-0000-000000000040",
-        "recipient_phone_number": "09123456789",
-        "template_code": "SETTLEMENT_REMINDER"
-      }
+      "event_type": "NotificationSent",
+      "routing_key": "notification.sent",
+      "payload_keys": [
+        "notification_job_id",
+        "channel",
+        "notification_type",
+        "recipient_phone_number"
+      ]
+    },
+    {
+      "event_type": "NotificationFailed",
+      "routing_key": "notification.failed",
+      "payload_keys": [
+        "notification_job_id",
+        "channel",
+        "notification_type",
+        "recipient_phone_number",
+        "error"
+      ]
+    },
+    {
+      "event_type": "SmsSent",
+      "routing_key": "notification.sms.sent",
+      "payload_keys": [
+        "notification_job_id",
+        "recipient_phone_number"
+      ]
+    },
+    {
+      "event_type": "SmsFailed",
+      "routing_key": "notification.sms.failed",
+      "payload_keys": [
+        "notification_job_id",
+        "recipient_phone_number",
+        "error"
+      ]
     }
   ]
 }

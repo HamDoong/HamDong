@@ -1,4 +1,5 @@
 from rest_framework import serializers
+
 from apps.groups.domain.models import Group
 
 
@@ -7,10 +8,19 @@ class GroupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
-        fields = ["id", "title", "description", "group_type", "status", "created_by_user_id", "member_count", "created_at", "my_role"]
+        fields = [
+            "id",
+            "title",
+            "description",
+            "group_type",
+            "status",
+            "created_by_user_id",
+            "member_count",
+            "created_at",
+            "my_role",
+        ]
 
     def get_my_role(self, obj):
-        # view should inject `context['my_role_map']` mapping
         mapping = self.context.get("my_role_map", {})
         return mapping.get(str(obj.id))
 
@@ -18,25 +28,44 @@ class GroupSerializer(serializers.ModelSerializer):
 class CreateGroupSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True)
-    group_type = serializers.ChoiceField(choices=[("EVENT", "EVENT"), ("TRIP", "TRIP"), ("GENERAL", "GENERAL")], default="GENERAL")
+    group_type = serializers.ChoiceField(
+        choices=[("EVENT", "EVENT"), ("TRIP", "TRIP"), ("GENERAL", "GENERAL")],
+        default="GENERAL",
+    )
 
 
 class UpdateGroupSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255, required=False)
     description = serializers.CharField(required=False, allow_blank=True)
-    group_type = serializers.ChoiceField(choices=[("EVENT", "EVENT"), ("TRIP", "TRIP"), ("GENERAL", "GENERAL")], required=False)
+    group_type = serializers.ChoiceField(
+        choices=[("EVENT", "EVENT"), ("TRIP", "TRIP"), ("GENERAL", "GENERAL")],
+        required=False,
+    )
 
 
 class GroupDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
-        fields = ["id", "title", "description", "group_type", "status", "created_by_user_id", "member_count", "created_at"]
+        fields = [
+            "id",
+            "title",
+            "description",
+            "group_type",
+            "status",
+            "created_by_user_id",
+            "member_count",
+            "created_at",
+        ]
 
 
 class CreateInviteSerializer(serializers.Serializer):
     expires_in_hours = serializers.IntegerField(required=False)
     max_uses = serializers.IntegerField(required=False, allow_null=True)
-    invite_code = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    invite_code = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
 
 
 class InvitePreviewSerializer(serializers.Serializer):
@@ -58,9 +87,17 @@ class MemberSerializer(serializers.Serializer):
     display_name_snapshot = serializers.CharField(allow_null=True)
     role = serializers.CharField()
     joined_at = serializers.DateTimeField()
-    phone_number = serializers.CharField()
-from rest_framework import serializers
+    phone_number = serializers.CharField(allow_null=True)
 
 
-class PlaceholderSerializer(serializers.Serializer):
-    message = serializers.CharField(required=False)
+class MessageSerializer(serializers.Serializer):
+    message = serializers.CharField()
+
+
+class ErrorDetailSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    message = serializers.CharField()
+
+
+class ErrorResponseSerializer(serializers.Serializer):
+    error = ErrorDetailSerializer()

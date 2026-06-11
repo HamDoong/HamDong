@@ -1,68 +1,42 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from apps.expenses.application.use_cases import ExpenseService
-from apps.expenses.api.serializers import CreateExpenseSerializer
-from apps.expenses.infrastructure.jwt_authentication import JWTAuthentication
-from apps.expenses.api.serializers_response import ExpenseResponseSerializer
+"""Thin HTTP views for expense endpoints."""
 
+from __future__ import annotations
 
-class CreateExpenseView(APIView):
-    authentication_classes = [JWTAuthentication]
-
-    def post(self, request, group_id):
-        serializer = CreateExpenseSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        svc = ExpenseService()
-        try:
-            expense = svc.create_expense(group_id, request.user, serializer.validated_data)
-        except PermissionError:
-            return Response({"error": {"code": "NOT_GROUP_MEMBER", "message": "You are not an active member of this group."}}, status=status.HTTP_403_FORBIDDEN)
-        except ValueError as e:
-            return Response({"error": {"code": str(e), "message": str(e)}}, status=status.HTTP_400_BAD_REQUEST)
-
-        # return full expense representation
-        expense = ExpenseService().get_expense(expense.id, request.user)
-        resp = ExpenseResponseSerializer({
-            "id": expense.id,
-            "group_id": expense.group_id,
-            "created_by_user_id": expense.created_by_user_id,
-            "payer_user_id": expense.payer_user_id,
-            "title": expense.title,
-            "description": expense.description,
-            "currency": expense.currency,
-            "base_amount_minor": expense.base_amount_minor,
-            "tax_amount_minor": expense.tax_amount_minor,
-            "service_fee_amount_minor": expense.service_fee_amount_minor,
-            "total_amount_minor": expense.total_amount_minor,
-            "split_method": expense.split_method,
-            "status": expense.status,
-            "expense_date": expense.expense_date,
-            "created_at": expense.created_at,
-            "updated_at": expense.updated_at,
-            "participants": [
-                {
-                    "user_id": p.user_id,
-                    "phone_number": p.phone_number,
-                    "display_name_snapshot": p.display_name_snapshot,
-                    "base_share_minor": p.base_share_minor,
-                    "tax_share_minor": p.tax_share_minor,
-                    "service_fee_share_minor": p.service_fee_share_minor,
-                    "total_share_minor": p.total_share_minor,
-                }
-                for p in expense.participants.all()
-            ],
-        })
-        return Response(resp.data, status=status.HTTP_201_CREATED)
 from django.conf import settings
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.expenses.api.serializers import CreateExpenseSerializer, UpdateExpenseSerializer
+from apps.expenses.api.serializers_response import ExpenseResponseSerializer, serialize_expense
+from apps.expenses.application.use_cases import (
+    ExpensePermissionError,
+    ExpenseService,
+    ExpenseServiceError,
+)
+from apps.expenses.infrastructure.jwt_authentication import JWTAuthentication
+
+
+def _error_response(code: str, message: str, http_status: int) -> Response:
+    return Response(
+        {"error": {"code": code, "message": message}},
+        status=http_status,
+    )
 
 
 class HealthView(APIView):
     authentication_classes = []
     permission_classes = []
 
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Health check",
+        description="Return the service health payload for the expense service.",
+        responses={200: OpenApiResponse(description="Service health response")},
+    )
     def get(self, request, *args, **kwargs):
         return Response(
             {
@@ -71,3 +45,159 @@ class HealthView(APIView):
                 "version": settings.SERVICE_VERSION,
             }
         )
+
+
+class AuthenticatedExpenseAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def handle_exception(self, exc):
+        if isinstance(exc, (AuthenticationFailed, NotAuthenticated)):
+            return _error_response(
+                "NOT_AUTHENTICATED",
+                "Authentication credentials were not provided.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+        return super().handle_exception(exc)
+
+
+class GroupExpensesView(AuthenticatedExpenseAPIView):
+    @extend_schema(
+        tags=["Expenses"],
+        summary="List group expenses",
+        description="List expenses for a group visible to an authenticated group member.",
+        parameters=[
+            OpenApiParameter(name="payer_user_id", required=False, type=str),
+            OpenApiParameter(name="created_by_user_id", required=False, type=str),
+            OpenApiParameter(name="from_date", required=False, type=str),
+            OpenApiParameter(name="to_date", required=False, type=str),
+            OpenApiParameter(name="page", required=False, type=int),
+            OpenApiParameter(name="page_size", required=False, type=int),
+        ],
+        responses={200: ExpenseResponseSerializer(many=True)},
+    )
+    def get(self, request, group_id):
+        service = ExpenseService()
+        filters = {
+            key: request.query_params.get(key)
+            for key in ("payer_user_id", "created_by_user_id", "from_date", "to_date")
+            if request.query_params.get(key)
+        }
+        try:
+            expenses = service.list_expenses(
+                group_id,
+                request.user,
+                filters=filters,
+                page=request.query_params.get("page", 1),
+                page_size=request.query_params.get("page_size", 50),
+            )
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_400_BAD_REQUEST)
+
+        return Response([serialize_expense(expense) for expense in expenses])
+
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Create expense",
+        description="Create a new expense using the amount_minor contract.",
+        request=CreateExpenseSerializer,
+        responses={
+            201: ExpenseResponseSerializer,
+            400: OpenApiResponse(description="Validation or contract error"),
+            401: OpenApiResponse(description="Authentication required"),
+            403: OpenApiResponse(description="Not allowed for this group"),
+        },
+    )
+    def post(self, request, group_id):
+        serializer = CreateExpenseSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response(
+                "INVALID_REQUEST",
+                str(serializer.errors),
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = ExpenseService()
+        try:
+            expense = service.create_expense(group_id, request.user, serializer.validated_data)
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_400_BAD_REQUEST)
+
+        return Response(serialize_expense(expense), status=status.HTTP_201_CREATED)
+
+
+class ExpenseDetailView(AuthenticatedExpenseAPIView):
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Get expense detail",
+        description="Return a single expense by id.",
+        responses={200: ExpenseResponseSerializer},
+    )
+    def get(self, request, expense_id):
+        service = ExpenseService()
+        try:
+            expense = service.get_expense(expense_id, request.user)
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status)
+
+        return Response(serialize_expense(expense))
+
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Update expense",
+        description="Update mutable expense fields using the amount_minor contract.",
+        request=UpdateExpenseSerializer,
+        responses={200: ExpenseResponseSerializer},
+    )
+    def patch(self, request, expense_id):
+        serializer = UpdateExpenseSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return _error_response(
+                "INVALID_REQUEST",
+                str(serializer.errors),
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        service = ExpenseService()
+        try:
+            expense = service.update_expense(expense_id, request.user, serializer.validated_data)
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status)
+
+        return Response(serialize_expense(expense))
+
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Delete expense",
+        description="Soft delete an expense and return the resulting expense status.",
+        responses={200: OpenApiResponse(description="Expense deleted")},
+    )
+    def delete(self, request, expense_id):
+        service = ExpenseService()
+        try:
+            expense = service.delete_expense(expense_id, request.user)
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status)
+
+        return Response({"id": str(expense.id), "status": expense.status}, status=status.HTTP_200_OK)
+
+
+class CreateExpenseView(GroupExpensesView):
+    """Backward-compatible alias for older imports."""
+
+
+class ExpenseResourceView(ExpenseDetailView):
+    """Backward-compatible alias for older imports."""

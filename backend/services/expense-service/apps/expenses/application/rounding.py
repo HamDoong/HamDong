@@ -1,57 +1,38 @@
-from typing import List
-import uuid
+"""Deterministic integer rounding helpers for money in minor units."""
+
+from collections.abc import Sequence
+from typing import Any
 
 
-def split_integer_minor(amount: int, participant_ids: List[str], deterministic_order: str = "sorted") -> List[int]:
-    """Split an integer `amount` (minor units) across N participants deterministically.
+def split_integer_minor(
+    amount_minor: int,
+    participant_ids: Sequence[Any],
+    deterministic_order: str = "sorted",
+) -> list[int]:
+    """Split an integer amount without losing or creating minor units."""
+    normalized_amount_minor = int(amount_minor)
+    if normalized_amount_minor < 0:
+        raise ValueError("amount_minor must be non-negative")
 
-    - `participant_ids`: list of ids to deterministically order remainder distribution.
-    - `deterministic_order`: 'sorted' (default) or 'input'.
+    ids = list(participant_ids)
+    if not ids:
+        raise ValueError("participant_user_ids required")
 
-    Returns a list of integers (shares) in the same order as `participant_ids` when
-    `deterministic_order='input'`, otherwise in the same order as `participant_ids` but
-    remainder assigned according to sorted ordering.
-    Sum of shares equals amount.
-    """
-    if amount < 0:
-        raise ValueError("amount must be non-negative")
-    n = len(participant_ids)
-    if n == 0:
-        raise ValueError("must have at least one participant")
+    base_share = normalized_amount_minor // len(ids)
+    remainder = normalized_amount_minor % len(ids)
+    shares = [base_share for _ in ids]
 
-    base = amount // n
-    shares = [base] * n
-    remainder = amount - base * n
-
-    if remainder == 0:
-        return shares
-
-    # Determine deterministic index order for distributing remainder
     if deterministic_order == "input":
-        order = list(range(n))
+        order = list(range(len(ids)))
+    elif deterministic_order == "sorted":
+        order = [idx for _, idx in sorted((str(user_id), idx) for idx, user_id in enumerate(ids))]
     else:
-        # sort by stringified participant id to be deterministic
-        sorted_pairs = sorted(((str(pid), idx) for idx, pid in enumerate(participant_ids)))
-        order = [idx for (_pid, idx) in sorted_pairs]
+        raise ValueError("deterministic_order must be 'input' or 'sorted'")
 
-    # distribute one unit to first `remainder` participants in the deterministic order
-    for i in range(remainder):
-        shares[order[i % n]] += 1
+    for idx in order[:remainder]:
+        shares[idx] += 1
 
-    # final sanity check
-    assert sum(shares) == amount
-    return shares
-def distribute_remainder(participant_ids, base_share, base_amount):
-    """Distribute remainder deterministically by sorted participant_ids."""
-    n = len(participant_ids)
-    shares = {pid: base_share for pid in participant_ids}
-    remainder = base_amount - base_share * n
-    # deterministic order: sort by string representation
-    ordered = sorted(participant_ids, key=lambda x: str(x))
-    idx = 0
-    while remainder > 0:
-        pid = ordered[idx % n]
-        shares[pid] += 1
-        remainder -= 1
-        idx += 1
+    if sum(shares) != normalized_amount_minor:
+        raise AssertionError("split produced an invalid total")
+
     return shares

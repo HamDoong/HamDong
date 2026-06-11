@@ -1,41 +1,50 @@
 {
   "$schema": "../schemas/event_envelope.schema.json",
   "service": "identity-service",
-  "description": "Identity service domain events.",
   "events": [
-    {
-      "event_type": "SendOtpSmsRequested",
-      "routing_key": "identity.otp.requested",
-      "data_example": {
-        "phone_number": "09123456789",
-        "code": "123456",
-        "purpose": "login",
-        "expires_in": 120
-      }
-    },
     {
       "event_type": "UserCreated",
       "routing_key": "identity.user.created",
-      "data_example": {
-        "user_id": "00000000-0000-0000-0000-000000000001",
-        "phone_number": "09123456789"
-      }
+      "payload_keys": [
+        "user_id",
+        "phone_number",
+        "display_name",
+        "first_name",
+        "last_name",
+        "role",
+        "is_active"
+      ]
     },
     {
       "event_type": "UserUpdated",
       "routing_key": "identity.user.updated",
-      "data_example": {
-        "user_id": "00000000-0000-0000-0000-000000000001",
-        "phone_number": "09123456789"
-      }
+      "payload_keys": [
+        "user_id",
+        "phone_number",
+        "display_name",
+        "first_name",
+        "last_name",
+        "role",
+        "is_active"
+      ]
     },
     {
       "event_type": "UserLoggedIn",
       "routing_key": "identity.user.logged_in",
-      "data_example": {
-        "user_id": "00000000-0000-0000-0000-000000000001",
-        "phone_number": "09123456789"
-      }
+      "payload_keys": [
+        "user_id",
+        "phone_number"
+      ]
+    },
+    {
+      "event_type": "SendOtpSmsRequested",
+      "routing_key": "identity.otp.requested",
+      "payload_keys": [
+        "phone_number",
+        "code",
+        "purpose",
+        "expires_in"
+      ]
     }
   ]
 }

@@ -27,7 +27,7 @@ Identity Service is HamDong's authentication and authorization service. Phase 2 
 Use the management command inside the running identity-service container:
 
 ```bash
-docker exec backend-identity-service-1 python manage.py generate_keys --keys-dir=/app/keys
+docker exec Backend-identity-service-1 python manage.py generate_keys --keys-dir=/app/keys
 ```
 
 This creates `private.pem` and `public.pem` for local development only. Do not commit real production keys.
@@ -35,14 +35,14 @@ This creates `private.pem` and `public.pem` for local development only. Do not c
 ### Run migrations
 
 ```bash
-cd backend
+cd Backend
 docker compose exec identity-service python manage.py migrate
 ```
 
 ### Run tests
 
 ```bash
-cd backend
+cd Backend
 docker compose exec identity-service python manage.py test apps.identity.tests -v2
 ```
 

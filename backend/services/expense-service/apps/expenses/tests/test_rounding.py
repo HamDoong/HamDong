@@ -2,28 +2,27 @@ from apps.expenses.application.rounding import split_integer_minor
 
 
 def test_clean_division():
-    amount = 100
-    participants = ["u1", "u2", "u3", "u4"]
-    shares = split_integer_minor(amount, participants)
-    assert shares == [25, 25, 25, 25]
-    assert sum(shares) == amount
+    shares = split_integer_minor(900000, ["u1", "u2", "u3"])
+    assert shares == [300000, 300000, 300000]
+    assert sum(shares) == 900000
 
 
-def test_remainder_division_sorted():
-    amount = 101
+def test_division_with_remainder():
+    shares = split_integer_minor(100000, ["b", "a", "c"])
+    assert shares == [33333, 33334, 33333]
+    assert sum(shares) == 100000
+
+
+def test_zero_remainder():
+    shares = split_integer_minor(6, ["u1", "u2", "u3"])
+    assert shares == [2, 2, 2]
+    assert sum(shares) == 6
+
+
+def test_deterministic_repeatability():
     participants = ["b", "a", "c"]
-    # default deterministic order is 'sorted', so order will be a,b,c -> indices [1,0,2]
-    shares = split_integer_minor(amount, participants)
-    # base = 33, remainder = 2 -> add to 'a' and 'b' based on sorted order => a and b get +1
-    # mapping back to input order [b,a,c] -> b:34, a:34, c:33
-    assert sum(shares) == amount
-    assert shares == [34, 34, 33]
+    assert split_integer_minor(100000, participants) == split_integer_minor(100000, participants)
 
 
-def test_remainder_division_input_order():
-    amount = 5
-    participants = ["p1", "p2", "p3"]
-    shares = split_integer_minor(amount, participants, deterministic_order="input")
-    # base=1, remainder=2 -> give +1 to first two participants p1,p2
-    assert shares == [2, 2, 1]
-    assert sum(shares) == amount
+def test_no_negative_shares():
+    assert all(share >= 0 for share in split_integer_minor(2, ["u1", "u2", "u3"]))

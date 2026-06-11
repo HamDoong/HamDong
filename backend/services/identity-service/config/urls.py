@@ -5,6 +5,7 @@ from apps.identity.api.views import HealthView, GetCurrentUserView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
+    path("api/v1/auth/health/", HealthView.as_view(), name="auth_health"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",

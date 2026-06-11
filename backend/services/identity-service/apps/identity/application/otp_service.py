@@ -117,7 +117,7 @@ class OtpService:
         self.otp_store.delete_otp(phone_number)
         self.otp_store.reset_verify_attempts(phone_number)
 
-        logger.info(f"OTP verified for phone: {phone_number}")
+        logger.info("OTP verified for phone_number=%s", PhoneNumberRule.mask(phone_number))
 
         return True, None
 

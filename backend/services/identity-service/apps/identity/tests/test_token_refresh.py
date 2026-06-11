@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from apps.identity.domain.models import User
+from apps.identity.domain.models import *
 from apps.identity.application.token_service import TokenService
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 

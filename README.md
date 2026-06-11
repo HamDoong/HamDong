@@ -1,116 +1,240 @@
-# HamDong Project
+# HamDong Backend
 
-Project Title
-- HamDong — Collaborative group expense and settlement microservices.
+## Project Title
 
-Project Description
-- HamDong implements group expense tracking, receipt/media uploads, smart settlement planning and SMS reminders using a small set of focused microservices.
+HamDong Backend
 
-Architecture Overview
-- Microservices: identity, group, expense, media, settlement, notification. Event-driven integration via RabbitMQ, API gateway via Nginx, per-service PostgreSQL databases.
+## Project Description
 
-Services
-- identity-service — authentication and user projection
-- group-service — groups, invites, members
-- expense-service — expense lifecycle and events
-- media-service — receipt uploads and media storage
-- settlement-service — debt ledger, settlement plans, outbox and reminders
-- notification-service — SMS and notification jobs
+HamDong is a Django/DRF microservice Backend for shared group expenses, receipt media, debt tracking, manual settlements, smart settlement plans, and reminder notifications. The stack is designed for local development with Docker Compose and for presentation/demo flows through the API gateway.
 
-Tech Stack
-- Python, Django, Django REST Framework
-- PostgreSQL, Redis
-- RabbitMQ
-- Docker Compose
-- drf-spectacular (OpenAPI/Swagger)
+## Architecture Overview
 
-Folder Structure
-- backend/: all service source code and compose files
-- frontend/: optional frontend assets
-- docs/: architecture and how-to guides
-- api-tests/: VS Code REST Client requests
-- scripts/: helper and demo scripts
+Clients call the Nginx API Gateway at `http://localhost:8080`. The gateway forwards requests to service-specific Django applications. Each service owns its own database schema and shares cross-service facts through RabbitMQ events plus local projection tables instead of direct database access.
 
-How to Run Locally
-1. Copy and edit `.env.example` to `.env` with secrets and keys.
-2. Build and start services:
+## Services
 
-    make build
-    make up
+| Service | Responsibility |
+| --- | --- |
+| `identity-service` | OTP login, RS256 JWT issuing, refresh/logout, JWKS, current-user profile |
+| `group-service` | groups, members, invite lifecycle, membership projection events |
+| `expense-service` | expense validation, equal/custom split contracts, expense events |
+| `media-service` | receipt upload, metadata, checksum tracking, secure download/delete |
+| `settlement-service` | balances, debts, manual settlements, smart plans, reminders |
+| `notification-service` | OTP/reminder SMS delivery, notification jobs, provider circuit breaker |
+| `api-gateway` | single public entry point through Nginx |
+| `postgres` | per-service PostgreSQL databases |
+| `redis` | OTP cooldown/rate-limit/cache support |
+| `rabbitmq` | asynchronous event transport |
 
-3. Apply migrations:
+## Tech Stack
 
-    make migrate
+Python 3.12, Django, Django REST Framework, drf-spectacular/Swagger, PostgreSQL, Redis, RabbitMQ, Nginx, Docker Compose, PyJWT RS256, and VS Code REST Client `.http` collections.
 
-4. Run tests:
+## Folder Structure
 
-    make test
+```text
+.
+|-- README.md
+|-- .env.example
+|-- docker-compose.yml
+|-- .github/workflows/ci.yml
+|-- api-tests/
+|-- docs/
+|-- FrontEnd/
+`-- backend/
+    |-- .env.example
+    |-- api-gateway/
+    |-- api-tests/
+    |-- docs/
+    |-- infra/
+    |-- scripts/
+    |-- services/
+    |-- shared/
+    `-- tests/
+```
 
-Environment Variables
-- See `.env.example` for required variables (Postgres, Redis, RabbitMQ, JWT, OTP, SMS, event/outbox settings).
+Root `docs/` and `api-tests/` are final-delivery copies. `backend/` contains the runnable stack, worker commands, contracts, scripts, and service code.
 
-Ports
-- Nginx API Gateway: `8080`
-- Identity service: `8000` (internal)
-- RabbitMQ management: `15672`
+## How to Run Locally
 
-API Gateway Routes
-- `/api/v1/auth/` — identity endpoints (OTP, JWT, JWKS)
-- `/api/v1/groups/` — group endpoints
-- `/api/v1/expenses/` — expense endpoints
-- `/api/v1/media/` — media endpoints
-- `/api/v1/settlements/` — settlement endpoints
-- `/api/v1/notifications/` — notification endpoints
+Prepare environment files:
 
-Database Design Summary
-- Each service owns its database and projections to avoid cross-service coupling. See `docs/database.md` for per-service tables.
+```bash
+cp .env.example .env
+```
 
-Event-driven Architecture
-- Services publish events to RabbitMQ and consume where needed. Outbox/Inbox patterns ensure reliable delivery and idempotency.
+Start the stack:
 
-Authentication Flow
-- OTP login: request OTP, verify OTP, receive JWT access + refresh tokens. JWT signed with RS256; services validate using JWKS from `identity-service`.
+```bash
+docker compose -f docker-compose.yml up --build
+```
 
-OTP/SMS Flow
-- identity-service emits OTP events; notification-service creates `NotificationJob` and sends SMS via configured provider. Circuit breaker protects SMS provider.
+Stop the stack:
 
-Group/Invite Flow
-- Owners create invites; invite tokens are one-time and raw tokens are not stored in DB (only hashes).
+```bash
+docker compose -f docker-compose.yml down
+```
 
-Expense Flow
-- Expenses are created with `amount_minor` and participants list; events published to drive settlements.
+Check container status:
 
-Media/Receipt Flow
-- Receipts are uploaded, validated, and stored (local in dev). Filenames randomized and checksums recorded.
+```bash
+docker compose -f docker-compose.yml ps
+```
 
-Settlement Flow
-- Settlement-service consumes expense events, calculates balances, and can generate a smart settlement plan.
+View logs:
 
-Smart Settlement Flow
-- Plan minimizes transactions by matching creditors and debtors and emits plan events.
+```bash
+docker compose -f docker-compose.yml logs -f
+```
 
-Reminder Flow
-- Reminder scheduler creates reminder events which are consumed by notification-service to send SMS reminders.
+View a single service log:
 
-Testing
-- See `docs/testing.md`. Use `make -C backend test` for all service tests and per-service `make -C backend test-<service>` targets.
+```bash
+docker compose -f docker-compose.yml logs -f identity-service
+docker compose -f docker-compose.yml logs -f group-service
+docker compose -f docker-compose.yml logs -f expense-service
+docker compose -f docker-compose.yml logs -f media-service
+docker compose -f docker-compose.yml logs -f settlement-service
+docker compose -f docker-compose.yml logs -f notification-service
+```
 
-API Documentation
-- Each service exposes OpenAPI at `/api/schema/` and interactive docs at `/api/docs/`.
+## Environment Variables
 
-Demo Scenario
-- See `docs/demo-scenario.md` and `api-tests/hamdong.http` for a runnable demo flow.
+Use `.env.example` and `backend/.env.example` as safe templates. They contain placeholders for app mode, secrets, PostgreSQL, Redis, RabbitMQ, JWT, OTP, SMS, outbox/retry settings, reminder settings, and media storage configuration. Do not commit real secrets, real SMS credentials, or real private-key material.
 
-Troubleshooting
-- See `docs/troubleshooting.md` for common issues and commands.
+## Ports
 
-Future Improvements
-- Wallet service
-- Payment gateway
-- Bank callback
-- Online payment
-- OCR receipt reading
-- MinIO/S3 production storage
-- Grafana/Prometheus monitoring
-- Kubernetes deployment
-- Mobile app / Frontend integration
+| Component | URL / Port |
+| --- | --- |
+| API Gateway | `http://localhost:8080` |
+| identity-service Swagger | `http://localhost:8001/api/docs/` |
+| group-service Swagger | `http://localhost:8002/api/docs/` |
+| expense-service Swagger | `http://localhost:8003/api/docs/` |
+| settlement-service Swagger | `http://localhost:8004/api/docs/` |
+| media-service Swagger | `http://localhost:8005/api/docs/` |
+| notification-service Swagger | `http://localhost:8006/api/docs/` |
+| RabbitMQ management | `http://localhost:15672` |
+| PostgreSQL | `localhost:5432` |
+| Redis | `localhost:6379` |
+
+## API Gateway Routes
+
+| Prefix | Owner |
+| --- | --- |
+| `/api/v1/auth/` | identity-service |
+| `/api/v1/users/` | identity-service |
+| `/api/v1/groups/` | group-service |
+| `/api/v1/groups/{group_id}/expenses/` | expense-service |
+| `/api/v1/groups/{group_id}/media/` | media-service |
+| `/api/v1/groups/{group_id}/balances/` | settlement-service |
+| `/api/v1/groups/{group_id}/debts/` | settlement-service |
+| `/api/v1/groups/{group_id}/settlements/` | settlement-service |
+| `/api/v1/groups/{group_id}/settlement-plan/` | settlement-service |
+| `/api/v1/expenses/` | expense-service |
+| `/api/v1/media/` | media-service |
+| `/api/v1/settlements/` | settlement-service |
+| `/api/v1/settlement-plans/` | settlement-service |
+| `/api/v1/settlement-plan-items/` | settlement-service |
+| `/api/v1/notifications/` | notification-service |
+
+Nested group routes are matched before the generic `/api/v1/groups/` gateway location so requests reach the correct service.
+
+## Authentication Flow
+
+1. Client requests an OTP from identity-service.
+2. Client verifies the OTP.
+3. identity-service returns RS256-signed `access_token` and `refresh_token`.
+4. Protected endpoints use `Authorization: Bearer <access_token>`.
+5. Verifier services use the public key or JWKS and validate issuer, audience, token type, expiration, issued-at, subject, and JWT ID.
+
+## OTP/SMS Flow
+
+identity-service hashes the OTP, stores TTL/cooldown state, and writes `SendOtpSmsRequested` to the outbox. `identity-outbox-dispatcher` publishes the event to `hamdong.identity`. notification-service consumes the event, records idempotency, and sends an SMS through the configured provider. In local debug mode, the OTP request response may include `debug_otp`.
+
+## Group/Invite Flow
+
+Ali creates a group, creates an invite, and shares the invite token or URL. Sara and Reza accept the invite with their own tokens. group-service emits membership events so expense-service, media-service, and settlement-service can update their local projections.
+
+## Expense Flow
+
+Expenses are created under `/api/v1/groups/{group_id}/expenses/`. The current contract uses `base_amount_minor`, `payer_user_id`, `split_method`, `participant_user_ids`, or `participants[].base_share_minor`. expense-service validates the payload, stores the expense, and emits expense events.
+
+## Media/Receipt Flow
+
+media-service accepts receipt uploads at `/api/v1/media/receipts/`. It validates file type and size, stores a randomized filename, records checksum/metadata, and exposes detail, list, download, and delete endpoints with auth checks.
+
+## Settlement Flow
+
+settlement-service maintains balances and debts from group membership plus expense events. Users can list balances, view debts, create manual settlements, confirm or reject them, and query the latest settlement plan for a group.
+
+## Smart Settlement Flow
+
+The smart planner minimizes the number of transfers needed to settle current balances. It generates plan items, activates the plan, allows the payer to report a payment, and allows the receiver to confirm or reject the report.
+
+## Reminder Flow
+
+settlement-service can schedule reminder request events for unpaid balances, pending confirmations, and active settlement plan items. notification-service consumes those reminder events, creates notification jobs, renders SMS content, and sends messages with retry and circuit-breaker protections.
+
+## Event-driven Architecture
+
+The stack uses RabbitMQ plus outbox/inbox patterns. Producers write domain data and an `OutboxMessage` in the same transaction. Dispatchers publish pending rows. Consumers validate the event envelope, record `InboxMessage` or processed-event state, skip duplicate `event_id` values, and update local projections.
+
+## Testing
+
+Start the stack:
+
+```bash
+docker compose -f docker-compose.yml up --build
+```
+
+Run the smoke test:
+
+```bash
+BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+```
+
+Run service test suites where practical:
+
+```bash
+docker compose -f docker-compose.yml exec identity-service pytest
+docker compose -f docker-compose.yml exec group-service pytest
+docker compose -f docker-compose.yml exec expense-service pytest
+docker compose -f docker-compose.yml exec media-service pytest
+docker compose -f docker-compose.yml exec settlement-service pytest
+docker compose -f docker-compose.yml exec notification-service pytest
+```
+
+Run the end-to-end demo with VS Code REST Client using `api-tests/hamdong.http`.
+
+## API Documentation
+
+Swagger UI:
+
+- `http://localhost:8001/api/docs/`
+- `http://localhost:8002/api/docs/`
+- `http://localhost:8003/api/docs/`
+- `http://localhost:8004/api/docs/`
+- `http://localhost:8005/api/docs/`
+- `http://localhost:8006/api/docs/`
+
+OpenAPI schema endpoints:
+
+- `http://localhost:8001/api/schema/`
+- `http://localhost:8002/api/schema/`
+- `http://localhost:8003/api/schema/`
+- `http://localhost:8004/api/schema/`
+- `http://localhost:8005/api/schema/`
+- `http://localhost:8006/api/schema/`
+
+## Demo Scenario
+
+Use `api-tests/hamdong.http` for the presentation flow with Ali, Sara, and Reza in group `شام جمعه`. The file walks through OTP login, group creation, invite acceptance, a `900000 IRR` equal-split expense, balance checks, settlement-plan generation, plan activation, payment reporting, confirmation, and final balances.
+
+## Troubleshooting
+
+See `docs/troubleshooting.md` for Docker Compose failures, gateway `502`, health endpoint errors, RabbitMQ readiness, PostgreSQL/Redis issues, migration failures, JWT key problems, debug OTP handling, async projection delays, media upload failures, and Swagger issues.
+
+## Future Improvements
+
+Practical next steps include stronger integration-test coverage, trace/correlation dashboards, better backup/restore runbooks, production secret-store wiring, stricter gateway rate limiting, and richer operational health dashboards.

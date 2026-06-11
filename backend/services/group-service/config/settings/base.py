@@ -91,7 +91,20 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.groups.infrastructure.exception_handlers.api_exception_handler",
 }
+
+
+IDENTITY_JWKS_URL = env(
+    "IDENTITY_JWKS_URL",
+    default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json",
+)
+IDENTITY_PUBLIC_KEY_PATH = env(
+    "IDENTITY_PUBLIC_KEY_PATH", default="/app/keys/public.pem"
+)
+JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
+JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
+JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "group-service API",
@@ -99,3 +112,11 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+GROUP_RABBITMQ_EXCHANGE = os.getenv("GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
+IDENTITY_RABBITMQ_EXCHANGE = os.getenv("IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity")
+EVENT_OUTBOX_BATCH_SIZE = int(os.getenv("EVENT_OUTBOX_BATCH_SIZE", "50"))
+EVENT_OUTBOX_POLL_INTERVAL_SECONDS = int(os.getenv("EVENT_OUTBOX_POLL_INTERVAL_SECONDS", "5"))
+EVENT_MAX_RETRY_COUNT = int(os.getenv("EVENT_MAX_RETRY_COUNT", "5"))
+EVENT_DLQ_SUFFIX = os.getenv("EVENT_DLQ_SUFFIX", ".dlq")
+EVENT_RETRY_DELAY_SECONDS = os.getenv("EVENT_RETRY_DELAY_SECONDS", "10,30,60")

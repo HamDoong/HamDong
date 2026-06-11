@@ -1,9 +1,28 @@
 {
   "$schema": "../schemas/event_envelope.schema.json",
   "service": "media-service",
-  "description": "Media service domain events.",
   "events": [
-    {"event_type": "MediaUploaded", "routing_key": "media.uploaded", "data_example": {"media_id": "00000000-0000-0000-0000-000000000030", "group_id": "00000000-0000-0000-0000-000000000010"}},
-    {"event_type": "MediaDeleted", "routing_key": "media.deleted", "data_example": {"media_id": "00000000-0000-0000-0000-000000000030"}}
+    {
+      "event_type": "MediaUploaded",
+      "routing_key": "media.uploaded",
+      "payload_keys": [
+        "media_file_id",
+        "group_id",
+        "related_expense_id",
+        "uploaded_by_user_id",
+        "file_type",
+        "content_type",
+        "size_bytes"
+      ]
+    },
+    {
+      "event_type": "MediaDeleted",
+      "routing_key": "media.deleted",
+      "payload_keys": [
+        "media_file_id",
+        "group_id",
+        "deleted_by_user_id"
+      ]
+    }
   ]
 }

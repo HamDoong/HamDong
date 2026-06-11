@@ -87,6 +87,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.identity.infrastructure.exception_handlers.api_exception_handler",
 }
 
 SPECTACULAR_SETTINGS = {
@@ -96,7 +97,7 @@ SPECTACULAR_SETTINGS = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# Use the custom user model defined in apps.identity.domain.models.User
+# Use the custom user model defined in apps.identity.domain.models *
 AUTH_USER_MODEL = "identity.User"
 
 # JWT Configuration
@@ -138,3 +139,9 @@ RABBITMQ_HOST = env("RABBITMQ_HOST", default="localhost")
 RABBITMQ_PORT = env("RABBITMQ_PORT", default=5672, cast=int)
 RABBITMQ_DEFAULT_USER = env("RABBITMQ_DEFAULT_USER", default="guest")
 RABBITMQ_DEFAULT_PASS = env("RABBITMQ_DEFAULT_PASS", default="guest")
+
+EVENT_OUTBOX_BATCH_SIZE = env.int("EVENT_OUTBOX_BATCH_SIZE", default=50)
+EVENT_OUTBOX_POLL_INTERVAL_SECONDS = env.int("EVENT_OUTBOX_POLL_INTERVAL_SECONDS", default=5)
+EVENT_MAX_RETRY_COUNT = env.int("EVENT_MAX_RETRY_COUNT", default=5)
+EVENT_DLQ_SUFFIX = env("EVENT_DLQ_SUFFIX", default=".dlq")
+EVENT_RETRY_DELAY_SECONDS = env("EVENT_RETRY_DELAY_SECONDS", default="10,30,60")

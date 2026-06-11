@@ -5,6 +5,7 @@ from apps.settlements.api.views import HealthView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
+    path("api/v1/settlements/health/", HealthView.as_view(), name="settlements_health"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",

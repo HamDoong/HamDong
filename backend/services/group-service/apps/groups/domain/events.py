@@ -1,24 +1,26 @@
-"""Event envelope helpers for group-service."""
+"""Event helpers for group-service."""
 
-import uuid
-from datetime import datetime, timezone
+from __future__ import annotations
 
-from django.conf import settings
+from apps.groups.infrastructure.event_envelope import build_event_envelope
 
-EVENT_VERSION = 1
+EVENT_ROUTING_KEYS = {
+    "GroupCreated": "group.created",
+    "GroupUpdated": "group.updated",
+    "GroupArchived": "group.archived",
+    "GroupInviteCreated": "group.invite.created",
+    "GroupInviteAccepted": "group.invite.accepted",
+    "GroupInviteRevoked": "group.invite.revoked",
+    "GroupMemberJoined": "group.member.joined",
+    "GroupMemberRemoved": "group.member.removed",
+    "GroupMemberLeft": "group.member.left",
+}
 
 
 def make_event(event_type: str, data: dict, routing_key: str | None = None) -> dict:
-    envelope = {
-        "event_id": str(uuid.uuid4()),
-        "event_type": event_type,
-        "event_version": EVENT_VERSION,
-        "version": EVENT_VERSION,
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
-        "source_service": getattr(settings, "SERVICE_NAME", "group-service"),
-        "routing_key": routing_key,
-        "correlation_id": None,
-        "causation_id": None,
-        "data": data,
-    }
-    return envelope
+    return build_event_envelope(
+        event_type,
+        data,
+        routing_key=routing_key or EVENT_ROUTING_KEYS[event_type],
+        source_service="group-service",
+    )

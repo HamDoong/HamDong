@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.utils import timezone
 
 
 class User(models.Model):
@@ -85,3 +86,31 @@ class RefreshToken(models.Model):
     @property
     def is_revoked(self):
         return self.revoked_at is not None
+
+
+class OutboxMessageStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    PUBLISHED = "PUBLISHED", "Published"
+    FAILED = "FAILED", "Failed"
+
+
+class OutboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    event_version = models.PositiveIntegerField(default=1)
+    source_service = models.CharField(max_length=128)
+    exchange = models.CharField(max_length=128)
+    routing_key = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=OutboxMessageStatusChoices.choices, default=OutboxMessageStatusChoices.PENDING)
+    retry_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    available_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "identity_outbox_messages"
+        indexes = [models.Index(fields=["status", "available_at"]), models.Index(fields=["routing_key"])]

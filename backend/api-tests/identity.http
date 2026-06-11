@@ -1,0 +1,62 @@
+@baseUrl = http://localhost:8080
+
+@phone = 09120000001
+@otp =
+@accessToken =
+@refreshToken =
+
+### Health endpoint
+GET {{baseUrl}}/api/v1/auth/health/
+
+### Request OTP
+# If DEBUG=true the response may include debug_otp. Copy it into @otp for local testing.
+POST {{baseUrl}}/api/v1/auth/otp/request/
+Content-Type: application/json
+
+{
+  "phone_number": "{{phone}}"
+}
+
+### Verify OTP
+POST {{baseUrl}}/api/v1/auth/otp/verify/
+Content-Type: application/json
+
+{
+  "phone_number": "{{phone}}",
+  "code": "{{otp}}"
+}
+
+### Refresh access token
+POST {{baseUrl}}/api/v1/auth/token/refresh/
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### Logout
+POST {{baseUrl}}/api/v1/auth/logout/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### Get current user
+GET {{baseUrl}}/api/v1/users/me/
+Authorization: Bearer {{accessToken}}
+
+### Update current user
+PATCH {{baseUrl}}/api/v1/users/me/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "display_name": "Ali Demo",
+  "first_name": "Ali",
+  "last_name": "Tester"
+}
+
+### JWKS endpoint
+GET {{baseUrl}}/api/v1/auth/.well-known/jwks.json

@@ -1,41 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL=${BASE_URL:-http://localhost:8080}
-set -e
+BASE_URL="${BASE_URL:-http://localhost:8080}"
 
-echo "Checking HTTP health endpoints..."
-for svc in auth groups expenses settlements media notifications; do
-  url="$BASE_URL/api/v1/${svc}/health/"
-  echo -n "Checking $url... "
-  status=$(curl -s -o /dev/null -w "%{http_code}" "$url" || true)
-  if [ "$status" != "200" ]; then
-    echo "FAILED ($status)"
-    exit 1
-  fi
-  echo "OK"
-done
+check_endpoint() {
+  local endpoint="$1"
+  echo "Checking ${BASE_URL}${endpoint}"
+  curl -fsS "${BASE_URL}${endpoint}" > /dev/null
+}
 
-echo "Checking TCP services..."
-# RabbitMQ management
-if timeout 3 bash -c "</dev/tcp/localhost/15672" 2>/dev/null; then
-  echo "RabbitMQ management reachable"
-else
-  echo "RabbitMQ management unreachable"; exit 1
-fi
+check_endpoint "/api/v1/auth/health/"
+check_endpoint "/api/v1/groups/health/"
+check_endpoint "/api/v1/expenses/health/"
+check_endpoint "/api/v1/media/health/"
+check_endpoint "/api/v1/settlements/health/"
+check_endpoint "/api/v1/notifications/health/"
 
-# Postgres
-if timeout 3 bash -c "</dev/tcp/localhost/5432" 2>/dev/null; then
-  echo "Postgres reachable"
-else
-  echo "Postgres unreachable"; exit 1
-fi
+check_tcp() {
+  local name="$1"
+  local port="$2"
 
-# Redis
-if timeout 3 bash -c "</dev/tcp/localhost/6379" 2>/dev/null; then
-  echo "Redis reachable"
-else
-  echo "Redis unreachable"; exit 1
-fi
+  echo "Checking ${name} on localhost:${port}"
+  timeout 3 bash -c "</dev/tcp/localhost/${port}" 2>/dev/null
+}
 
-echo "Smoke test complete."
+check_tcp "RabbitMQ management" "15672"
+check_tcp "PostgreSQL" "5432"
+check_tcp "Redis" "6379"
+
+echo "All gateway and TCP health checks passed."

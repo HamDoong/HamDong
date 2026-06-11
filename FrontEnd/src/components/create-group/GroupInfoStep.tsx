@@ -1,12 +1,10 @@
 import type { InputHTMLAttributes } from 'react';
 import {
-  CalendarDays,
   CloudUpload,
   FileText,
   Home,
   Plane,
   UtensilsCrossed,
-  Wallet,
 } from 'lucide-react';
 
 export type GroupTypeValue = '' | 'travel' | 'food' | 'home' | 'other';
@@ -15,9 +13,6 @@ export interface GroupInfoValues {
   name: string;
   groupType: GroupTypeValue;
   description: string;
-  amount: string;
-  currency: string;
-  startDate: string;
 }
 
 interface GroupInfoStepProps {
@@ -43,13 +38,7 @@ const groupTypeOptions: Array<{
   { value: 'other', label: 'سایر', icon: FileText },
 ];
 
-function FieldLabel({
-  children,
-  required,
-}: {
-  children: string;
-  required?: boolean;
-}) {
+function FieldLabel({ children, required }: { children: string; required?: boolean }) {
   return (
     <label className="mb-2 block text-sm font-semibold text-text">
       {children}
@@ -70,10 +59,7 @@ function SoftInput(props: InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-export function GroupInfoStep({
-  values,
-  onChange,
-}: GroupInfoStepProps) {
+export function GroupInfoStep({ values, onChange }: GroupInfoStepProps) {
   return (
     <div className="space-y-8">
       <div className="border-b border-border/80 pb-6 text-right">
@@ -81,7 +67,7 @@ export function GroupInfoStep({
           اطلاعات گروه
         </h2>
         <p className="mt-2 text-sm text-muted">
-          اطلاعات پایه گروه خود را وارد کنید.
+          فقط اطلاعات پایه گروه را وارد کن. هزینه‌ها بعد از ساخت گروه ثبت می‌شوند.
         </p>
       </div>
 
@@ -151,10 +137,7 @@ export function GroupInfoStep({
               type="button"
               className="flex min-h-[156px] w-full flex-col items-center justify-center rounded-[20px] border border-dashed border-emerald-300 bg-emerald-50/30 px-6 text-center transition hover:bg-emerald-50"
             >
-              <CloudUpload
-                className="mb-3 h-9 w-9 text-emerald-600"
-                strokeWidth={1.8}
-              />
+              <CloudUpload className="mb-3 h-9 w-9 text-emerald-600" strokeWidth={1.8} />
               <span className="text-base font-semibold text-text">
                 برای آپلود کلیک کنید
               </span>
@@ -162,53 +145,6 @@ export function GroupInfoStep({
                 حداکثر ۵ مگابایت JPG, PNG
               </span>
             </button>
-          </div>
-        </div>
-
-        <div className="grid w-full gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div className="w-full">
-            <FieldLabel>مبلغ (اختیاری)</FieldLabel>
-            <div className="relative">
-              <SoftInput
-                dir="rtl"
-                inputMode="numeric"
-                value={values.amount}
-                onChange={(event) => onChange('amount', event.target.value)}
-                placeholder="مثلاً ۵,۰۰۰,۰۰۰ تومان"
-                className="pl-24"
-              />
-              <div className="absolute left-2 top-1/2 flex h-8 -translate-y-1/2 items-center rounded-[12px] bg-slate-50 px-3 text-xs font-semibold text-slate-500">
-                تومان
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full">
-            <FieldLabel>ارز پیش‌فرض گروه</FieldLabel>
-            <div className="relative">
-              <Wallet className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-              <SoftInput
-                dir="rtl"
-                value={values.currency}
-                onChange={(event) => onChange('currency', event.target.value)}
-                className="pr-11"
-                placeholder="تومان (IRT)"
-              />
-            </div>
-          </div>
-
-          <div className="w-full">
-            <FieldLabel>تاریخ شروع (اختیاری)</FieldLabel>
-            <div className="relative">
-              <CalendarDays className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-              <SoftInput
-                dir="rtl"
-                value={values.startDate}
-                onChange={(event) => onChange('startDate', event.target.value)}
-                className="pr-11"
-                placeholder="انتخاب تاریخ"
-              />
-            </div>
           </div>
         </div>
       </div>

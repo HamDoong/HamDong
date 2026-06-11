@@ -12,6 +12,8 @@ from apps.settlements.domain.models import (
     ExpenseProjection,
     ExpenseStatusChoices,
     GroupBalanceSnapshot,
+    InboxMessage,
+    InboxMessageStatusChoices,
     GroupMemberProjection,
     GroupProjection,
     GroupStatusChoices,
@@ -720,58 +722,52 @@ class OutboxRepository:
     @staticmethod
     def create(**data):
         return OutboxMessage.objects.create(
-            event_id=normalize_uuid(data.get("event_id")) or uuid.uuid4(),
+            event_id=normalize_uuid(data.get("event_id")) or normalize_uuid((data.get("payload") or {}).get("event_id")) or uuid.uuid4(),
             source_service=data.get("source_service", "settlement-service"),
             aggregate_type=data.get("aggregate_type", "Settlement"),
             aggregate_id=normalize_uuid(data.get("aggregate_id")),
             event_type=data.get("event_type"),
+            event_version=int(data.get("event_version") or (data.get("payload") or {}).get("event_version", 1)),
             routing_key=data.get("routing_key"),
             exchange=data.get("exchange", "hamdong.settlement"),
-            correlation_id=normalize_uuid(data.get("correlation_id")),
-            causation_id=normalize_uuid(data.get("causation_id")),
+            correlation_id=normalize_uuid(data.get("correlation_id") or (data.get("payload") or {}).get("correlation_id")),
+            causation_id=normalize_uuid(data.get("causation_id") or (data.get("payload") or {}).get("causation_id")),
             payload=data.get("payload") or {},
             status=data.get("status", OutboxMessageStatusChoices.PENDING),
-            retry_count=data.get("retry_count", 0),
+            retry_count=int(data.get("retry_count", 0)),
             available_at=data.get("available_at") or timezone.now(),
             published_at=data.get("published_at"),
             last_error=data.get("last_error"),
         )
 
     @staticmethod
-    def pending(limit=100):
+    def pending(limit=100, max_retry_count=5):
         return OutboxMessage.objects.filter(
-            status__in=[
-                OutboxMessageStatusChoices.PENDING,
-                OutboxMessageStatusChoices.RETRY_PENDING,
-            ],
+            status__in=[OutboxMessageStatusChoices.PENDING, OutboxMessageStatusChoices.FAILED],
             available_at__lte=timezone.now(),
+            retry_count__lt=max_retry_count,
         ).order_by("created_at")[:limit]
 
     @staticmethod
-    def mark_sent(message):
-        message.status = OutboxMessageStatusChoices.SENT
+    def mark_published(message):
+        message.status = OutboxMessageStatusChoices.PUBLISHED
         message.published_at = timezone.now()
         message.last_error = None
-        message.save(
-            update_fields=["status", "published_at", "last_error", "updated_at"]
-        )
+        message.save(update_fields=["status", "published_at", "last_error", "updated_at"])
         return message
 
     @staticmethod
-    def mark_retry(message, error_message, retry_delay_seconds=0):
+    def mark_failed(message, error_message, retry_delay_seconds=0, max_retry_count=5):
         message.retry_count += 1
-        message.status = OutboxMessageStatusChoices.RETRY_PENDING
         message.last_error = error_message
         if retry_delay_seconds > 0:
             message.available_at = timezone.now() + timedelta(seconds=retry_delay_seconds)
+        if message.retry_count >= max_retry_count:
+            message.status = OutboxMessageStatusChoices.FAILED
+        else:
+            message.status = OutboxMessageStatusChoices.PENDING
         message.save(
-            update_fields=[
-                "retry_count",
-                "status",
-                "last_error",
-                "available_at",
-                "updated_at",
-            ]
+            update_fields=["retry_count", "status", "last_error", "available_at", "updated_at"]
         )
         return message
 
@@ -820,3 +816,58 @@ class ReminderDispatchRepository:
             ]
         )
         return log
+
+
+
+class InboxRepository:
+    @staticmethod
+    def was_processed(event_id):
+        return InboxMessage.objects.filter(event_id=normalize_uuid(event_id), status=InboxMessageStatusChoices.PROCESSED).exists()
+
+    @staticmethod
+    def mark_processed(event_id, event_type, source_service, routing_key, payload):
+        obj, _ = InboxMessage.objects.update_or_create(
+            event_id=normalize_uuid(event_id),
+            defaults={
+                "event_type": event_type,
+                "source_service": source_service,
+                "routing_key": routing_key,
+                "payload": payload,
+                "status": InboxMessageStatusChoices.PROCESSED,
+                "processed_at": timezone.now(),
+                "error_message": None,
+            },
+        )
+        return obj
+
+    @staticmethod
+    def mark_skipped(event_id, event_type, source_service, routing_key, payload):
+        obj, _ = InboxMessage.objects.update_or_create(
+            event_id=normalize_uuid(event_id),
+            defaults={
+                "event_type": event_type,
+                "source_service": source_service,
+                "routing_key": routing_key,
+                "payload": payload,
+                "status": InboxMessageStatusChoices.SKIPPED,
+                "processed_at": timezone.now(),
+                "error_message": None,
+            },
+        )
+        return obj
+
+    @staticmethod
+    def mark_failed(event_id, event_type, source_service, routing_key, payload, error_message):
+        obj, _ = InboxMessage.objects.update_or_create(
+            event_id=normalize_uuid(event_id),
+            defaults={
+                "event_type": event_type,
+                "source_service": source_service,
+                "routing_key": routing_key,
+                "payload": payload,
+                "status": InboxMessageStatusChoices.FAILED,
+                "processed_at": timezone.now(),
+                "error_message": error_message,
+            },
+        )
+        return obj

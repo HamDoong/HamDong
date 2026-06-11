@@ -1,88 +1,94 @@
 # Dependencies
 node_modules/
+FrontEnd/node_modules/
 
 # Build outputs
 dist/
 build/
+FrontEnd/dist/
+FrontEnd/vite.config.d.ts
+FrontEnd/vite.config.js
 
-# Vite
+# Vite / frontend cache
 .vite/
+FrontEnd/.vite/
+*.tsbuildinfo
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+FrontEnd/.env
+FrontEnd/.env.local
+FrontEnd/.env.*.local
+backend/.env
+backend/**/.env
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor folders
-.vscode/
-
-#Cache folder
-.alcache/
-#Symbols folder
-.alpackages/
-#Snapshots folder
-.snapshots/
-#Testing Output folder
-.output/
-#Extension App-file
-*.app
-#Rapid Application Development File
-rad.json
-#Translation Base-file
-*.g.xlf
-#License-files
-*.bclicense
-*.flf
-#Test results file
-TestResults.xml
 
 # Python / Django
 venv/
 .venv/
 __pycache__/
 *.pyc
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
-
-# Environment
-.env
-
-# Django
+.mypy_cache/
+.coverage
+coverage/
+coverage.xml
+htmlcov/
 db.sqlite3
 media/
+uploads/
+local_uploads/
 staticfiles/
+backend/**/media/
+backend/**/staticfiles/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/.pytest_cache/
+backend/**/.ruff_cache/
 
-# Docker
+# Docker / local runtime
 docker-compose.override.yml
-*.log
+backend/media/
+backend/media-uploads/
+backend/postgres-data/
+backend/rabbitmq-data/
+backend/redis-data/
+*.pid
+*.pid.lock
+*.seed
 
-# IDE
+# OS / editor files
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 
-.idea/
+# Business Central / AL artifacts
+.alcache/
+.alpackages/
+.snapshots/
+.output/
+*.app
+rad.json
+*.g.xlf
+*.bclicense
+*.flf
+TestResults.xml
 
-# TypeScript
-*.tsbuildinfo
-
-# Cache
+# Generic temporary files
 .cache/
 .parcel-cache/
-
-# Coverage
-coverage/
-
-# Temporary files
 *.tmp
 *.temp
-
+*.bak
+*.swp
