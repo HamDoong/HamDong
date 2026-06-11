@@ -1,6 +1,6 @@
 from django.conf import settings
-from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import status
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -24,6 +24,21 @@ from apps.notifications.application.use_cases import (
 )
 from apps.notifications.infrastructure.jwt_authentication import JWTAuthentication
 from apps.notifications.infrastructure.providers.base import InvalidSmsProviderError, SmsProviderError
+
+
+NotificationListResponseSerializer = inline_serializer(
+    name="NotificationListResponseSerializer",
+    fields={
+        "results": NotificationMessageSerializer(many=True),
+    },
+)
+
+NotificationDeleteResponseSerializer = inline_serializer(
+    name="NotificationDeleteResponseSerializer",
+    fields={
+        "message": serializers.CharField(),
+    },
+)
 
 
 def _is_local_debug() -> bool:
@@ -106,11 +121,13 @@ class MessagesView(AuthenticatedNotificationAPIView):
 
 
 class NotificationListCreateView(AuthenticatedNotificationAPIView):
+    @extend_schema(tags=["Notifications"], summary="List notifications", responses={200: NotificationListResponseSerializer})
     def get(self, request):
         limit = int(request.query_params.get("limit", 20))
         notifications = ListInboxNotificationsUseCase().execute(request.user, limit=limit)
         return Response({"results": NotificationMessageSerializer(notifications, many=True).data}, status=status.HTTP_200_OK)
 
+    @extend_schema(tags=["Notifications"], summary="Create notification", request=NotificationCreateSerializer, responses={201: NotificationMessageSerializer})
     def post(self, request):
         serializer = NotificationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -136,12 +153,14 @@ class NotificationDetailView(AuthenticatedNotificationAPIView):
     def get_object(self, request, notification_id):
         return GetNotificationDetailUseCase().execute(request.user, notification_id)
 
+    @extend_schema(tags=["Notifications"], summary="Get notification detail", responses={200: NotificationMessageSerializer})
     def get(self, request, notification_id):
         notification = self.get_object(request, notification_id)
         if not notification:
             return _error_response("NOTIFICATION_NOT_FOUND", "Notification not found.", status.HTTP_404_NOT_FOUND)
         return Response(NotificationMessageSerializer(notification).data, status=status.HTTP_200_OK)
 
+    @extend_schema(tags=["Notifications"], summary="Update notification", request=NotificationUpdateSerializer, responses={200: NotificationMessageSerializer})
     def patch(self, request, notification_id):
         notification = self.get_object(request, notification_id)
         if not notification:
@@ -159,6 +178,7 @@ class NotificationDetailView(AuthenticatedNotificationAPIView):
 
         return Response(NotificationMessageSerializer(notification).data, status=status.HTTP_200_OK)
 
+    @extend_schema(tags=["Notifications"], summary="Delete notification", responses={200: NotificationDeleteResponseSerializer})
     def delete(self, request, notification_id):
         notification = self.get_object(request, notification_id)
         if not notification:
