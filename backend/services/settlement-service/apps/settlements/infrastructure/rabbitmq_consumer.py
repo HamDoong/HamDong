@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import threading
 
 import pika
 from django.conf import settings
@@ -112,6 +113,28 @@ class SettlementEventConsumer:
             finally:
                 if connection and not connection.is_closed:
                     connection.close()
+
+    def start_consumers(self):
+        workers = [
+            ("identity", self.start_identity_consumer),
+            ("group", self.start_group_consumer),
+            ("expense", self.start_expense_consumer),
+        ]
+
+        threads = []
+
+        for name, target in workers:
+            thread = threading.Thread(
+                target=target,
+                name=f"settlement-{name}-consumer",
+                daemon=False,
+            )
+            thread.start()
+            threads.append(thread)
+            logger.info("Started settlement %s consumer thread", name)
+
+        for thread in threads:
+            thread.join()
 
     def start_identity_consumer(self):
         self._start_queue(self.exchange_identity, self.queue_identity, ["identity.user.created", "identity.user.updated"], self._callback_factory(self._handle_identity))

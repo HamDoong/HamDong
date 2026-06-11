@@ -75,7 +75,7 @@ Backend/staticfiles/
 Backend/media-uploads/
 
 # Docker
-docker-compose.override.yml
+# docker-compose.override.yml
 *.log
 *.tmp
 *.bak
