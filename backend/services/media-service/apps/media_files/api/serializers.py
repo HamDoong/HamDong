@@ -4,7 +4,7 @@ from rest_framework import serializers
 class ReceiptUploadSerializer(serializers.Serializer):
     group_id = serializers.UUIDField()
     related_expense_id = serializers.UUIDField(required=False, allow_null=True)
-    file = serializers.FileField()
+    file = serializers.FileField(use_url=False)
 
 
 class MediaMetadataSerializer(serializers.Serializer):
