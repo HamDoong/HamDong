@@ -1,3 +1,15 @@
+x-django-healthcheck: &django-healthcheck
+  test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()\""]
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 40s
+
+x-django-auto-migrate-env: &django-auto-migrate-env
+  AUTO_CREATE_DB: "1"
+  AUTO_MIGRATE: "1"
+  STRICT_SCHEMA_CHECK: "1"
+
 services:
   api-gateway:
     image: nginx:1.27-alpine
@@ -6,18 +18,25 @@ services:
     volumes:
     - ./backend/api-gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-    - identity-service
-    - group-service
-    - expense-service
-    - settlement-service
-    - media-service
-    - notification-service
+      identity-service:
+        condition: service_healthy
+      group-service:
+        condition: service_healthy
+      expense-service:
+        condition: service_healthy
+      settlement-service:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
 
   identity-service:
     build: ./backend/services/identity-service
     env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
+      <<: *django-auto-migrate-env
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       SECRET_KEY: ${SECRET_KEY}
@@ -45,12 +64,14 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck: *django-healthcheck
 
   group-service:
     build: ./backend/services/group-service
     env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
+      <<: *django-auto-migrate-env
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       SECRET_KEY: ${SECRET_KEY}
@@ -78,6 +99,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck: *django-healthcheck
 
   group-consumer:
     build: ./backend/services/group-service
@@ -115,6 +137,7 @@ services:
     env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
+      <<: *django-auto-migrate-env
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       SECRET_KEY: ${SECRET_KEY}
@@ -167,6 +190,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck: *django-healthcheck
 
   settlement-consumer:
     build: ./backend/services/settlement-service
@@ -296,6 +320,7 @@ services:
     env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
+      <<: *django-auto-migrate-env
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       SECRET_KEY: ${SECRET_KEY}
@@ -340,6 +365,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck: *django-healthcheck
 
   media-consumer:
     build: ./backend/services/media-service
@@ -395,6 +421,7 @@ services:
     env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
+      <<: *django-auto-migrate-env
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       SECRET_KEY: ${SECRET_KEY}
@@ -441,6 +468,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck: *django-healthcheck
 
   notification-consumer:
     build: ./backend/services/notification-service
@@ -543,6 +571,7 @@ services:
     - runserver
     - 0.0.0.0:8000
     environment:
+      <<: *django-auto-migrate-env
       APP_ENV: ${APP_ENV}
       DEBUG: ${DEBUG}
       SECRET_KEY: ${SECRET_KEY}
@@ -570,6 +599,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+    healthcheck: *django-healthcheck
 
   expense-consumer:
     build: ./backend/services/expense-service
