@@ -367,6 +367,91 @@
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
 }
 
+.signup-step-indicator {
+  display: flex;
+  direction: rtl;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1.1rem;
+}
+
+.signup-step-indicator span,
+.signup-step-indicator i {
+  flex: 0 0 auto;
+}
+
+.signup-step-indicator span {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  color: #7a8798;
+  background: #eef2f6;
+  border: 1px solid #d9e0ea;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  transition:
+    background 220ms ease,
+    border-color 220ms ease,
+    color 220ms ease;
+}
+
+.signup-step-indicator span.is-active,
+.signup-step-indicator span.is-complete {
+  color: #ffffff;
+  background: #08a568;
+  border-color: #08a568;
+}
+
+.signup-step-indicator i {
+  width: 0.7rem;
+  height: 2px;
+  background: #d9e0ea;
+  border-radius: 999px;
+  transition: background 220ms ease;
+}
+
+.signup-step-indicator i.is-complete {
+  background: #08a568;
+}
+
+.signup-slide-window {
+  direction: ltr;
+  width: 100%;
+  overflow: hidden;
+}
+
+.signup-slide-track {
+  display: flex;
+  width: 300%;
+  transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.signup-slide-track.is-otp {
+  transform: translateX(-33.3333%);
+}
+
+.signup-slide-track.is-profile {
+  transform: translateX(-66.6666%);
+}
+
+.signup-slide {
+  direction: rtl;
+  width: 33.3333%;
+  min-width: 0;
+  flex: 0 0 33.3333%;
+}
+
+.signup-profile-hint {
+  margin: 0.85rem 0 0;
+  color: #667085;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.85;
+}
+
 .login-field {
   display: grid;
   width: 100%;

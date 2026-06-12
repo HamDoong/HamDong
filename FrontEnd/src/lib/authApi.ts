@@ -16,6 +16,10 @@ export interface OtpRequestResponse {
   debug_otp?: string;
 }
 
+export interface MessageResponse {
+  message: string;
+}
+
 function persistAuthTokens(response: AuthResponse) {
   setTokens(response.access_token, response.refresh_token);
   return response;
@@ -47,4 +51,26 @@ export async function verifyLoginOtp(payload: { phone_number: string; code: stri
   });
 
   return persistAuthTokens(response);
+}
+
+export async function updateSignupProfile(payload: {
+  display_name?: string;
+  art_name: string;
+  first_name?: string;
+  last_name?: string;
+}) {
+  return apiRequest<CurrentUser>('/users/me/', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function setInitialPassword(payload: {
+  new_password: string;
+  new_password_confirm: string;
+}) {
+  return apiRequest<MessageResponse>('/auth/password/set/', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }

@@ -205,7 +205,7 @@ function AppContent() {
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
-  const [currentUserPhone, setCurrentUserPhone] = useState('کاربر');
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState('کاربر');
   const [notificationBadgeCount, setNotificationBadgeCount] = useState(0);
 
   async function loadInitialData() {
@@ -228,13 +228,15 @@ function AppContent() {
     try {
       currentUser = await getCurrentUser();
 
-      const phone =
-        currentUser.phone_number ||
+      const displayName =
+        currentUser.art_name ||
+        currentUser.display_name ||
         currentUser.phone ||
         currentUser.username ||
+        currentUser.phone_number ||
         'کاربر';
 
-      setCurrentUserPhone(phone);
+      setCurrentUserDisplayName(displayName);
     } catch (error) {
       console.warn('Could not load current user profile. Keeping fallback display name.', error);
     }
@@ -549,7 +551,7 @@ function AppContent() {
         <div className="min-w-0">
           <TopBar
             onMenuClick={() => setMobileDrawerOpen(true)}
-            displayName={currentUserPhone}
+            displayName={currentUserDisplayName}
             unreadNotificationCount={notificationBadgeCount}
             onOpenNotifications={handleOpenNotifications}
           />
