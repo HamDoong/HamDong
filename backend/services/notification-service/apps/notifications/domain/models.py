@@ -33,6 +33,7 @@ class SmsProviderChoices(models.TextChoices):
     FAKE = "fake", "Fake"
     KAVENEGAR = "kavenegar", "Kavenegar"
     MELIPAYAMAK = "melipayamak", "Melipayamak"
+    SMSIR = "smsir", "SMS.ir"
 
 
 class SmsTemplate(models.Model):

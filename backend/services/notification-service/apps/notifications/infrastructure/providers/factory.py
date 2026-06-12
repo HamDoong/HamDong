@@ -34,4 +34,10 @@ def get_sms_provider(provider_name: str | None = None):
 
         return MelipayamakSmsProvider()
 
+    if provider == "smsir":
+        from apps.notifications.infrastructure.providers.smsir_provider import (
+            SmsIrSmsProvider,
+        )
+
+    return SmsIrSmsProvider()
     raise InvalidSmsProviderError(f"Unsupported SMS provider: {provider}")
