@@ -7,12 +7,20 @@ import {
   Check,
   Eye,
   EyeOff,
+  Hash,
   Headphones,
   ShieldCheck,
   Smartphone,
   Smile,
+  UserRound,
   WalletCards,
 } from 'lucide-react';
+import { isApiError } from '../lib/api';
+import {
+  loginWithPassword,
+  requestLoginOtp,
+  verifyLoginOtp,
+} from '../lib/authApi';
 import './LoginPage.css';
 
 type LoginPageProps = {
@@ -46,38 +54,54 @@ const benefitItems: BenefitItem[] = [
 
 export const phoneDigitOnlyPattern = /[^0-9۰-۹٠-٩]/g;
 
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="login-social-icon" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09Z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A10.99 10.99 0 0 0 12 23Z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.12-1.44.34-2.1V7.06H2.18A10.99 10.99 0 0 0 1 12c0 1.77.42 3.44 1.18 4.94l3.66-2.84Z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A10.99 10.99 0 0 0 2.18 7.06L5.84 9.9C6.71 7.31 9.14 5.38 12 5.38Z"
-      />
-    </svg>
-  );
+const localizedDigitMap: Record<string, string> = {
+  '۰': '0',
+  '۱': '1',
+  '۲': '2',
+  '۳': '3',
+  '۴': '4',
+  '۵': '5',
+  '۶': '6',
+  '۷': '7',
+  '۸': '8',
+  '۹': '9',
+  '٠': '0',
+  '١': '1',
+  '٢': '2',
+  '٣': '3',
+  '٤': '4',
+  '٥': '5',
+  '٦': '6',
+  '٧': '7',
+  '٨': '8',
+  '٩': '9',
+};
+
+type LoginMode = 'password' | 'otp';
+
+export function normalizePhoneDigits(value: string) {
+  return value.replace(/[۰-۹٠-٩]/g, (digit) => localizedDigitMap[digit] || digit);
 }
 
-function AppleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="login-social-icon" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M16.96 12.9c-.03-2.53 2.06-3.75 2.16-3.81-1.18-1.72-3.01-1.96-3.65-1.98-1.55-.16-3.02.91-3.8.91-.79 0-2-.89-3.29-.86-1.69.03-3.25.98-4.12 2.5-1.76 3.05-.45 7.56 1.26 10.03.84 1.21 1.84 2.57 3.15 2.52 1.26-.05 1.74-.82 3.27-.82 1.52 0 1.96.82 3.3.79 1.36-.03 2.22-1.24 3.05-2.46.96-1.4 1.35-2.76 1.37-2.83-.03-.01-2.65-1.02-2.7-3.99ZM14.45 5.47c.69-.84 1.16-2.01 1.03-3.17-.99.04-2.2.66-2.92 1.5-.64.74-1.21 1.93-1.05 3.06 1.1.09 2.24-.56 2.94-1.39Z"
-      />
-    </svg>
-  );
+function getLoginErrorMessage(error: unknown) {
+  if (isApiError(error)) {
+    const body = error.body as {
+      error?: { code?: string; message?: string };
+      detail?: string;
+    };
+    const code = body?.error?.code;
+
+    if (code === 'INVALID_CREDENTIALS') return 'نام هنری یا رمز عبور اشتباه است.';
+    if (code === 'INVALID_PHONE') return 'شماره موبایل معتبر نیست.';
+    if (code === 'INVALID_OTP') return 'کد تایید اشتباه است.';
+    if (code === 'OTP_EXPIRED') return 'کد تایید منقضی شده است.';
+    if (code === 'OTP_IN_COOLDOWN') return 'برای دریافت کد جدید کمی صبر کنید.';
+    if (code === 'OTP_RATE_LIMITED') return 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.';
+    if (body?.error?.message) return body.error.message;
+    if (body?.detail) return body.detail;
+  }
+
+  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
 }
 
 function BenefitList() {
@@ -103,16 +127,107 @@ function BenefitList() {
 }
 
 function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
+  const [mode, setMode] = useState<LoginMode>('password');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [artName, setArtName] = useState('');
+  const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [otpDebugCode, setOtpDebugCode] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [requestingOtp, setRequestingOtp] = useState(false);
   const PasswordIcon = passwordVisible ? Eye : EyeOff;
+
+  const resetFeedback = () => {
+    setErrorMessage('');
+    setStatusMessage('');
+  };
+
+  const normalizedPhoneNumber = normalizePhoneDigits(phoneNumber);
+  const normalizedOtpCode = normalizePhoneDigits(otpCode);
+
+  async function handlePasswordLogin() {
+    const cleanArtName = artName.trim();
+
+    if (!cleanArtName || !password) {
+      setErrorMessage('نام هنری و رمز عبور را وارد کنید.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+
+    try {
+      await loginWithPassword({ art_name: cleanArtName, password });
+      onLogin();
+    } catch (error) {
+      setErrorMessage(getLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRequestOtp() {
+    if (!/^09\d{9}$/.test(normalizedPhoneNumber)) {
+      setErrorMessage('شماره موبایل را با فرمت 09xxxxxxxxx وارد کنید.');
+      return;
+    }
+
+    setRequestingOtp(true);
+    resetFeedback();
+
+    try {
+      const response = await requestLoginOtp(normalizedPhoneNumber);
+      setOtpRequested(true);
+      setOtpDebugCode(response.debug_otp || '');
+      setStatusMessage('کد تایید برای شماره موبایل ارسال شد.');
+    } catch (error) {
+      setErrorMessage(getLoginErrorMessage(error));
+    } finally {
+      setRequestingOtp(false);
+    }
+  }
+
+  async function handleOtpLogin() {
+    if (!/^09\d{9}$/.test(normalizedPhoneNumber)) {
+      setErrorMessage('شماره موبایل را با فرمت 09xxxxxxxxx وارد کنید.');
+      return;
+    }
+
+    if (!/^\d{6}$/.test(normalizedOtpCode)) {
+      setErrorMessage('کد تایید ۶ رقمی را وارد کنید.');
+      return;
+    }
+
+    setSubmitting(true);
+    resetFeedback();
+
+    try {
+      await verifyLoginOtp({
+        phone_number: normalizedPhoneNumber,
+        code: normalizedOtpCode,
+      });
+      onLogin();
+    } catch (error) {
+      setErrorMessage(getLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <form
       className="login-card"
       onSubmit={(event) => {
         event.preventDefault();
-        onLogin();
+        if (mode === 'password') {
+          void handlePasswordLogin();
+        } else {
+          void handleOtpLogin();
+        }
       }}
     >
       <div className="login-card-heading">
@@ -122,75 +237,169 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
         <p>خوش برگشتی! لطفاً وارد حساب کاربری خود شوید.</p>
       </div>
 
-      <label className="login-field">
-        <span>شماره موبایل</span>
-        <div className="login-input-wrap">
-          <input
-            type="tel"
-            name="phone"
-            inputMode="numeric"
-            autoComplete="tel"
-            value={phoneNumber}
-            onChange={(event) => {
-              setPhoneNumber(event.target.value.replace(phoneDigitOnlyPattern, ''));
-            }}
-            pattern="[0-9۰-۹٠-٩]*"
-            placeholder=" ۰۹۱۲ ۱۳۳ ۴۵ ۶۷"
-            aria-label="شماره موبایل"
-          />
-          <Smartphone className="login-input-icon" strokeWidth={2.4} />
-        </div>
-      </label>
+      <div className="login-auth-tabs" role="tablist" aria-label="روش ورود">
+        <button
+          type="button"
+          className={mode === 'password' ? 'is-active' : undefined}
+          aria-pressed={mode === 'password'}
+          onClick={() => {
+            setMode('password');
+            resetFeedback();
+          }}
+        >
+          ورود با رمز
+        </button>
+        <button
+          type="button"
+          className={mode === 'otp' ? 'is-active' : undefined}
+          aria-pressed={mode === 'otp'}
+          onClick={() => {
+            setMode('otp');
+            resetFeedback();
+          }}
+        >
+          کد پیامکی
+        </button>
+      </div>
 
-      <label className="login-field">
-        <span>رمز عبور</span>
-        <div className="login-input-wrap">
-          <input
-            type={passwordVisible ? 'text' : 'password'}
-            name="password"
-            autoComplete="current-password"
-            placeholder="رمز عبور خود را وارد کنید"
-            aria-label="رمز عبور"
-          />
+      {mode === 'password' ? (
+        <>
+          <label className="login-field">
+            <span>نام هنری</span>
+            <div className="login-input-wrap">
+              <input
+                type="text"
+                name="artName"
+                autoComplete="username"
+                value={artName}
+                onChange={(event) => {
+                  setArtName(event.target.value);
+                  resetFeedback();
+                }}
+                placeholder="ali_artist"
+                aria-label="نام هنری"
+                disabled={submitting}
+                required
+              />
+              <UserRound className="login-input-icon" strokeWidth={2.4} />
+            </div>
+          </label>
+
+          <label className="login-field">
+            <span>رمز عبور</span>
+            <div className="login-input-wrap">
+              <input
+                type={passwordVisible ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  resetFeedback();
+                }}
+                placeholder="رمز عبور خود را وارد کنید"
+                aria-label="رمز عبور"
+                disabled={submitting}
+                required
+              />
+              <button
+                type="button"
+                className="login-password-toggle"
+                aria-label={passwordVisible ? 'پنهان کردن رمز عبور' : 'نمایش رمز عبور'}
+                aria-pressed={passwordVisible}
+                onClick={() => setPasswordVisible((visible) => !visible)}
+              >
+                <PasswordIcon className="login-input-icon login-input-icon-muted" />
+              </button>
+            </div>
+          </label>
+
+          <div className="login-options-row">
+            <a href="#forgot">رمز عبور را فراموش کرده‌اید؟</a>
+            <label>
+              <span>مرا به خاطر بسپار</span>
+              <input type="checkbox" />
+            </label>
+          </div>
+        </>
+      ) : (
+        <>
+          <label className="login-field">
+            <span>شماره موبایل</span>
+            <div className="login-input-wrap">
+              <input
+                type="tel"
+                name="phone"
+                inputMode="numeric"
+                autoComplete="tel"
+                value={phoneNumber}
+                onChange={(event) => {
+                  setPhoneNumber(event.target.value.replace(phoneDigitOnlyPattern, ''));
+                  setOtpRequested(false);
+                  setOtpDebugCode('');
+                  resetFeedback();
+                }}
+                pattern="[0-9۰-۹٠-٩]*"
+                placeholder="۰۹۱۲۱۳۳۴۵۶۷"
+                aria-label="شماره موبایل"
+                disabled={submitting || requestingOtp}
+                required
+              />
+              <Smartphone className="login-input-icon" strokeWidth={2.4} />
+            </div>
+          </label>
+
           <button
             type="button"
-            className="login-password-toggle"
-            aria-label={passwordVisible ? 'Ù¾Ù†Ù‡Ø§Ù† Ú©Ø±Ø¯Ù† Ø±Ù…Ø² Ø¹Ø¨ÙˆØ±' : 'Ù†Ù…Ø§ÛŒØ´ Ø±Ù…Ø² Ø¹Ø¨ÙˆØ±'}
-            aria-pressed={passwordVisible}
-            onClick={() => setPasswordVisible((visible) => !visible)}
+            className="login-secondary-action"
+            disabled={requestingOtp || submitting}
+            onClick={() => void handleRequestOtp()}
           >
-            <PasswordIcon className="login-input-icon login-input-icon-muted" />
+            {requestingOtp ? 'در حال ارسال...' : otpRequested ? 'ارسال دوباره کد' : 'دریافت کد تایید'}
           </button>
-        </div>
-      </label>
 
-      <div className="login-options-row">
-        <a href="#forgot">رمز عبور را فراموش کرده‌اید؟</a>
-        <label>
-          <span>مرا به خاطر بسپار</span>
-          <input type="checkbox" />
-        </label>
-      </div>
+          <label className="login-field login-field-compact">
+            <span>کد تایید</span>
+            <div className="login-input-wrap">
+              <input
+                type="text"
+                name="otp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={otpCode}
+                onChange={(event) => {
+                  setOtpCode(event.target.value.replace(phoneDigitOnlyPattern, '').slice(0, 6));
+                  resetFeedback();
+                }}
+                pattern="[0-9۰-۹٠-٩]{6}"
+                placeholder="۱۲۳۴۵۶"
+                aria-label="کد تایید"
+                disabled={submitting}
+                required
+              />
+              <Hash className="login-input-icon" strokeWidth={2.4} />
+            </div>
+          </label>
+        </>
+      )}
 
-      <button className="login-submit" type="submit">
+      {errorMessage ? (
+        <p className="login-form-message login-form-message-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      {statusMessage ? (
+        <p className="login-form-message login-form-message-success">
+          {statusMessage}
+          {otpDebugCode ? <span>کد تست: {otpDebugCode}</span> : null}
+        </p>
+      ) : null}
+
+      <button className="login-submit" type="submit" disabled={submitting || requestingOtp}>
         <ArrowLeft />
-        <span>ورود</span>
+        <span>{submitting ? 'در حال ورود...' : mode === 'otp' ? 'تایید و ورود' : 'ورود'}</span>
       </button>
-
-      <div className="login-divider">
-        <span>یا با حساب‌های دیگر وارد شوید</span>
-      </div>
-
-      <div className="login-social-grid">
-        <button type="button" aria-label="ÙˆØ±ÙˆØ¯ Ø¨Ø§ Ø­Ø³Ø§Ø¨ Ø§Ù¾Ù„">
-          <AppleIcon />
-          <span>ورود با اپل</span>
-        </button>
-        <button type="button" aria-label="ÙˆØ±ÙˆØ¯ Ø¨Ø§ Ø­Ø³Ø§Ø¨ Ú¯ÙˆÚ¯Ù„">
-          <GoogleIcon />
-          <span>ورود با گوگل</span>
-        </button>
-      </div>
 
       <p className="login-register">
         حساب کاربری ندارید؟
