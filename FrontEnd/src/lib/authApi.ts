@@ -1,4 +1,4 @@
-import { apiRequest, setTokens } from './api';
+import { apiRequest, clearTokens, getRefreshToken, setTokens } from './api';
 import type { CurrentUser } from './userApi';
 
 export interface AuthResponse {
@@ -73,4 +73,26 @@ export async function setInitialPassword(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function logoutCurrentUser() {
+  const refreshToken = getRefreshToken();
+
+  if (!refreshToken) {
+    clearTokens();
+    return;
+  }
+
+  try {
+    await apiRequest<MessageResponse>('/auth/logout/', {
+      method: 'POST',
+      auth: false,
+      skipAuthRefresh: true,
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch (error) {
+    console.warn('Logout request failed. Clearing local auth state.', error);
+  } finally {
+    clearTokens();
+  }
 }

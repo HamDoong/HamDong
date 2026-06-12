@@ -11,6 +11,7 @@ import { MobileDrawer } from './components/MobileDrawer';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
+import { logoutCurrentUser } from './lib/authApi';
 import { listGroupExpenses, type BackendExpense } from './lib/expenseApi';
 import {
   archiveGroup,
@@ -192,6 +193,7 @@ function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet' 
 }
 
 function AppContent() {
+  const navigate = useNavigate();
   const { notify, confirm } = useFeedback();
   const initialInviteToken = useMemo(() => getInviteTokenFromLocation(), []);
 
@@ -316,7 +318,23 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  const handleLogout = async () => {
+    await logoutCurrentUser();
+    setGroupItems([]);
+    setGroupBalances([]);
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setNotificationBadgeCount(0);
+    setCurrentUserDisplayName('کاربر');
+    navigate('/login', { replace: true });
+  };
+
   const handleSidebarNavigate = (itemId: string) => {
+    if (itemId === 'logout') {
+      void handleLogout();
+      return;
+    }
+
     if (itemId === 'groups') {
       setSelectedGroupId(null);
       setInviteToken('');
