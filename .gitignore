@@ -57,12 +57,14 @@ backend/**/.pytest_cache/
 backend/**/.ruff_cache/
 
 # Docker / local runtime
-docker-compose.override.yml
+docker-compose.local.yml
 backend/media/
 backend/media-uploads/
 backend/postgres-data/
 backend/rabbitmq-data/
 backend/redis-data/
+
+# Runtime / process artifacts
 *.pid
 *.pid.lock
 *.seed

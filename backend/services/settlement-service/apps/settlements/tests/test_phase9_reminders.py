@@ -17,7 +17,11 @@ from apps.settlements.infrastructure.reminder_scheduler import SettlementReminde
 
 
 class SettlementReminderSchedulerTests(TestCase):
-    @override_settings(REMINDER_ENABLED=True, REMINDER_MIN_INTERVAL_HOURS=24)
+    @override_settings(
+        REMINDER_ENABLED=True,
+        REMINDER_MIN_INTERVAL_HOURS=24,
+        PLAN_ITEM_REMINDER_AFTER_HOURS=0,
+    )
     def test_scheduler_creates_outbox_message_for_pending_plan_item(self):
         owner = UserProjection.objects.create(
             identity_user_id="00000000-0000-0000-0000-000000000001",
@@ -66,7 +70,10 @@ class SettlementReminderSchedulerTests(TestCase):
         self.assertEqual(OutboxMessage.objects.count(), 1)
         self.assertEqual(ReminderDispatchLog.objects.count(), 1)
         outbox = OutboxMessage.objects.first()
-        self.assertEqual(outbox.event_type, "PAYMENT_REMINDER")
-        self.assertEqual(outbox.routing_key, "settlement.reminder.requested")
-        self.assertEqual(outbox.payload["event_type"], "PAYMENT_REMINDER")
-        self.assertEqual(outbox.payload["data"]["recipient_phone_number"], payer.phone_number)
+        self.assertEqual(outbox.event_type, "SettlementPlanItemReminderRequested")
+        self.assertEqual(outbox.routing_key, "settlement.plan_item_reminder.requested")
+        self.assertEqual(
+            outbox.payload["event_type"],
+            "SettlementPlanItemReminderRequested",
+        )
+        self.assertEqual(outbox.payload["data"]["payer_phone_number"], payer.phone_number)

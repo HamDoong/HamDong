@@ -14,7 +14,7 @@ from apps.media_files.domain.models import GroupMemberProjection, GroupProjectio
 from apps.media_files.infrastructure.jwt_authentication import JWTAuthentication
 from apps.media_files.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 from apps.media_files.infrastructure.rabbitmq_consumer import MediaEventConsumer
-
+from apps.media_files.infrastructure.event_envelope import build_event_envelope
 
 class FakeUser:
     def __init__(self, sub=None, phone_number="+10000000000", display_name="Test User", role="USER"):
@@ -66,20 +66,101 @@ def receipt_file(name="receipt.jpg", content=b"hello receipt", content_type="ima
 def storage_payload(name="receipt.jpg", content=b"hello receipt", content_type="image/jpeg"):
     return SimpleUploadedFile(name, content, content_type=content_type)
 
+def envelope(event_type, data, routing_key):
+    return build_event_envelope(
+        event_type=event_type,
+        data=data,
+        source_service="test-service",
+        routing_key=routing_key,
+    )
 
 @pytest.mark.django_db
 def test_consumer_creates_and_updates_projections():
     consumer = MediaEventConsumer()
     uid = str(uuid.uuid4())
     gid = str(uuid.uuid4())
-    consumer.process_identity_payload({"event_type": "UserCreated", "data": {"user_id": uid, "phone_number": "+123", "display_name": "Alice", "role": "ADMIN", "is_active": True}})
-    consumer.process_identity_payload({"event_type": "UserUpdated", "data": {"user_id": uid, "phone_number": "+456", "display_name": "Alice B", "role": "ADMIN", "is_active": False}})
-    consumer.process_group_payload({"event_type": "GroupCreated", "data": {"group_id": gid, "title": "Trip 1", "group_type": "TRIP", "created_by_user_id": uid, "member_count": 1}})
-    consumer.process_group_payload({"event_type": "GroupUpdated", "data": {"group_id": gid, "title": "Trip 2", "group_type": "GENERAL", "member_count": 2}})
-    consumer.process_group_payload({"event_type": "GroupArchived", "data": {"group_id": gid}})
-    consumer.process_group_payload({"event_type": "GroupMemberJoined", "data": {"group_id": gid, "user_id": uid, "role": "OWNER"}})
-    consumer.process_group_payload({"event_type": "GroupMemberRemoved", "data": {"group_id": gid, "user_id": uid}})
-    consumer.process_group_payload({"event_type": "GroupMemberLeft", "data": {"group_id": gid, "user_id": uid}})
+    consumer.process_identity_payload(envelope(
+        "UserCreated",
+        {
+            "user_id": uid,
+            "phone_number": "+123",
+            "display_name": "Alice",
+            "role": "ADMIN",
+            "is_active": True,
+        },
+        "identity.user.created",
+    ))
+
+    consumer.process_identity_payload(envelope(
+        "UserUpdated",
+        {
+            "user_id": uid,
+            "phone_number": "+456",
+            "display_name": "Alice B",
+            "role": "ADMIN",
+            "is_active": False,
+        },
+        "identity.user.updated",
+    ))
+
+    consumer.process_group_payload(envelope(
+        "GroupCreated",
+        {
+            "group_id": gid,
+            "title": "Trip 1",
+            "group_type": "TRIP",
+            "created_by_user_id": uid,
+            "member_count": 1,
+        },
+        "group.created",
+    ))
+
+    consumer.process_group_payload(envelope(
+        "GroupUpdated",
+        {
+            "group_id": gid,
+            "title": "Trip 2",
+            "group_type": "GENERAL",
+            "member_count": 2,
+        },
+        "group.updated",
+    ))
+
+    consumer.process_group_payload(envelope(
+        "GroupArchived",
+        {
+            "group_id": gid,
+        },
+        "group.archived",
+    ))
+
+    consumer.process_group_payload(envelope(
+        "GroupMemberJoined",
+        {
+            "group_id": gid,
+            "user_id": uid,
+            "role": "OWNER",
+        },
+        "group.member.joined",
+    ))
+
+    consumer.process_group_payload(envelope(
+        "GroupMemberRemoved",
+        {
+            "group_id": gid,
+            "user_id": uid,
+        },
+        "group.member.removed",
+    ))
+
+    consumer.process_group_payload(envelope(
+        "GroupMemberLeft",
+        {
+            "group_id": gid,
+            "user_id": uid,
+        },
+        "group.member.left",
+    ))
 
     user = UserProjection.objects.get(identity_user_id=uid)
     group = GroupProjection.objects.get(group_id=gid)

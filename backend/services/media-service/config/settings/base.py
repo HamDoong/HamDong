@@ -98,6 +98,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "media-service API",
     "VERSION": SERVICE_VERSION,
     "DESCRIPTION": "Secure receipt upload and media management for HamDong.",
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 
 CORS_ALLOW_ALL_ORIGINS = True

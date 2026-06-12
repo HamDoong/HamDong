@@ -8,6 +8,7 @@ class NotificationChannelChoices(models.TextChoices):
     SMS = "SMS", "SMS"
     EMAIL = "EMAIL", "Email"
     PUSH = "PUSH", "Push"
+    IN_APP = "IN_APP", "In app"
 
 
 class NotificationMessageTypeChoices(models.TextChoices):
@@ -15,9 +16,11 @@ class NotificationMessageTypeChoices(models.TextChoices):
     REMINDER = "REMINDER", "Reminder"
     INVITE = "INVITE", "Invite"
     SETTLEMENT = "SETTLEMENT", "Settlement"
+    CUSTOM = "CUSTOM", "Custom"
 
 
 class NotificationStatusChoices(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
     PENDING = "PENDING", "Pending"
     SENDING = "SENDING", "Sending"
     SENT = "SENT", "Sent"
@@ -51,26 +54,17 @@ class SmsTemplate(models.Model):
 class NotificationMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     recipient_user_id = models.UUIDField(null=True, blank=True)
-    recipient_phone_number = models.CharField(max_length=32, null=True, blank=True)
-    channel = models.CharField(
-        max_length=16, choices=NotificationChannelChoices.choices
-    )
-    message_type = models.CharField(
-        max_length=32, choices=NotificationMessageTypeChoices.choices
-    )
-    recipient = models.CharField(max_length=32)
-    recipient_masked = models.CharField(max_length=32)
+    recipient_phone_number = models.CharField(max_length=64, null=True, blank=True)
+    channel = models.CharField(max_length=16, choices=NotificationChannelChoices.choices)
+    message_type = models.CharField(max_length=32, choices=NotificationMessageTypeChoices.choices)
+    title = models.CharField(max_length=255, blank=True, default="")
+    body = models.TextField(blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    recipient = models.CharField(max_length=128)
+    recipient_masked = models.CharField(max_length=128)
     template_code = models.CharField(max_length=64, null=True, blank=True)
-    status = models.CharField(
-        max_length=32,
-        choices=NotificationStatusChoices.choices,
-        default=NotificationStatusChoices.PENDING,
-    )
-    provider = models.CharField(
-        max_length=32,
-        choices=SmsProviderChoices.choices,
-        default=SmsProviderChoices.FAKE,
-    )
+    status = models.CharField(max_length=32, choices=NotificationStatusChoices.choices, default=NotificationStatusChoices.PENDING)
+    provider = models.CharField(max_length=32, choices=SmsProviderChoices.choices, default=SmsProviderChoices.FAKE)
     provider_message_id = models.CharField(max_length=128, null=True, blank=True)
     error_code = models.CharField(max_length=64, null=True, blank=True)
     error_message = models.TextField(null=True, blank=True)
@@ -79,6 +73,10 @@ class NotificationMessage(models.Model):
     scheduled_at = models.DateTimeField(default=timezone.now)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    created_by_user_id = models.UUIDField(null=True, blank=True)
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by_user_id = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -88,6 +86,10 @@ class NotificationMessage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.channel}:{self.message_type}:{self.recipient_masked}"
+
+    @property
+    def message(self) -> str:
+        return self.body
 
 
 class NotificationJobStatusChoices(models.TextChoices):
@@ -107,28 +109,14 @@ class NotificationJob(models.Model):
     notification_type = models.CharField(max_length=48, default="OTP")
     recipient_user_id = models.UUIDField(null=True, blank=True)
     recipient_phone_number = models.CharField(max_length=32, null=True, blank=True)
-    channel = models.CharField(
-        max_length=16,
-        choices=NotificationChannelChoices.choices,
-        default=NotificationChannelChoices.SMS,
-    )
+    channel = models.CharField(max_length=16, choices=NotificationChannelChoices.choices, default=NotificationChannelChoices.SMS)
     recipient = models.CharField(max_length=32)
     recipient_masked = models.CharField(max_length=32)
     template_code = models.CharField(max_length=64, null=True, blank=True)
     rendered_message = models.TextField()
     payload = models.JSONField(default=dict)
-    status = models.CharField(
-        max_length=32,
-        choices=NotificationJobStatusChoices.choices,
-        default=NotificationJobStatusChoices.PENDING,
-    )
-    notification_message = models.ForeignKey(
-        NotificationMessage,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="jobs",
-    )
+    status = models.CharField(max_length=32, choices=NotificationJobStatusChoices.choices, default=NotificationJobStatusChoices.PENDING)
+    notification_message = models.ForeignKey(NotificationMessage, on_delete=models.SET_NULL, null=True, blank=True, related_name="jobs")
     retry_count = models.PositiveIntegerField(default=0)
     scheduled_at = models.DateTimeField(default=timezone.now)
     last_attempt_at = models.DateTimeField(null=True, blank=True)
@@ -142,11 +130,7 @@ class NotificationJob(models.Model):
     class Meta:
         db_table = "notification_jobs"
         ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["event_id"]),
-            models.Index(fields=["status"]),
-            models.Index(fields=["recipient"]),
-        ]
+        indexes = [models.Index(fields=["event_id"]), models.Index(fields=["status"]), models.Index(fields=["recipient"])]
 
     def __str__(self) -> str:
         return f"{self.source_event_type}:{self.recipient_masked}"
@@ -154,16 +138,8 @@ class NotificationJob(models.Model):
 
 class ProviderDeliveryLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    notification_message = models.ForeignKey(
-        NotificationMessage,
-        on_delete=models.CASCADE,
-        related_name="delivery_logs",
-    )
-    provider = models.CharField(
-        max_length=32,
-        choices=SmsProviderChoices.choices,
-        default=SmsProviderChoices.FAKE,
-    )
+    notification_message = models.ForeignKey(NotificationMessage, on_delete=models.CASCADE, related_name="delivery_logs")
+    provider = models.CharField(max_length=32, choices=SmsProviderChoices.choices, default=SmsProviderChoices.FAKE)
     request_payload_masked = models.JSONField(default=dict)
     response_payload = models.JSONField(default=dict)
     http_status_code = models.IntegerField(null=True, blank=True)
@@ -205,7 +181,6 @@ class OutboxMessage(models.Model):
     class Meta:
         db_table = "notifications_outbox_messages"
         indexes = [models.Index(fields=["status", "available_at"]), models.Index(fields=["routing_key"])]
-
 
 
 class InboxMessageStatusChoices(models.TextChoices):

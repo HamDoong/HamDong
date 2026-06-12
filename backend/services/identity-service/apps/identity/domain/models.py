@@ -1,4 +1,7 @@
 import uuid
+
+from django.contrib.auth.hashers import check_password as django_check_password
+from django.contrib.auth.hashers import is_password_usable, make_password
 from django.db import models
 from django.utils import timezone
 
@@ -13,9 +16,12 @@ class User(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone_number = models.CharField(max_length=20, unique=True)
     display_name = models.CharField(max_length=255, null=True, blank=True)
+    art_name = models.CharField(max_length=32, unique=True, null=True, blank=True)
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
     avatar_url = models.URLField(null=True, blank=True)
+    password_hash = models.CharField(max_length=128, null=True, blank=True)
+    password_changed_at = models.DateTimeField(null=True, blank=True)
     is_phone_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -30,7 +36,6 @@ class User(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     version = models.IntegerField(default=1)
 
-    # Django auth compatibility (minimal): identify by phone_number
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS = []
     objects = models.Manager()
@@ -50,7 +55,6 @@ class User(models.Model):
     def last_login(self, value):
         self.last_login_at = value
 
-    # Minimal Django auth compatibility helpers
     @property
     def is_anonymous(self):
         return False
@@ -58,6 +62,18 @@ class User(models.Model):
     @property
     def is_authenticated(self):
         return True
+
+    def set_password(self, raw_password: str) -> None:
+        self.password_hash = make_password(raw_password)
+        self.password_changed_at = timezone.now()
+
+    def check_password(self, raw_password: str) -> bool:
+        if not self.password_hash:
+            return False
+        return django_check_password(raw_password, self.password_hash)
+
+    def has_usable_password(self) -> bool:
+        return bool(self.password_hash and is_password_usable(self.password_hash))
 
 
 class RefreshToken(models.Model):

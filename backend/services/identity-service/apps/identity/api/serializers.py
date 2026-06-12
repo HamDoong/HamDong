@@ -2,59 +2,65 @@
 
 from rest_framework import serializers
 
-from apps.identity.domain.models import *
+from apps.identity.domain.models import User
+from apps.identity.domain.rules import ArtNameRule
 
 
 class PhoneNumberField(serializers.CharField):
     """Custom field for phone number validation."""
 
     def to_internal_value(self, data):
-        """Validate phone number type and return the raw value for domain validation."""
         if not isinstance(data, str):
             raise serializers.ValidationError("Phone number must be a string.")
         return data.strip()
 
 
 class RequestOtpSerializer(serializers.Serializer):
-    """Serializer for OTP request."""
-
     phone_number = PhoneNumberField(required=True)
 
 
 class VerifyOtpSerializer(serializers.Serializer):
-    """Serializer for OTP verification."""
-
     phone_number = PhoneNumberField(required=True)
     code = serializers.CharField(required=True, min_length=6, max_length=6)
 
     def validate_code(self, value):
-        """Validate OTP code is numeric."""
         if not value.isdigit():
             raise serializers.ValidationError("OTP code must be numeric.")
         return value
 
 
 class RefreshTokenSerializer(serializers.Serializer):
-    """Serializer for token refresh."""
-
     refresh_token = serializers.CharField(required=True)
 
 
 class LogoutSerializer(serializers.Serializer):
-    """Serializer for logout."""
-
     refresh_token = serializers.CharField(required=True)
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """Serializer for user data."""
+class PasswordSetSerializer(serializers.Serializer):
+    new_password = serializers.CharField(required=True, write_only=True)
+    new_password_confirm = serializers.CharField(required=True, write_only=True)
 
+
+class PasswordLoginSerializer(serializers.Serializer):
+    art_name = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True)
+    new_password_confirm = serializers.CharField(required=True, write_only=True)
+
+
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
             "id",
             "phone_number",
             "display_name",
+            "art_name",
             "first_name",
             "last_name",
             "avatar_url",
@@ -65,19 +71,24 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UpdateUserSerializer(serializers.ModelSerializer):
-    """Serializer for updating user profile."""
+    art_name = serializers.CharField(required=False, allow_blank=False)
 
     class Meta:
         model = User
-        fields = ["display_name", "first_name", "last_name"]
+        fields = ["display_name", "art_name", "first_name", "last_name"]
+
+    def validate_art_name(self, value):
+        normalized = ArtNameRule.normalize(value)
+        if not ArtNameRule.is_valid(normalized):
+            raise serializers.ValidationError("INVALID_ART_NAME")
+        return normalized
 
 
 class UserDetailSerializer(serializers.Serializer):
-    """Serializer for user detail in response."""
-
     id = serializers.UUIDField()
     phone_number = serializers.CharField()
     display_name = serializers.CharField(allow_null=True)
+    art_name = serializers.CharField(allow_null=True)
     first_name = serializers.CharField(allow_null=True)
     last_name = serializers.CharField(allow_null=True)
     is_phone_verified = serializers.BooleanField()

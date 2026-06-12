@@ -1,0 +1,189 @@
+x-django-healthcheck: &django-healthcheck
+  test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1',8000),2); s.close()\""]
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 25s
+
+services:
+  identity-service:
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_DB: "1"
+      AUTO_MIGRATE: "1"
+    healthcheck: *django-healthcheck
+
+  group-service:
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_DB: "1"
+      AUTO_MIGRATE: "1"
+    healthcheck: *django-healthcheck
+
+  expense-service:
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_DB: "1"
+      AUTO_MIGRATE: "1"
+    healthcheck: *django-healthcheck
+
+  settlement-service:
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_DB: "1"
+      AUTO_MIGRATE: "1"
+    healthcheck: *django-healthcheck
+
+  media-service:
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_DB: "1"
+      AUTO_MIGRATE: "1"
+    healthcheck: *django-healthcheck
+
+  notification-service:
+    restart: unless-stopped
+    environment:
+      AUTO_CREATE_DB: "1"
+      AUTO_MIGRATE: "1"
+    healthcheck: *django-healthcheck
+
+  identity-outbox-dispatcher:
+    restart: unless-stopped
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  group-consumer:
+    restart: unless-stopped
+    depends_on:
+      group-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  group-outbox-dispatcher:
+    restart: unless-stopped
+    depends_on:
+      group-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  expense-consumer:
+    restart: unless-stopped
+    depends_on:
+      expense-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      group-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  expense-outbox-dispatcher:
+    restart: unless-stopped
+    depends_on:
+      expense-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  media-consumer:
+    restart: unless-stopped
+    depends_on:
+      media-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      group-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  media-outbox-dispatcher:
+    restart: unless-stopped
+    depends_on:
+      media-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  settlement-consumer:
+    restart: unless-stopped
+    depends_on:
+      settlement-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      group-service:
+        condition: service_healthy
+      expense-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  settlement-outbox-dispatcher:
+    restart: unless-stopped
+    depends_on:
+      settlement-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  settlement-reminder-scheduler:
+    restart: unless-stopped
+    depends_on:
+      settlement-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  notification-consumer:
+    restart: unless-stopped
+    depends_on:
+      notification-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  notification-outbox-dispatcher:
+    restart: unless-stopped
+    depends_on:
+      notification-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  notification-reminder-consumer:
+    restart: unless-stopped
+    depends_on:
+      notification-service:
+        condition: service_healthy
+      settlement-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  api-gateway:
+    restart: unless-stopped
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      group-service:
+        condition: service_healthy
+      expense-service:
+        condition: service_healthy
+      settlement-service:
+        condition: service_healthy
+      media-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy

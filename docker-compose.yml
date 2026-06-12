@@ -15,7 +15,7 @@ services:
 
   identity-service:
     build: ./backend/services/identity-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -48,7 +48,7 @@ services:
 
   group-service:
     build: ./backend/services/group-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -81,7 +81,7 @@ services:
 
   group-consumer:
     build: ./backend/services/group-service
-    env_file: ./.env
+    env_file: ./.env.example
     command:
     - python
     - manage.py
@@ -112,7 +112,7 @@ services:
 
   settlement-service:
     build: ./backend/services/settlement-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -170,7 +170,7 @@ services:
 
   settlement-consumer:
     build: ./backend/services/settlement-service
-    env_file: ./.env
+    env_file: ./.env.example
     command:
     - python
     - manage.py
@@ -227,7 +227,7 @@ services:
 
   settlement-outbox-dispatcher:
     build: ./backend/services/settlement-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -258,7 +258,7 @@ services:
 
   settlement-reminder-scheduler:
     build: ./backend/services/settlement-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "run_reminder_scheduler_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -293,7 +293,7 @@ services:
 
   media-service:
     build: ./backend/services/media-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -343,7 +343,7 @@ services:
 
   media-consumer:
     build: ./backend/services/media-service
-    env_file: ./.env
+    env_file: ./.env.example
     command:
     - python
     - manage.py
@@ -392,7 +392,7 @@ services:
 
   notification-service:
     build: ./backend/services/notification-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -444,7 +444,7 @@ services:
 
   notification-consumer:
     build: ./backend/services/notification-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "consume_identity_events"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -492,7 +492,7 @@ services:
 
   notification-reminder-consumer:
     build: ./backend/services/notification-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "consume_reminder_events"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -536,7 +536,7 @@ services:
 
   expense-service:
     build: ./backend/services/expense-service
-    env_file: ./.env
+    env_file: ./.env.example
     command:
     - python
     - manage.py
@@ -573,7 +573,7 @@ services:
 
   expense-consumer:
     build: ./backend/services/expense-service
-    env_file: ./.env
+    env_file: ./.env.example
     command:
     - python
     - manage.py
@@ -609,7 +609,7 @@ services:
 
   identity-outbox-dispatcher:
     build: ./backend/services/identity-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -637,7 +637,7 @@ services:
 
   group-outbox-dispatcher:
     build: ./backend/services/group-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -665,7 +665,7 @@ services:
 
   expense-outbox-dispatcher:
     build: ./backend/services/expense-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -693,7 +693,7 @@ services:
 
   media-outbox-dispatcher:
     build: ./backend/services/media-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -721,7 +721,7 @@ services:
 
   notification-outbox-dispatcher:
     build: ./backend/services/notification-service
-    env_file: ./.env
+    env_file: ./.env.example
     command: ["python", "manage.py", "dispatch_outbox_loop"]
     environment:
       APP_ENV: ${APP_ENV}
@@ -749,7 +749,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    env_file: ./.env
+    env_file: ./.env.example
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
