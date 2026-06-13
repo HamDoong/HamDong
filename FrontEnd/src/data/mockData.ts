@@ -1,5 +1,6 @@
 import {
   BedDouble,
+  Bell,
   Building2,
   CheckCircle2,
   Home,
@@ -25,9 +26,10 @@ import type {
 
 export const primaryNavItems: NavItem[] = [
   { id: 'dashboard', label: 'داشبورد', icon: Home },
-  { id: 'groups', label: 'گروه‌ها', icon: Users, active: true },
+  { id: 'groups', label: 'گروه‌ها', icon: Users },
   { id: 'activity', label: 'فعالیت‌ها', icon: TrendingUp },
   { id: 'wallet', label: 'کیف پول', icon: Wallet },
+  { id: 'notifications', label: 'اعلان‌ها', icon: Bell },
   { id: 'profile', label: 'پروفایل', icon: User },
 ];
 

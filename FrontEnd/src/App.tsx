@@ -29,6 +29,7 @@ import {
   CreateGroupWizard,
   type CreatedGroupPayload,
 } from './pages/CreateGroupWizard';
+import { DashboardPage } from './pages/DashboardPage';
 import { GroupDetailPage } from './pages/GroupDetailPage';
 import { GroupsPage, type GroupBalanceSummary } from './pages/GroupsPage';
 import { InviteJoinPage } from './pages/InviteJoinPage';
@@ -39,7 +40,7 @@ import { SignUpPage } from './pages/SignUpPage';
 import { WalletPage } from './pages/WalletPage';
 import type { Group } from './types';
 
-type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications';
+type AppPage = 'dashboard' | 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications';
 type DashboardGroup = Group;
 
 function getExpenseTotal(expense: BackendExpense) {
@@ -177,19 +178,22 @@ function setBrowserPath(path: string) {
 }
 
 function getSidebarActivePage(page: AppPage) {
+  if (page === 'dashboard') return 'dashboard';
   if (page === 'activities') return 'activities';
   if (page === 'wallet') return 'wallet';
+  if (page === 'notifications') return 'notifications';
   return 'groups';
 }
 
-function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet' | 'notifications'> {
+function getPageFromHash(): Extract<AppPage, 'dashboard' | 'groups' | 'activities' | 'wallet' | 'notifications'> {
   const hash = window.location.hash.replace('#', '');
 
+  if (hash === 'groups') return 'groups';
   if (hash === 'activities') return 'activities';
   if (hash === 'wallet') return 'wallet';
   if (hash === 'notifications') return 'notifications';
 
-  return 'groups';
+  return 'dashboard';
 }
 
 function AppContent() {
@@ -335,11 +339,20 @@ function AppContent() {
       return;
     }
 
+    if (itemId === 'dashboard') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('dashboard');
+      setBrowserPath('/Dashboard');
+      loadInitialData();
+      return;
+    }
+
     if (itemId === 'groups') {
       setSelectedGroupId(null);
       setInviteToken('');
       setPage('groups');
-      setBrowserPath('/Dashboard#');
+      setBrowserPath('/Dashboard#groups');
       loadInitialData();
       return;
     }
@@ -407,7 +420,7 @@ function AppContent() {
 
       setSelectedGroupId(backendGroup.id);
       setPage('group-detail');
-      setBrowserPath('/Dashboard#');
+      setBrowserPath('/Dashboard#groups');
 
       notify({
         type: 'success',
@@ -427,7 +440,7 @@ function AppContent() {
   const handleOpenGroup = (groupId: string) => {
     setSelectedGroupId(groupId);
     setPage('group-detail');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
   };
 
   const handleOpenInvite = (tokenOrLink: string) => {
@@ -512,14 +525,14 @@ function AppContent() {
     setSelectedGroupId(null);
     setInviteToken('');
     setPage('groups');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
     loadInitialData();
   };
 
   const handleInviteAccepted = async () => {
     setInviteToken('');
     setPage('groups');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
     await loadInitialData();
   };
 
@@ -556,7 +569,28 @@ function AppContent() {
     setGroupBalances((prev) => prev.filter((item) => item.groupId !== groupId));
     setSelectedGroupId(null);
     setPage('groups');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
+  };
+
+  const handleOpenGroupsPage = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('groups');
+    setBrowserPath('/Dashboard#groups');
+  };
+
+  const handleOpenActivitiesPage = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('activities');
+    setBrowserPath('/Dashboard#activities');
+  };
+
+  const handleOpenWalletPage = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('wallet');
+    setBrowserPath('/Dashboard#wallet');
   };
 
   return (
@@ -573,6 +607,19 @@ function AppContent() {
             unreadNotificationCount={notificationBadgeCount}
             onOpenNotifications={handleOpenNotifications}
           />
+
+          {page === 'dashboard' ? (
+            <DashboardPage
+              groups={groupItems}
+              groupBalances={groupBalances}
+              balancesLoading={balancesLoading}
+              onCreateGroup={() => setPage('create-group')}
+              onOpenGroups={handleOpenGroupsPage}
+              onOpenGroup={handleOpenGroup}
+              onOpenActivities={handleOpenActivitiesPage}
+              onOpenWallet={handleOpenWalletPage}
+            />
+          ) : null}
 
           {page === 'groups' ? (
             <GroupsPage

@@ -103,8 +103,8 @@ export function Sidebar({
         className,
       )}
     >
-      <div className="flex h-full flex-col overflow-y-auto px-5 py-6 lg:px-6 lg:py-8">
-        <div className="mb-6 flex items-center justify-between gap-3 lg:mb-10">
+      <div className={cn('flex h-full flex-col px-5 py-6 lg:px-6 lg:py-7', mobile ? 'overflow-y-auto' : 'overflow-hidden')}>
+        <div className="mb-6 flex items-center justify-between gap-3 lg:mb-8">
           <div className="flex items-center gap-3">
             <LogoMark className="h-11 w-11 lg:h-12 lg:w-12" />
             <div className="text-[28px] font-black tracking-[-0.03em] text-text lg:text-[30px]">
@@ -143,7 +143,7 @@ export function Sidebar({
           ))}
         </nav>
 
-        <div className="my-8 h-px bg-border" />
+        <div className="my-5 h-px bg-border" />
 
         <nav className="space-y-2">
           {secondaryNavItems.map((item) => (
@@ -157,9 +157,7 @@ export function Sidebar({
           ))}
         </nav>
 
-        <div className="mt-auto pt-8 text-right text-xs text-slate-400">
-          Hamdong UI v0.3
-        </div>
+        <div className="mt-auto" />
       </div>
     </aside>
   );
