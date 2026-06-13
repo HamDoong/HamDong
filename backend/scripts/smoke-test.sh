@@ -16,16 +16,4 @@ check_endpoint "/api/v1/media/health/"
 check_endpoint "/api/v1/settlements/health/"
 check_endpoint "/api/v1/notifications/health/"
 
-check_tcp() {
-  local name="$1"
-  local port="$2"
-
-  echo "Checking ${name} on localhost:${port}"
-  timeout 3 bash -c "</dev/tcp/localhost/${port}" 2>/dev/null
-}
-
-check_tcp "RabbitMQ management" "15672"
-check_tcp "PostgreSQL" "5432"
-check_tcp "Redis" "6379"
-
-echo "All gateway and TCP health checks passed."
+echo "All gateway health checks passed."

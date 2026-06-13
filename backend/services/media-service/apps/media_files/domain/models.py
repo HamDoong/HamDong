@@ -204,3 +204,4 @@ class InboxMessage(models.Model):
     class Meta:
         db_table = "media_inbox_messages"
         indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
+

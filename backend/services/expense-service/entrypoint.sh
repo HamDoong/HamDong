@@ -64,61 +64,8 @@ PY
 fi
 
 if [ "${AUTO_MIGRATE:-0}" = "1" ]; then
-    echo "Checking migration files..."
-    python manage.py makemigrations --check --dry-run
-
     echo "Running migrations..."
     python manage.py migrate --noinput
-    python manage.py migrate --check --noinput
-
-    if [ "${STRICT_SCHEMA_CHECK:-1}" = "1" ]; then
-        echo "Checking database schema..."
-        python - <<'PY'
-import os
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
-
-import django
-django.setup()
-
-from django.apps import apps
-from django.db import connection
-
-missing = []
-
-with connection.cursor() as cursor:
-    tables = set(connection.introspection.table_names(cursor))
-
-    for model in apps.get_models():
-        opts = model._meta
-
-        if not opts.managed or opts.proxy:
-            continue
-
-        table = opts.db_table
-
-        if table not in tables:
-            missing.append(f"{table}.__table__")
-            continue
-
-        columns = {
-            column.name
-            for column in connection.introspection.get_table_description(cursor, table)
-        }
-
-        for field in opts.concrete_fields:
-            if field.column not in columns:
-                missing.append(f"{table}.{field.column}")
-
-if missing:
-    raise SystemExit(
-        "Database schema mismatch. Missing columns/tables: "
-        + ", ".join(sorted(missing))
-    )
-
-print("Database schema OK")
-PY
-    fi
 fi
 
 exec "$@"

@@ -89,7 +89,7 @@ class GroupMemberProjection(models.Model):
 class Expense(models.Model):
     """
     Expense model with financial amounts stored as integer minor units (no floats).
-
+    
     Financial invariant:
     total_amount_minor = base_amount_minor + tax_amount_minor + service_fee_amount_minor
     """
@@ -151,10 +151,10 @@ class Expense(models.Model):
 class ExpenseParticipant(models.Model):
     """
     Expense participant with shares distributed proportionally.
-
+    
     Financial invariant:
     total_share_minor = base_share_minor + tax_share_minor + service_fee_share_minor
-
+    
     And across all participants:
     sum(total_share_minor) == expense.total_amount_minor
     """
@@ -227,3 +227,4 @@ class InboxMessage(models.Model):
     class Meta:
         db_table = "expenses_inbox_messages"
         indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
+

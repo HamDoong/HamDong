@@ -3,30 +3,30 @@
 ## Start Services
 
 ```bash
-docker compose -f docker-compose.yml up --build
+docker compose -f Backend/docker-compose.yml up --build
 ```
 
 ## Validate Compose Configuration
 
 ```bash
-docker compose -f docker-compose.yml config
+docker compose -f Backend/docker-compose.yml config
 ```
 
 ## Run Service Tests
 
 ```bash
-docker compose -f docker-compose.yml exec identity-service pytest
-docker compose -f docker-compose.yml exec group-service pytest
-docker compose -f docker-compose.yml exec expense-service pytest
-docker compose -f docker-compose.yml exec media-service pytest
-docker compose -f docker-compose.yml exec settlement-service pytest
-docker compose -f docker-compose.yml exec notification-service pytest
+docker compose -f Backend/docker-compose.yml exec identity-service pytest
+docker compose -f Backend/docker-compose.yml exec group-service pytest
+docker compose -f Backend/docker-compose.yml exec expense-service pytest
+docker compose -f Backend/docker-compose.yml exec media-service pytest
+docker compose -f Backend/docker-compose.yml exec settlement-service pytest
+docker compose -f Backend/docker-compose.yml exec notification-service pytest
 ```
 
 ## Run Smoke Test
 
 ```bash
-BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+BASE_URL=http://localhost:8080 Backend/scripts/smoke-test.sh
 ```
 
 Expected success message:
@@ -57,10 +57,10 @@ Open `api-tests/hamdong.http`.
 Useful logs:
 
 ```bash
-docker compose -f docker-compose.yml logs -f api-gateway
-docker compose -f docker-compose.yml logs -f postgres
-docker compose -f docker-compose.yml logs -f rabbitmq
-docker compose -f docker-compose.yml logs -f settlement-consumer
+docker compose -f Backend/docker-compose.yml logs -f api-gateway
+docker compose -f Backend/docker-compose.yml logs -f postgres
+docker compose -f Backend/docker-compose.yml logs -f rabbitmq
+docker compose -f Backend/docker-compose.yml logs -f settlement-consumer
 ```
 
 If balance or plan responses lag, wait briefly and verify the relevant consumer is still running.

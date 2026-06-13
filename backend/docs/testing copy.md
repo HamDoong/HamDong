@@ -12,10 +12,10 @@ Troubleshooting:
 
 | قبلاً                 | از این به بعد                                                                                 |
 | --------------------- | --------------------------------------------------------------------------------------------- |
-| `make up`             | `docker compose -f docker-compose.yml up --build`                                     |
-| `make down`           | `docker compose -f docker-compose.yml down`                                           |
-| `make logs`           | `docker compose -f docker-compose.yml logs -f`                                        |
-| `make ps`             | `docker compose -f docker-compose.yml ps`                                             |
-| `make test`           | `docker compose -f docker-compose.yml exec <service> pytest`                          |
-| `make migrate`        | `docker compose -f docker-compose.yml exec <service> python manage.py migrate`        |
-| `make makemigrations` | `docker compose -f docker-compose.yml exec <service> python manage.py makemigrations` |
+| `make up`             | `docker compose -f Backend/docker-compose.yml up --build`                                     |
+| `make down`           | `docker compose -f Backend/docker-compose.yml down`                                           |
+| `make logs`           | `docker compose -f Backend/docker-compose.yml logs -f`                                        |
+| `make ps`             | `docker compose -f Backend/docker-compose.yml ps`                                             |
+| `make test`           | `docker compose -f Backend/docker-compose.yml exec <service> pytest`                          |
+| `make migrate`        | `docker compose -f Backend/docker-compose.yml exec <service> python manage.py migrate`        |
+| `make makemigrations` | `docker compose -f Backend/docker-compose.yml exec <service> python manage.py makemigrations` |

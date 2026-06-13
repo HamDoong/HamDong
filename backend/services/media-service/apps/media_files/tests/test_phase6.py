@@ -76,6 +76,7 @@ def envelope(event_type, data, routing_key):
 
 @pytest.mark.django_db
 def test_consumer_creates_and_updates_projections():
+    
     consumer = MediaEventConsumer()
     uid = str(uuid.uuid4())
     gid = str(uuid.uuid4())

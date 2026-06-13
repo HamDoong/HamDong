@@ -61,7 +61,7 @@ class ConsumerTests(TestCase):
         )
         self.assertEqual(InboxMessage.objects.count(), 1)
         self.assertEqual(InboxMessage.objects.first().status, InboxMessageStatusChoices.PROCESSED)
-
+    
 
     def test_consumer_rejects_failed_message(self):
         consumer = IdentityOtpConsumer()

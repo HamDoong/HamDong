@@ -12,9 +12,10 @@ The demo should go through the API so events, outbox rows, consumers, and projec
 Recommended flow:
 1. Copy environment files:
    cp .env.example .env
+   cp .env.example .env
 
 2. Start the stack:
-   docker compose -f docker-compose.yml up --build
+   docker compose -f Backend/docker-compose.yml up --build
 
 3. Open:
    api-tests/hamdong.http

@@ -60,7 +60,7 @@ class SettlementReminderConsumerTests(TestCase):
         consumer = SettlementReminderConsumer()
         channel = DummyChannel()
         method = SimpleNamespace(delivery_tag=2)
-
+    
         payload = build_event_envelope(
             event_type="UnsupportedReminder",
             source_service="settlement-service",
@@ -70,9 +70,9 @@ class SettlementReminderConsumerTests(TestCase):
                 "recipient_phone_number": "09123456789",
             },
         )
-
+    
         consumer._handle_message(channel, method, None, json.dumps(payload).encode())
-
+    
         self.assertEqual(channel.acked, [2])
         self.assertEqual(channel.rejected, [])
         self.assertEqual(NotificationJob.objects.count(), 0)

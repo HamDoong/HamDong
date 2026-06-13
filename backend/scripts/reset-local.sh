@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
+COMPOSE_FILE="${REPO_ROOT}/Backend/docker-compose.yml"
 
 cat <<'EOF'
 WARNING: This command stops the local HamDong stack.

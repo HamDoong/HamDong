@@ -1,35 +1,54 @@
 # Dependencies
 node_modules/
-FrontEnd/node_modules/
 
 # Build outputs
 dist/
 build/
-FrontEnd/dist/
-FrontEnd/vite.config.d.ts
-FrontEnd/vite.config.js
+node_modules/
 
-# Vite / frontend cache
+# Vite
 .vite/
-FrontEnd/.vite/
-*.tsbuildinfo
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-FrontEnd/.env
-FrontEnd/.env.local
-FrontEnd/.env.*.local
-backend/.env
-backend/**/.env
+# # Environment variables
+# .env
+# .env.local
+# .env.*.local
+# Backend/.env
+# Backend/**/.env
 
 # Logs
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+coverage.xml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+
+#Cache folder
+.alcache/
+#Symbols folder
+.alpackages/
+#Snapshots folder
+.snapshots/
+#Testing Output folder
+.output/
+#Extension App-file
+*.app
+#Rapid Application Development File
+rad.json
+#Translation Base-file
+*.g.xlf
+#License-files
+*.bclicense
+*.flf
+#Test results file
+TestResults.xml
 
 # Python / Django
 venv/
@@ -41,56 +60,77 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .coverage
-coverage/
-coverage.xml
 htmlcov/
+
+
+# Django
 db.sqlite3
 media/
 uploads/
 local_uploads/
 staticfiles/
-backend/**/media/
-backend/**/staticfiles/
-backend/**/__pycache__/
-backend/**/*.pyc
-backend/**/.pytest_cache/
-backend/**/.ruff_cache/
+Backend/media/
+Backend/uploads/
+Backend/staticfiles/
+Backend/media-uploads/
 
-# Docker / local runtime
-docker-compose.local.yml
-backend/media/
-backend/media-uploads/
-backend/postgres-data/
-backend/rabbitmq-data/
-backend/redis-data/
+# Docker
+# docker-compose.override.yml
+*.log
+*.tmp
+*.bak
+*.swp 
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Coverage
+.coverage
+coverage/
+coverage.xml
+htmlcov/
+.cache/
+
+# Temporary files
+*.tmp
+*.temp
+
+# HamDong local Backend artifacts
+# Backend/.env
+Backend/media/
+Backend/media-uploads/
+Backend/postgres-data/
+Backend/rabbitmq-data/
+Backend/redis-data/
 
 # Runtime / process artifacts
 *.pid
 *.pid.lock
 *.seed
 
-# OS / editor files
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+# Frontend local artifacts
+FrontEnd/node_modules/
+FrontEnd/dist/
+FrontEnd/.vite/
+# FrontEnd/.env
+# FrontEnd/.env.local
+# FrontEnd/.env.*.local
 
-# Business Central / AL artifacts
-.alcache/
-.alpackages/
-.snapshots/
-.output/
-*.app
-rad.json
-*.g.xlf
-*.bclicense
-*.flf
-TestResults.xml
-
-# Generic temporary files
-.cache/
-.parcel-cache/
-*.tmp
-*.temp
-*.bak
-*.swp
+# Backend local artifacts
+# Backend/**/.env
+Backend/**/media/
+Backend/**/staticfiles/
+Backend/**/__pycache__/
+Backend/**/*.pyc
+Backend/**/.pytest_cache/
+Backend/**/.ruff_cache/

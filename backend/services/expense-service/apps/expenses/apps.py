@@ -6,7 +6,7 @@ class ExpensesConfig(AppConfig):
     name = "apps.expenses"
     def ready(self):
         from .api import schema_extensions  # noqa: F401
-
+        
 from django.apps import AppConfig
 
 

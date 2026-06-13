@@ -4,38 +4,39 @@
 
 ```bash
 cp .env.example .env
-docker compose -f docker-compose.yml up --build
+cp .env.example .env
+docker compose -f Backend/docker-compose.yml up --build
 ```
 
 ## Stop Project
 
 ```bash
-docker compose -f docker-compose.yml down
+docker compose -f Backend/docker-compose.yml down
 ```
 
 ## View Logs
 
 ```bash
-docker compose -f docker-compose.yml logs -f
-docker compose -f docker-compose.yml logs -f identity-service
-docker compose -f docker-compose.yml logs -f settlement-service
+docker compose -f Backend/docker-compose.yml logs -f
+docker compose -f Backend/docker-compose.yml logs -f identity-service
+docker compose -f Backend/docker-compose.yml logs -f settlement-service
 ```
 
 ## Run Smoke Test
 
 ```bash
-BASE_URL=http://localhost:8080 backend/scripts/smoke-test.sh
+BASE_URL=http://localhost:8080 Backend/scripts/smoke-test.sh
 ```
 
 ## Run Service Tests
 
 ```bash
-docker compose -f docker-compose.yml exec identity-service pytest
-docker compose -f docker-compose.yml exec group-service pytest
-docker compose -f docker-compose.yml exec expense-service pytest
-docker compose -f docker-compose.yml exec media-service pytest
-docker compose -f docker-compose.yml exec settlement-service pytest
-docker compose -f docker-compose.yml exec notification-service pytest
+docker compose -f Backend/docker-compose.yml exec identity-service pytest
+docker compose -f Backend/docker-compose.yml exec group-service pytest
+docker compose -f Backend/docker-compose.yml exec expense-service pytest
+docker compose -f Backend/docker-compose.yml exec media-service pytest
+docker compose -f Backend/docker-compose.yml exec settlement-service pytest
+docker compose -f Backend/docker-compose.yml exec notification-service pytest
 ```
 
 ## Swagger URLs

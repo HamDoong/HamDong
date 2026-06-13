@@ -48,11 +48,11 @@ class NotificationApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(test_response.status_code, 200)
-
+    
         # messages endpoint is now protected by access token
         response_without_token = self.client.get("/api/v1/notifications/messages/")
         self.assertEqual(response_without_token.status_code, 401)
-
+    
         self.client.force_authenticate(
             user=SimpleNamespace(
                 is_authenticated=True,
@@ -60,7 +60,7 @@ class NotificationApiTests(APITestCase):
                 id="11111111-1111-1111-1111-111111111111",
             )
         )
-
+    
         response = self.client.get("/api/v1/notifications/messages/")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(len(response.json()) >= 1)
