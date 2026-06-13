@@ -39,6 +39,9 @@ function getSignUpErrorMessage(error: unknown) {
     };
     const code = body?.error?.code;
 
+    if (error.status === 404) return 'مسیر ثبت‌نام در API پیدا نشد. تنظیمات /api/v1 یا API Gateway را بررسی کنید.';
+    if ([502, 503, 504].includes(error.status)) return 'سرویس هویت در دسترس نیست. وضعیت API Gateway و identity-service را بررسی کنید.';
+
     if (code === 'INVALID_PHONE') return 'شماره موبایل معتبر نیست.';
     if (code === 'INVALID_OTP') return 'کد تایید اشتباه است.';
     if (code === 'OTP_EXPIRED') return 'کد تایید منقضی شده است.';

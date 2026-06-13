@@ -137,10 +137,11 @@ const howItWorks = [
 
 function Logo() {
   return (
-    <div
+    <Link
+      to="/"
       className="landing-logo flex min-w-0 shrink-0 items-center gap-3"
       dir="ltr"
-      aria-label="همدنگ"
+      aria-label="بازگشت به صفحه اصلی همدنگ"
     >
       <div className="grid h-11 w-11 place-items-center rounded-[14px] bg-primary-gradient text-white shadow-button sm:h-12 sm:w-12 sm:rounded-[16px]">
         <span className="text-2xl font-extrabold leading-none sm:text-3xl">ه</span>
@@ -151,7 +152,7 @@ function Logo() {
       >
         همدنگ
       </span>
-    </div>
+    </Link>
   );
 }
 

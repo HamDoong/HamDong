@@ -68,7 +68,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-function normalizePhone(phone?: string) {
+function normalizePhone(phone?: string | null) {
   return (phone || '').replace(/\s+/g, '').trim();
 }
 
