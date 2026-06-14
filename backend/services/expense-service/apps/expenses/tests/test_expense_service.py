@@ -37,8 +37,8 @@ def group_context(db):
         members[str(user_id)] = GroupMemberProjection.objects.create(
             group_id=group_id,
             user_id=user_id,
-            phone_number=f"+98912000000{index}",
-            display_name_snapshot=f"User {index}",
+            email=f"+98912000000{index}",
+            art_name_snapshot=f"User {index}",
             role=GroupMemberProjection.ROLE_OWNER if user_id == owner_id else GroupMemberProjection.ROLE_MEMBER,
             status=GroupMemberProjection.STATUS_ACTIVE,
         )

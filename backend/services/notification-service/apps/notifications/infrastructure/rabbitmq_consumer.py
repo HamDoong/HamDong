@@ -9,8 +9,8 @@ import time
 import pika
 from django.conf import settings
 
-from apps.notifications.application.use_cases import ProcessOtpSmsUseCase
-from apps.notifications.domain.rules import PhoneNumberRule
+from apps.notifications.application.use_cases import ProcessOtpEmailUseCase
+from apps.notifications.domain.rules import EmailRule
 from apps.notifications.infrastructure.event_envelope import validate_event_envelope
 from apps.notifications.infrastructure.repositories import InboxRepository
 
@@ -24,9 +24,9 @@ class RabbitMqConsumer:
         self.dlq = settings.IDENTITY_OTP_DLQ
         self.connection = None
         self.channel = None
-        self.use_case = ProcessOtpSmsUseCase()
-        self.max_retries = settings.SMS_OTP_MAX_RETRIES
-        self.retry_delays = [int(x) for x in settings.SMS_OTP_RETRY_DELAYS_SECONDS.split(",") if x.strip()]
+        self.use_case = ProcessOtpEmailUseCase()
+        self.max_retries = settings.EMAIL_OTP_MAX_RETRIES
+        self.retry_delays = [int(x) for x in settings.EMAIL_OTP_RETRY_DELAYS_SECONDS.split(",") if x.strip()]
 
     def _connect(self):
         credentials = pika.PlainCredentials(settings.RABBITMQ_DEFAULT_USER, settings.RABBITMQ_DEFAULT_PASS)
@@ -49,13 +49,13 @@ class RabbitMqConsumer:
 
     def _validate_event(self, payload: dict) -> bool:
         valid, _ = validate_event_envelope(payload)
-        if not valid or payload.get("event_type") != "SendOtpSmsRequested":
+        if not valid or payload.get("event_type") != "SendOtpEmailRequested":
             return False
         data = payload.get("data") or {}
-        phone = data.get("phone_number")
+        email = data.get("email")
         code = data.get("code")
         expires_in = data.get("expires_in")
-        return bool(phone and code and expires_in and PhoneNumberRule.is_valid(phone))
+        return bool(email and code and expires_in and EmailRule.is_valid(email))
 
     def _consume_callback(self, ch, method, properties, body):
         payload = self._safe_parse(body)
@@ -72,11 +72,11 @@ class RabbitMqConsumer:
             InboxRepository.mark_skipped(event_id, payload["event_type"], payload["source_service"], payload["routing_key"], payload)
             ch.basic_ack(delivery_tag=delivery_tag)
             return
-        phone = payload.get("data", {}).get("phone_number")
-        logger.info("Consuming OTP request for %s", PhoneNumberRule.mask(phone))
+        email = payload.get("data", {}).get("email")
+        logger.info("Consuming OTP request for %s", EmailRule.mask(email))
         success = False
         for attempt in range(self.max_retries + 1):
-            if attempt > 0:
+            if attempt > 0 and self.retry_delays:
                 delay = self.retry_delays[min(attempt - 1, len(self.retry_delays) - 1)]
                 time.sleep(delay)
             try:

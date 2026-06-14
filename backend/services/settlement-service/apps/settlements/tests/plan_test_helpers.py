@@ -28,13 +28,13 @@ def create_group(title="Group A", owner_user_id=None, status=GroupStatusChoices.
 
 
 def create_user_projection(
-    identity_user_id=None, display_name=None, phone_number="+989100000000"
+    identity_user_id=None, art_name=None, email="+989100000000"
 ):
     identity_user_id = identity_user_id or uuid.uuid4()
     return UserProjection.objects.create(
         identity_user_id=identity_user_id,
-        phone_number=phone_number,
-        display_name=display_name,
+        email=email,
+        art_name=art_name,
         is_active=True,
     )
 
@@ -44,15 +44,15 @@ def create_member(
     user_id=None,
     status=GroupMemberStatusChoices.ACTIVE,
     role=GroupMemberRoleChoices.MEMBER,
-    phone_number="+989121234567",
-    display_name_snapshot="Member",
+    email="+989121234567",
+    art_name_snapshot="Member",
 ):
     user_id = user_id or uuid.uuid4()
     return GroupMemberProjection.objects.create(
         group_id=group_id,
         user_id=user_id,
-        phone_number=phone_number,
-        display_name_snapshot=display_name_snapshot,
+        email=email,
+        art_name_snapshot=art_name_snapshot,
         role=role,
         status=status,
     )

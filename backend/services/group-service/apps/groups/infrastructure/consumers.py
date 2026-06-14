@@ -60,12 +60,12 @@ class IdentityUserConsumer:
         data = payload["data"] or {}
         if event_type in ("UserCreated", "UserUpdated"):
             identity_user_id = data.get("user_id")
-            phone = data.get("phone_number")
+            phone = data.get("email")
             if identity_user_id and phone:
                 UserProjectionRepository.create_or_update(
                     identity_user_id=identity_user_id,
-                    phone_number=phone,
-                    display_name=data.get("display_name"),
+                    email=phone,
+                    art_name=data.get("art_name"),
                     first_name=data.get("first_name"),
                     last_name=data.get("last_name"),
                     role=data.get("role"),

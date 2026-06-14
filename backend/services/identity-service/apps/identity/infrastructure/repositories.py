@@ -1,5 +1,7 @@
 """Database repositories for identity-service."""
 
+from __future__ import annotations
+
 import hashlib
 from datetime import timedelta
 from typing import Optional
@@ -14,13 +16,13 @@ class UserRepository:
     """Repository for User model operations."""
 
     @staticmethod
-    def create(phone_number: str, **kwargs) -> User:
-        return User.objects.create(phone_number=phone_number, **kwargs)
+    def create(email: str, **kwargs) -> User:
+        return User.objects.create(email=email, **kwargs)
 
     @staticmethod
-    def get_by_phone(phone_number: str) -> Optional[User]:
+    def get_by_email(email: str) -> Optional[User]:
         return User.objects.filter(
-            phone_number=phone_number,
+            email=email,
             deleted_at__isnull=True,
         ).first()
 

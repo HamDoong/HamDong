@@ -38,9 +38,9 @@ class FixPack4ContractChecks(unittest.TestCase):
     def test_hamdong_demo_contains_required_sections(self) -> None:
         hamdong = (Backend_DIR / "api-tests" / "hamdong.http").read_text(encoding="utf-8")
         required_markers = [
-            "@aliPhone = 09120000001",
-            "@saraPhone = 09120000002",
-            "@rezaPhone = 09120000003",
+            "@aliEmail = ali@example.com",
+            "@saraEmail = sara@example.com",
+            "@rezaEmail = reza@example.com",
             "### 7. Ali creates group",
             "### 8. Ali creates invite",
             "### 9. Sara accepts invite",

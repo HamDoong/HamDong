@@ -8,11 +8,11 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 
-POSTGRES_DB = os.environ["POSTGRES_DB"]
-POSTGRES_USER = os.environ["POSTGRES_USER"]
-POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.environ.get("POSTGRES_DB") or os.environ.get("DJANGO_DB_NAME", "identity_db")
+POSTGRES_USER = os.environ.get("POSTGRES_USER") or os.environ.get("DJANGO_DB_USER", "postgres")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD") or os.environ.get("DJANGO_DB_PASSWORD", "postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST") or os.getenv("DJANGO_DB_HOST", "postgres")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT") or os.getenv("DJANGO_DB_PORT", "5432")
 
 SERVICE_NAME = "identity-service"
 SERVICE_VERSION = "0.1.0"
@@ -67,13 +67,13 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": os.getenv("DJANGO_DB_ENGINE", "django.db.backends.postgresql"),
         "NAME": POSTGRES_DB,
         "USER": POSTGRES_USER,
         "PASSWORD": POSTGRES_PASSWORD,
         "HOST": POSTGRES_HOST,
         "PORT": POSTGRES_PORT,
-        "TEST": {"NAME": f"test_{POSTGRES_DB}"},
+        "TEST": {"NAME": os.environ.get("DJANGO_TEST_DB_NAME", f"test_{POSTGRES_DB}")},
     }
 }
 
@@ -96,45 +96,29 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
-
-# Use the custom user model defined in apps.identity.domain.models *
 AUTH_USER_MODEL = "identity.User"
 
-# JWT Configuration
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
 JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
 JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
-JWT_ACCESS_TOKEN_LIFETIME_SECONDS = env(
-    "JWT_ACCESS_TOKEN_LIFETIME_SECONDS", default=900, cast=int
-)
-JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env(
-    "JWT_REFRESH_TOKEN_LIFETIME_SECONDS", default=604800, cast=int
-)
+JWT_ACCESS_TOKEN_LIFETIME_SECONDS = env("JWT_ACCESS_TOKEN_LIFETIME_SECONDS", default=900, cast=int)
+JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env("JWT_REFRESH_TOKEN_LIFETIME_SECONDS", default=604800, cast=int)
 JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", default="/app/keys/private.pem")
 JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH", default="/app/keys/public.pem")
 
-# OTP Configuration
 OTP_LENGTH = env("OTP_LENGTH", default=6, cast=int)
 OTP_TTL_SECONDS = env("OTP_TTL_SECONDS", default=120, cast=int)
 OTP_RESEND_COOLDOWN_SECONDS = env("OTP_RESEND_COOLDOWN_SECONDS", default=60, cast=int)
 OTP_MAX_VERIFY_ATTEMPTS = env("OTP_MAX_VERIFY_ATTEMPTS", default=5, cast=int)
 OTP_MAX_REQUESTS_PER_WINDOW = env("OTP_MAX_REQUESTS_PER_WINDOW", default=3, cast=int)
-OTP_RATE_LIMIT_WINDOW_SECONDS = env(
-    "OTP_RATE_LIMIT_WINDOW_SECONDS", default=600, cast=int
-)
-OTP_DEBUG_RETURN_CODE = env.bool("OTP_DEBUG_RETURN_CODE", default=True)
+OTP_RATE_LIMIT_WINDOW_SECONDS = env("OTP_RATE_LIMIT_WINDOW_SECONDS", default=600, cast=int)
+OTP_DEBUG_RETURN_CODE = env.bool("OTP_DEBUG_RETURN_CODE", default=False)
 
-# RabbitMQ Configuration
-IDENTITY_RABBITMQ_EXCHANGE = env(
-    "IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity"
-)
-
-# Redis Configuration
+IDENTITY_RABBITMQ_EXCHANGE = env("IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity")
 REDIS_HOST = env("REDIS_HOST", default="localhost")
 REDIS_PORT = env("REDIS_PORT", default=6379, cast=int)
 REDIS_DB = env("REDIS_DB", default=0, cast=int)
 
-# RabbitMQ Configuration
 RABBITMQ_HOST = env("RABBITMQ_HOST", default="localhost")
 RABBITMQ_PORT = env("RABBITMQ_PORT", default=5672, cast=int)
 RABBITMQ_DEFAULT_USER = env("RABBITMQ_DEFAULT_USER", default="guest")

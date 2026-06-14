@@ -1,8 +1,8 @@
 @baseUrl = http://localhost:8080
 
-@aliPhone = 09120000001
-@saraPhone = 09120000002
-@rezaPhone = 09120000003
+@aliEmail = ali@example.com
+@saraEmail = sara@example.com
+@rezaEmail = reza@example.com
 
 @aliOtp =
 @saraOtp =
@@ -55,7 +55,7 @@ POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "{{aliPhone}}"
+  "email": "{{aliEmail}}"
 }
 
 ### 2. Verify OTP for Ali
@@ -63,7 +63,7 @@ POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "{{aliPhone}}",
+  "email": "{{aliEmail}}",
   "code": "{{aliOtp}}"
 }
 
@@ -79,7 +79,7 @@ POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "{{saraPhone}}"
+  "email": "{{saraEmail}}"
 }
 
 ### 4. Verify OTP for Sara
@@ -87,7 +87,7 @@ POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "{{saraPhone}}",
+  "email": "{{saraEmail}}",
   "code": "{{saraOtp}}"
 }
 
@@ -103,7 +103,7 @@ POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "{{rezaPhone}}"
+  "email": "{{rezaEmail}}"
 }
 
 ### 6. Verify OTP for Reza
@@ -111,7 +111,7 @@ POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "{{rezaPhone}}",
+  "email": "{{rezaEmail}}",
   "code": "{{rezaOtp}}"
 }
 

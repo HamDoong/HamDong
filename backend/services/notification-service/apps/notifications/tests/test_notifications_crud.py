@@ -21,7 +21,7 @@ def fake_authenticate(self, request):
 
 
 class NotificationCrudTests(APITestCase):
-    @override_settings(DEBUG=True, APP_ENV="local", SMS_PROVIDER="fake")
+    @override_settings(DEBUG=True, APP_ENV="local", EMAIL_PROVIDER="fake")
     @patch.object(JWTAuthentication, "authenticate", fake_authenticate)
     def test_notification_crud_flow(self):
         create = self.client.post(

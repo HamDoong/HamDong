@@ -12,7 +12,7 @@ from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
 class IdentitySecurityFixPack3Tests(TestCase):
     def setUp(self):
-        self.user = User.objects.create(phone_number="09123456789")
+        self.user = User.objects.create(email="09123456789")
         self.otp_store = RedisOtpStore()
         self.otp_store.redis_client.flushdb()
 
@@ -57,7 +57,7 @@ class IdentitySecurityFixPack3Tests(TestCase):
         assert otp_code is not None
         assert debug_otp is None
 
-    def test_phone_number_is_masked_in_logs(self):
+    def test_email_is_masked_in_logs(self):
         service = OtpService()
         with self.assertLogs("apps.identity.application.otp_service", level="INFO") as logs:
             success, _, otp_code, _ = service.request_otp("09123456789")

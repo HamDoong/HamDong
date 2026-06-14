@@ -8,11 +8,11 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(BASE_DIR / ".env")
 
-POSTGRES_DB = os.environ["POSTGRES_DB"]
-POSTGRES_USER = os.environ["POSTGRES_USER"]
-POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.environ.get("POSTGRES_DB") or os.environ.get("DJANGO_DB_NAME", "settlement_db")
+POSTGRES_USER = os.environ.get("POSTGRES_USER") or os.environ.get("DJANGO_DB_USER", "postgres")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD") or os.environ.get("DJANGO_DB_PASSWORD", "postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST") or os.getenv("DJANGO_DB_HOST", "postgres")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT") or os.getenv("DJANGO_DB_PORT", "5432")
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
 RABBITMQ_DEFAULT_USER = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
@@ -67,8 +67,8 @@ SETTLEMENT_REMINDER_DLX = env(
 SETTLEMENT_REMINDER_DLQ = env(
     "SETTLEMENT_REMINDER_DLQ", default="notification.settlement.reminders.dlq"
 )
-SMS_TEMPLATE_SETTLEMENT_REMINDER = env(
-    "SMS_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER"
+EMAIL_TEMPLATE_SETTLEMENT_REMINDER = env(
+    "EMAIL_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER"
 )
 
 SECRET_KEY = env("SECRET_KEY", default="change-me")
@@ -121,13 +121,13 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": os.getenv("DJANGO_DB_ENGINE", "django.db.backends.postgresql"),
         "NAME": POSTGRES_DB,
         "USER": POSTGRES_USER,
         "PASSWORD": POSTGRES_PASSWORD,
         "HOST": POSTGRES_HOST,
         "PORT": POSTGRES_PORT,
-        "TEST": {"NAME": f"test_{POSTGRES_DB}"},
+        "TEST": {"NAME": os.environ.get("DJANGO_TEST_DB_NAME", f"test_{POSTGRES_DB}")},
     }
 }
 

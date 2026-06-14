@@ -30,7 +30,7 @@ class DummyChannel:
 
 
 class ConsumerTests(TestCase):
-    @override_settings(SMS_PROVIDER="fake")
+    @override_settings(EMAIL_PROVIDER="fake")
     def test_consumer_processes_otp_message(self):
         consumer = IdentityOtpConsumer()
         channel = DummyChannel()
@@ -38,12 +38,12 @@ class ConsumerTests(TestCase):
 
         event_id = str(uuid4())
         payload = build_event_envelope(
-            event_type="SendOtpSmsRequested",
+            event_type="SendOtpEmailRequested",
             source_service="identity-service",
             routing_key="identity.otp.requested",
             event_id=event_id,
                 data={
-                "phone_number": "09123456789",
+                "email": "artist@example.com",
                 "code": "123456",
                 "purpose": "login",
                 "expires_in": 120,
@@ -74,13 +74,13 @@ class ConsumerTests(TestCase):
 
         event_id = str(uuid4())
         payload = build_event_envelope(
-            event_type="SendOtpSmsRequested",
+            event_type="SendOtpEmailRequested",
             source_service="identity-service",
             routing_key="identity.otp.requested",
             event_id=event_id,
             occurred_at="2026-05-30T14:00:00+00:00",
             data={
-                "phone_number": "09123456789",
+                "email": "artist@example.com",
                 "code": "123456",
                 "purpose": "login",
                 "expires_in": 120,

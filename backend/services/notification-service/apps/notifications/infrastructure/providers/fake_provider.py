@@ -1,31 +1,30 @@
-"""Fake SMS provider for local development and tests."""
+"""Fake email provider for local development and tests."""
 
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Dict
 
-from apps.notifications.domain.rules import PhoneNumberRule, sanitize_message_text
-from apps.notifications.domain.value_objects import SmsSendResult
-from apps.notifications.infrastructure.providers.base import SmsProvider
+from apps.notifications.domain.rules import EmailRule, sanitize_message_text
+from apps.notifications.domain.value_objects import EmailSendResult
+from apps.notifications.infrastructure.providers.base import EmailProvider
 
 logger = logging.getLogger(__name__)
 
 
-class FakeSmsProvider(SmsProvider):
+class FakeEmailProvider(EmailProvider):
     provider_name = "fake"
 
-    def send_sms(self, phone_number: str, message: str) -> SmsSendResult:
-        masked_phone = PhoneNumberRule.mask(phone_number)
-        safe_message = sanitize_message_text(message)
+    def send_email(self, email: str, subject: str, body: str) -> EmailSendResult:
+        masked_email = EmailRule.mask(email)
         message_id = str(uuid.uuid4())
         logger.info(
-            "Fake SMS sent to phone_number=%s message_preview=%s",
-            masked_phone,
-            safe_message[:80],
+            "Fake email sent to email=%s subject=%s body_preview=%s",
+            masked_email,
+            subject[:80],
+            sanitize_message_text(body)[:120],
         )
-        return SmsSendResult(
+        return EmailSendResult(
             success=True,
             provider=self.provider_name,
             provider_message_id=message_id,
@@ -36,7 +35,9 @@ class FakeSmsProvider(SmsProvider):
             },
         )
 
-    def send_otp(self, phone_number: str, code: str, expires_in: int) -> SmsSendResult:
-        # Do not include the raw OTP in any returned payload.
-        message = f"OTP code sent to {PhoneNumberRule.mask(phone_number)}"
-        return self.send_sms(phone_number, message)
+    def send_otp(self, email: str, code: str, expires_in: int, subject: str, body: str) -> EmailSendResult:
+        return self.send_email(email, subject=subject, body=body)
+
+
+# Compatibility alias.
+FakeSmsProvider = FakeEmailProvider

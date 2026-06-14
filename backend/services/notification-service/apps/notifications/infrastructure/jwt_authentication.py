@@ -14,7 +14,7 @@ from apps.notifications.infrastructure.jwks_client import JWKSClientError, get_d
 
 _REQUIRED_ACCESS_CLAIMS = (
     "sub",
-    "phone_number",
+    "email",
     "role",
     "type",
     "jti",
@@ -67,7 +67,7 @@ class JWTAuthentication(BaseAuthentication):
 
         user = AuthenticatedUser(
             id=str(payload["sub"]),
-            phone_number=payload.get("phone_number"),
+            email=payload.get("email"),
             role=str(payload["role"]),
             token_jti=str(payload["jti"]),
         )

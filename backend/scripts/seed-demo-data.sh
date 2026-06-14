@@ -41,7 +41,7 @@ EOF
 
 echo
 echo "Optional quick OTP request:"
-curl -fsS -X POST "${BASE_URL}/api/v1/auth/otp/request/"   -H "Content-Type: application/json"   -d '{"phone_number":"09120000001"}' || true
+curl -fsS -X POST "${BASE_URL}/api/v1/auth/otp/request/"   -H "Content-Type: application/json"   -d '{"email":"09120000001"}' || true
 
 echo
 echo "If DEBUG=true, copy debug_otp into api-tests/hamdong.http."

@@ -7,12 +7,12 @@ from rest_framework.test import APITestCase
 
 
 class NotificationApiTests(APITestCase):
-    @override_settings(DEBUG=True, APP_ENV="local", SMS_PROVIDER="fake")
+    @override_settings(DEBUG=True, APP_ENV="local", EMAIL_PROVIDER="fake")
     def test_test_sms_endpoint_works_in_local_debug(self):
         response = self.client.post(
             "/api/v1/notifications/sms/test/",
             {
-                "phone_number": "09123456789",
+                "email": "artist@example.com",
                 "message": "Test message from HamDong",
             },
             format="json",
@@ -24,12 +24,12 @@ class NotificationApiTests(APITestCase):
         self.assertEqual(data["provider"], "fake")
         self.assertTrue(data["message_id"])
 
-    @override_settings(DEBUG=False, APP_ENV="production", SMS_PROVIDER="fake")
+    @override_settings(DEBUG=False, APP_ENV="production", EMAIL_PROVIDER="fake")
     def test_test_sms_endpoint_is_blocked_in_production(self):
         response = self.client.post(
             "/api/v1/notifications/sms/test/",
             {
-                "phone_number": "09123456789",
+                "email": "artist@example.com",
                 "message": "Test message from HamDong",
             },
             format="json",
@@ -37,12 +37,12 @@ class NotificationApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    @override_settings(DEBUG=True, APP_ENV="local", SMS_PROVIDER="fake")
+    @override_settings(DEBUG=True, APP_ENV="local", EMAIL_PROVIDER="fake")
     def test_messages_endpoint_is_available_locally(self):
         test_response = self.client.post(
             "/api/v1/notifications/sms/test/",
             {
-                "phone_number": "09123456789",
+                "email": "artist@example.com",
                 "message": "Test message from HamDong",
             },
             format="json",

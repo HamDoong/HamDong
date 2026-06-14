@@ -180,12 +180,12 @@ def test_notification_consumer_and_scheduler_are_wired_for_reminders():
     assert "SettlementConfirmationReminderRequested" in scheduler
     assert "SettlementPlanItemReminderRequested" in scheduler
     assert "create_notification_job" in consumer
-    assert "SmsService" in consumer
+    assert "EmailService" in consumer
     assert "InboxRepository" in consumer
 
 
 def test_docker_compose_contains_phase9_workers():
-    docker_compose = read("docker-compose.yml")
+    docker_compose = (REPO_ROOT.parent / "docker-compose.yml").read_text(encoding="utf-8")
     for service_name in [
         "identity-outbox-dispatcher:",
         "group-outbox-dispatcher:",
@@ -206,9 +206,9 @@ def test_no_build_helper_file_was_added():
 def test_notification_templates_and_retry_env_are_configured():
     env_example = read(".env.example")
     for key in [
-        "SMS_TEMPLATE_PAYMENT_REMINDER",
-        "SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER",
-        "SMS_TEMPLATE_PLAN_ITEM_REMINDER",
+        "EMAIL_TEMPLATE_PAYMENT_REMINDER",
+        "EMAIL_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER",
+        "EMAIL_TEMPLATE_PLAN_ITEM_REMINDER",
         "EVENT_MAX_RETRY_COUNT",
         "EVENT_RETRY_DELAY_SECONDS",
         "REMINDER_SCHEDULER_INTERVAL_SECONDS",
@@ -246,7 +246,7 @@ def test_notification_templates_and_retry_env_are_configured():
     )
     assert "REMINDER_SCHEDULER_INTERVAL_SECONDS" in settlement_settings
 
-    docker_compose = read("docker-compose.yml")
+    docker_compose = (REPO_ROOT.parent / "docker-compose.yml").read_text(encoding="utf-8")
     assert "${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}" in docker_compose
     assert "${REMINDER_SCHEDULER_INTERVAL_SECONDS:-3600}" in docker_compose
 
@@ -266,7 +266,7 @@ def test_outbox_repositories_use_configurable_retry_policy():
 
 
 def test_phase9_env_defaults_match_fix_pack_requirements():
-    for rel in [".env.example", "Backend/.env.example"]:
+    for rel in ["Backend/.env.example"]:
         text = (REPO_ROOT.parent / rel).read_text(encoding="utf-8")
         assert "EVENT_OUTBOX_BATCH_SIZE=50" in text
         assert "EVENT_OUTBOX_POLL_INTERVAL_SECONDS=5" in text
@@ -284,13 +284,8 @@ def test_phase9_env_defaults_match_fix_pack_requirements():
 
 
 def test_phase9_compose_defaults_match_fix_pack_requirements():
-    Backend_compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "${EVENT_OUTBOX_BATCH_SIZE:-50}" in Backend_compose
-    assert "${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}" in Backend_compose
-    assert "${EVENT_RETRY_DELAY_SECONDS:-10,30,60}" in Backend_compose
-    assert "NOTIFICATION_REMINDER_QUEUE: ${NOTIFICATION_REMINDER_QUEUE:-notification.reminders}" in Backend_compose
-
     repo_compose = (REPO_ROOT.parent / "docker-compose.yml").read_text(encoding="utf-8")
     assert "${EVENT_OUTBOX_BATCH_SIZE:-50}" in repo_compose
+    assert "${EVENT_OUTBOX_POLL_INTERVAL_SECONDS:-5}" in repo_compose
     assert "${EVENT_RETRY_DELAY_SECONDS:-10,30,60}" in repo_compose
     assert "NOTIFICATION_REMINDER_QUEUE: ${NOTIFICATION_REMINDER_QUEUE:-notification.reminders}" in repo_compose

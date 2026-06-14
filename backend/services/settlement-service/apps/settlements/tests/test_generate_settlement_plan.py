@@ -26,15 +26,15 @@ class GenerateSettlementPlanTests(TestCase):
             self.group.group_id,
             user_id=self.owner.sub,
             role="OWNER",
-            display_name_snapshot="Owner",
+            art_name_snapshot="Owner",
         )
         self.creditor = create_member(
-            self.group.group_id, display_name_snapshot="Creditor"
+            self.group.group_id, art_name_snapshot="Creditor"
         )
-        self.debtor = create_member(self.group.group_id, display_name_snapshot="Debtor")
-        create_user_projection(self.owner.sub, display_name="Owner")
-        create_user_projection(self.creditor.user_id, display_name="Creditor")
-        create_user_projection(self.debtor.user_id, display_name="Debtor")
+        self.debtor = create_member(self.group.group_id, art_name_snapshot="Debtor")
+        create_user_projection(self.owner.sub, art_name="Owner")
+        create_user_projection(self.creditor.user_id, art_name="Creditor")
+        create_user_projection(self.debtor.user_id, art_name="Debtor")
         self.client = api_client(self.owner)
 
     def seed_balances(self, balances):
@@ -73,9 +73,9 @@ class GenerateSettlementPlanTests(TestCase):
         self.assertEqual(SettlementPlanItem.objects.count(), 1)
 
     def test_generate_plan_with_multiple_debtors_one_creditor(self):
-        a = create_member(self.group.group_id, display_name_snapshot="A")
-        b = create_member(self.group.group_id, display_name_snapshot="B")
-        c = create_member(self.group.group_id, display_name_snapshot="C")
+        a = create_member(self.group.group_id, art_name_snapshot="A")
+        b = create_member(self.group.group_id, art_name_snapshot="B")
+        c = create_member(self.group.group_id, art_name_snapshot="C")
         self.seed_balances(
             [(a.user_id, -70000), (b.user_id, -50000), (c.user_id, 120000)]
         )

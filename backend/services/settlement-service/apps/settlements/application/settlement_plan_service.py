@@ -78,12 +78,12 @@ class SettlementPlanService:
     def _source_timestamp(self, snapshots):
         return max(snapshot.calculated_at for snapshot in snapshots)
 
-    def _serialize_user_display_name(self, user_id):
+    def _serialize_user_art_name(self, user_id):
         user = UserProjectionRepository.get(user_id)
         if not user:
             return None
         return (
-            user.display_name
+            user.art_name
             or " ".join(part for part in [user.first_name, user.last_name] if part)
             or None
         )
@@ -103,11 +103,11 @@ class SettlementPlanService:
                 {
                     "id": str(item.id),
                     "payer_user_id": str(item.payer_user_id),
-                    "payer_display_name": self._serialize_user_display_name(
+                    "payer_art_name": self._serialize_user_art_name(
                         item.payer_user_id
                     ),
                     "receiver_user_id": str(item.receiver_user_id),
-                    "receiver_display_name": self._serialize_user_display_name(
+                    "receiver_art_name": self._serialize_user_art_name(
                         item.receiver_user_id
                     ),
                     "amount_minor": item.amount_minor,

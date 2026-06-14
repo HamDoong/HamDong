@@ -4,8 +4,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class BalanceRow:
     user_id: str
-    display_name: str | None
-    phone_number: str | None
+    art_name: str | None
+    email: str | None
     net_balance_minor: int
     status: str
 

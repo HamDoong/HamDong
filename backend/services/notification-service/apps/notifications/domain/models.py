@@ -5,7 +5,6 @@ from django.utils import timezone
 
 
 class NotificationChannelChoices(models.TextChoices):
-    SMS = "SMS", "SMS"
     EMAIL = "EMAIL", "Email"
     PUSH = "PUSH", "Push"
     IN_APP = "IN_APP", "In app"
@@ -29,10 +28,13 @@ class NotificationStatusChoices(models.TextChoices):
     SKIPPED = "SKIPPED", "Skipped"
 
 
-class SmsProviderChoices(models.TextChoices):
+class EmailProviderChoices(models.TextChoices):
     FAKE = "fake", "Fake"
-    KAVENEGAR = "kavenegar", "Kavenegar"
-    MELIPAYAMAK = "melipayamak", "Melipayamak"
+    SMTP = "smtp", "SMTP"
+
+
+# Compatibility alias for older imports/tests.
+SmsProviderChoices = EmailProviderChoices
 
 
 class SmsTemplate(models.Model):
@@ -54,17 +56,17 @@ class SmsTemplate(models.Model):
 class NotificationMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     recipient_user_id = models.UUIDField(null=True, blank=True)
-    recipient_phone_number = models.CharField(max_length=64, null=True, blank=True)
-    channel = models.CharField(max_length=16, choices=NotificationChannelChoices.choices)
+    recipient_email = models.CharField(max_length=254, null=True, blank=True)
+    channel = models.CharField(max_length=16, choices=NotificationChannelChoices.choices, default=NotificationChannelChoices.EMAIL)
     message_type = models.CharField(max_length=32, choices=NotificationMessageTypeChoices.choices)
     title = models.CharField(max_length=255, blank=True, default="")
     body = models.TextField(blank=True, default="")
     metadata = models.JSONField(default=dict, blank=True)
-    recipient = models.CharField(max_length=128)
-    recipient_masked = models.CharField(max_length=128)
+    recipient = models.CharField(max_length=254)
+    recipient_masked = models.CharField(max_length=254)
     template_code = models.CharField(max_length=64, null=True, blank=True)
     status = models.CharField(max_length=32, choices=NotificationStatusChoices.choices, default=NotificationStatusChoices.PENDING)
-    provider = models.CharField(max_length=32, choices=SmsProviderChoices.choices, default=SmsProviderChoices.FAKE)
+    provider = models.CharField(max_length=32, choices=EmailProviderChoices.choices, default=EmailProviderChoices.FAKE)
     provider_message_id = models.CharField(max_length=128, null=True, blank=True)
     error_code = models.CharField(max_length=64, null=True, blank=True)
     error_message = models.TextField(null=True, blank=True)
@@ -108,10 +110,10 @@ class NotificationJob(models.Model):
     reminder_type = models.CharField(max_length=48)
     notification_type = models.CharField(max_length=48, default="OTP")
     recipient_user_id = models.UUIDField(null=True, blank=True)
-    recipient_phone_number = models.CharField(max_length=32, null=True, blank=True)
-    channel = models.CharField(max_length=16, choices=NotificationChannelChoices.choices, default=NotificationChannelChoices.SMS)
-    recipient = models.CharField(max_length=32)
-    recipient_masked = models.CharField(max_length=32)
+    recipient_email = models.CharField(max_length=254, null=True, blank=True)
+    channel = models.CharField(max_length=16, choices=NotificationChannelChoices.choices, default=NotificationChannelChoices.EMAIL)
+    recipient = models.CharField(max_length=254)
+    recipient_masked = models.CharField(max_length=254)
     template_code = models.CharField(max_length=64, null=True, blank=True)
     rendered_message = models.TextField()
     payload = models.JSONField(default=dict)
@@ -139,7 +141,7 @@ class NotificationJob(models.Model):
 class ProviderDeliveryLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     notification_message = models.ForeignKey(NotificationMessage, on_delete=models.CASCADE, related_name="delivery_logs")
-    provider = models.CharField(max_length=32, choices=SmsProviderChoices.choices, default=SmsProviderChoices.FAKE)
+    provider = models.CharField(max_length=32, choices=EmailProviderChoices.choices, default=EmailProviderChoices.FAKE)
     request_payload_masked = models.JSONField(default=dict)
     response_payload = models.JSONField(default=dict)
     http_status_code = models.IntegerField(null=True, blank=True)

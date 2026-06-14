@@ -1,12 +1,15 @@
 """OTP generation and verification service."""
 
-import random
+from __future__ import annotations
+
 import logging
-from typing import Tuple, Optional
+import random
+from typing import Optional, Tuple
 
 from django.conf import settings
+
+from apps.identity.domain.rules import EmailRule
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
-from apps.identity.domain.rules import PhoneNumberRule
 
 logger = logging.getLogger(__name__)
 
@@ -24,107 +27,57 @@ class OtpService:
         self.rate_limit_window = settings.OTP_RATE_LIMIT_WINDOW_SECONDS
 
     def generate_otp(self) -> str:
-        """Generate a random OTP code."""
         return "".join(random.choices("0123456789", k=self.otp_length))
 
-    def request_otp(
-        self, phone_number: str
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Request OTP for phone number.
+    def request_otp(self, email: str) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+        normalized_email = EmailRule.normalize(email)
+        if not normalized_email:
+            return False, "INVALID_EMAIL", None, None
 
-        Returns:
-            Tuple of (success, error_code, debug_otp)
-            - success: True if OTP was generated and stored
-            - error_code: Error code if failed
-            - debug_otp: OTP code if DEBUG and OTP_DEBUG_RETURN_CODE enabled
-        """
-        # Validate phone number
-        if not PhoneNumberRule.is_valid(phone_number):
-            return False, "INVALID_PHONE", None
+        if self.otp_store.is_rate_limited(normalized_email):
+            return False, "OTP_RATE_LIMITED", None, None
 
-        # Normalize phone number
-        phone_number = PhoneNumberRule.normalize(phone_number)
+        if self.otp_store.is_in_cooldown(normalized_email):
+            return False, "OTP_IN_COOLDOWN", None, None
 
-        # Check rate limit
-        if self.otp_store.is_rate_limited(phone_number):
-            return False, "OTP_RATE_LIMITED", None
-
-        # Check cooldown
-        if self.otp_store.is_in_cooldown(phone_number):
-            return False, "OTP_IN_COOLDOWN", None
-
-        # Increment request counter
-        self.otp_store.increment_request_count(phone_number)
-
-        # Generate OTP
+        self.otp_store.increment_request_count(normalized_email)
         otp_code = self.generate_otp()
+        self.otp_store.store_otp(normalized_email, otp_code, self.otp_ttl)
+        self.otp_store.set_cooldown(normalized_email, self.resend_cooldown)
 
-        # Store OTP hash in Redis
-        self.otp_store.store_otp(phone_number, otp_code, self.otp_ttl)
+        logger.info("OTP requested for email=%s", EmailRule.mask(normalized_email))
 
-        # Set cooldown
-        self.otp_store.set_cooldown(phone_number, self.resend_cooldown)
-
-        logger.info(
-            "OTP requested for phone_number=%s",
-            PhoneNumberRule.mask(phone_number),
-        )
-
-        # Return OTP code only if debug mode is enabled
         debug_otp = None
-        if settings.DEBUG and settings.OTP_DEBUG_RETURN_CODE:
+        if settings.OTP_DEBUG_RETURN_CODE:
             debug_otp = otp_code
-            logger.debug(
-                "Debug OTP generated for phone_number=%s",
-                PhoneNumberRule.mask(phone_number),
-            )
 
         return True, None, otp_code, debug_otp
 
-    def verify_otp(
-        self, phone_number: str, otp_code: str
-    ) -> Tuple[bool, Optional[str]]:
-        """
-        Verify OTP code.
+    def verify_otp(self, email: str, otp_code: str) -> Tuple[bool, Optional[str]]:
+        normalized_email = EmailRule.normalize(email)
+        if not normalized_email:
+            return False, "INVALID_EMAIL"
 
-        Returns:
-            Tuple of (success, error_code)
-        """
-        # Validate phone number
-        if not PhoneNumberRule.is_valid(phone_number):
-            return False, "INVALID_PHONE"
-
-        # Normalize phone number
-        phone_number = PhoneNumberRule.normalize(phone_number)
-
-        # Check if OTP exists
-        otp_data = self.otp_store.get_otp_data(phone_number)
+        otp_data = self.otp_store.get_otp_data(normalized_email)
         if not otp_data:
             return False, "OTP_EXPIRED"
 
-        # Check attempts
-        attempts = self.otp_store.get_verify_attempts(phone_number)
+        attempts = self.otp_store.get_verify_attempts(normalized_email)
         if attempts >= self.max_verify_attempts:
             return False, "OTP_MAX_ATTEMPTS_EXCEEDED"
 
-        # Verify OTP
-        if not self.otp_store.verify_otp(phone_number, otp_code):
-            self.otp_store.increment_verify_attempts(phone_number)
+        if not self.otp_store.verify_otp(normalized_email, otp_code):
+            self.otp_store.increment_verify_attempts(normalized_email)
             return False, "INVALID_OTP"
 
-        # Mark OTP as used
-        self.otp_store.delete_otp(phone_number)
-        self.otp_store.reset_verify_attempts(phone_number)
+        self.otp_store.delete_otp(normalized_email)
+        self.otp_store.reset_verify_attempts(normalized_email)
 
-        logger.info("OTP verified for phone_number=%s", PhoneNumberRule.mask(phone_number))
-
+        logger.info("OTP verified for email=%s", EmailRule.mask(normalized_email))
         return True, None
 
-    def get_resend_cooldown(self, phone_number: str) -> int:
-        """Get remaining cooldown time in seconds."""
-        if not PhoneNumberRule.is_valid(phone_number):
+    def get_resend_cooldown(self, email: str) -> int:
+        normalized_email = EmailRule.normalize(email)
+        if not normalized_email:
             return 0
-
-        phone_number = PhoneNumberRule.normalize(phone_number)
-        return self.otp_store.get_cooldown_remaining(phone_number)
+        return self.otp_store.get_cooldown_remaining(normalized_email)

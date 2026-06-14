@@ -17,10 +17,10 @@ from apps.media_files.infrastructure.rabbitmq_consumer import MediaEventConsumer
 from apps.media_files.infrastructure.event_envelope import build_event_envelope
 
 class FakeUser:
-    def __init__(self, sub=None, phone_number="+10000000000", display_name="Test User", role="USER"):
+    def __init__(self, sub=None, email="+10000000000", art_name="Test User", role="USER"):
         self.sub = sub or uuid.uuid4()
-        self.phone_number = phone_number
-        self.display_name = display_name
+        self.email = email
+        self.art_name = art_name
         self.role = role
         self.is_authenticated = True
 
@@ -47,12 +47,12 @@ def seed_active_group(member_role="MEMBER", member_user_id=None, uploaded_by=Non
         member_count=1,
     )
     if member_user_id:
-        UserProjection.objects.create(identity_user_id=member_user_id, phone_number="+9891", display_name="Member", role="USER")
+        UserProjection.objects.create(identity_user_id=member_user_id, email="+9891", art_name="Member", role="USER")
         GroupMemberProjection.objects.create(
             group_id=group_id,
             user_id=member_user_id,
-            phone_number="+9891",
-            display_name_snapshot="Member",
+            email="+9891",
+            art_name_snapshot="Member",
             role=member_role,
             status=GroupMemberStatusChoices.ACTIVE,
         )
@@ -84,8 +84,8 @@ def test_consumer_creates_and_updates_projections():
         "UserCreated",
         {
             "user_id": uid,
-            "phone_number": "+123",
-            "display_name": "Alice",
+            "email": "+123",
+            "art_name": "Alice",
             "role": "ADMIN",
             "is_active": True,
         },
@@ -96,8 +96,8 @@ def test_consumer_creates_and_updates_projections():
         "UserUpdated",
         {
             "user_id": uid,
-            "phone_number": "+456",
-            "display_name": "Alice B",
+            "email": "+456",
+            "art_name": "Alice B",
             "role": "ADMIN",
             "is_active": False,
         },
@@ -166,8 +166,8 @@ def test_consumer_creates_and_updates_projections():
     user = UserProjection.objects.get(identity_user_id=uid)
     group = GroupProjection.objects.get(group_id=gid)
     member = GroupMemberProjection.objects.get(group_id=gid, user_id=uid)
-    assert user.phone_number == "+456"
-    assert user.display_name == "Alice B"
+    assert user.email == "+456"
+    assert user.art_name == "Alice B"
     assert user.is_active is False
     assert group.title == "Trip 2"
     assert group.status == "ARCHIVED"
@@ -271,8 +271,8 @@ def test_detail_download_list_and_delete_flow(monkeypatch):
     owner = FakeUser(role="ADMIN")
     member = FakeUser(role="USER")
     group_id = seed_active_group(member_role="OWNER", member_user_id=owner.sub, uploaded_by=uploader.sub)
-    GroupMemberProjection.objects.create(group_id=group_id, user_id=uploader.sub, phone_number=uploader.phone_number, display_name_snapshot=uploader.display_name, role="MEMBER", status="ACTIVE")
-    GroupMemberProjection.objects.create(group_id=group_id, user_id=member.sub, phone_number=member.phone_number, display_name_snapshot=member.display_name, role="MEMBER", status="ACTIVE")
+    GroupMemberProjection.objects.create(group_id=group_id, user_id=uploader.sub, email=uploader.email, art_name_snapshot=uploader.art_name, role="MEMBER", status="ACTIVE")
+    GroupMemberProjection.objects.create(group_id=group_id, user_id=member.sub, email=member.email, art_name_snapshot=member.art_name, role="MEMBER", status="ACTIVE")
 
     publisher_calls = []
 
@@ -317,8 +317,8 @@ def test_delete_media_permissions(monkeypatch):
     owner = FakeUser(role="ADMIN")
     member = FakeUser(role="USER")
     group_id = seed_active_group(member_role="OWNER", member_user_id=owner.sub, uploaded_by=uploader.sub)
-    GroupMemberProjection.objects.create(group_id=group_id, user_id=uploader.sub, phone_number=uploader.phone_number, display_name_snapshot=uploader.display_name, role="MEMBER", status="ACTIVE")
-    GroupMemberProjection.objects.create(group_id=group_id, user_id=member.sub, phone_number=member.phone_number, display_name_snapshot=member.display_name, role="MEMBER", status="ACTIVE")
+    GroupMemberProjection.objects.create(group_id=group_id, user_id=uploader.sub, email=uploader.email, art_name_snapshot=uploader.art_name, role="MEMBER", status="ACTIVE")
+    GroupMemberProjection.objects.create(group_id=group_id, user_id=member.sub, email=member.email, art_name_snapshot=member.art_name, role="MEMBER", status="ACTIVE")
 
     publisher_calls = []
 

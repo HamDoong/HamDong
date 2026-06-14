@@ -22,7 +22,7 @@ class DummyChannel:
 
 
 class SettlementReminderConsumerTests(TestCase):
-    @override_settings(SMS_PROVIDER="fake")
+    @override_settings(EMAIL_PROVIDER="fake")
     def test_consumer_creates_notification_job_and_sends_sms(self):
         consumer = SettlementReminderConsumer()
         channel = DummyChannel()
@@ -39,7 +39,7 @@ class SettlementReminderConsumerTests(TestCase):
                 },
                 "amount_minor": 250000,
                 "currency": "IRR",
-                "recipient_phone_number": "09123456789",
+                "recipient_email": "artist@example.com",
                 "template_code": "SETTLEMENT_REMINDER",
             },
         )
@@ -55,7 +55,7 @@ class SettlementReminderConsumerTests(TestCase):
             NotificationStatusChoices.SENT,
         )
 
-    @override_settings(SMS_PROVIDER="fake")
+    @override_settings(EMAIL_PROVIDER="fake")
     def test_consumer_rejects_unsupported_event(self):
         consumer = SettlementReminderConsumer()
         channel = DummyChannel()
@@ -67,7 +67,7 @@ class SettlementReminderConsumerTests(TestCase):
             routing_key="settlement.unsupported",
             event_id="11111111-1111-1111-1111-111111111112",
             data={
-                "recipient_phone_number": "09123456789",
+                "recipient_email": "artist@example.com",
             },
         )
     

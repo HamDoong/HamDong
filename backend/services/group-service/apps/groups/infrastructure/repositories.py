@@ -29,8 +29,8 @@ class UserProjectionRepository:
     @staticmethod
     def create_or_update(
         identity_user_id,
-        phone_number,
-        display_name=None,
+        email,
+        art_name=None,
         first_name=None,
         last_name=None,
         role=None,
@@ -39,8 +39,8 @@ class UserProjectionRepository:
         obj, _ = UserProjection.objects.update_or_create(
             identity_user_id=identity_user_id,
             defaults={
-                "phone_number": phone_number,
-                "display_name": display_name,
+                "email": email,
+                "art_name": art_name,
                 "first_name": first_name,
                 "last_name": last_name,
                 "role": role or "USER",
@@ -63,12 +63,12 @@ class GroupRepository:
 class GroupMemberRepository:
     @staticmethod
     @transaction.atomic
-    def add_owner(group: Group, user_id, phone_number, display_name):
+    def add_owner(group: Group, user_id, email, art_name):
         member = GroupMember.objects.create(
             group=group,
             user_id=user_id,
-            phone_number=phone_number,
-            display_name_snapshot=display_name,
+            email=email,
+            art_name_snapshot=art_name,
             role="OWNER",
             status="ACTIVE",
         )

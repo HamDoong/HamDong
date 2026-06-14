@@ -10,7 +10,7 @@ The private signing key must exist only in identity-service. Verifier services s
 
 ## Access Token Claims
 
-Current access-token validation expects claims such as `sub`, `phone_number`, `role`, `type`, `jti`, `iat`, `exp`, `iss`, and `aud`.
+Current access-token validation expects claims such as `sub`, `email`, `role`, `type`, `jti`, `iat`, `exp`, `iss`, and `aud`.
 
 ## Refresh Token Hashing
 

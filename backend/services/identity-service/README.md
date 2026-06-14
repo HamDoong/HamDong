@@ -129,7 +129,7 @@ POST /api/v1/auth/otp/request/
 
 Request:
 {
-  "phone_number": "09123456789"
+  "email": "09123456789"
 }
 
 Response (200 OK):
@@ -141,14 +141,14 @@ Response (200 OK):
 }
 
 Error Responses:
-- 400: INVALID_PHONE
+- 400: INVALID_EMAIL
 - 429: OTP_RATE_LIMITED
 - 429: OTP_IN_COOLDOWN
 ```
 
 How to use it:
 
-1. Send the request to `POST /api/v1/auth/otp/request/` with a valid phone number.
+1. Send the request to `POST /api/v1/auth/otp/request/` with a valid email address.
 2. If `DEBUG=true` and `OTP_DEBUG_RETURN_CODE=true`, use the returned `debug_otp` locally.
 3. Real SMS delivery is intentionally not implemented in Phase 2.
 
@@ -158,7 +158,7 @@ POST /api/v1/auth/otp/verify/
 
 Request:
 {
-  "phone_number": "09123456789",
+  "email": "09123456789",
   "code": "123456"
 }
 
@@ -170,9 +170,9 @@ Response (200 OK):
   "expires_in": 900,
   "user": {
     "id": "uuid",
-    "phone_number": "09123456789",
-    "display_name": null,
-    "is_phone_verified": true,
+    "email": "09123456789",
+    "art_name": null,
+    "is_email_verified": true,
     "role": "USER"
   }
 }
@@ -185,7 +185,7 @@ Error Responses:
 
 How to use it:
 
-1. Send the request to `POST /api/v1/auth/otp/verify/` with the phone number and 6-digit code.
+1. Send the request to `POST /api/v1/auth/otp/verify/` with the email address and 6-digit code.
 2. A successful response returns an access token, refresh token, token type, expiry, and user payload.
 3. The OTP is deleted from Redis after successful verification.
 
@@ -274,11 +274,11 @@ Authorization: Bearer <access_token>
 Response (200 OK):
 {
   "id": "uuid",
-  "phone_number": "09123456789",
-  "display_name": "Ali Ahmadi",
+  "email": "09123456789",
+  "art_name": "Ali Ahmadi",
   "first_name": "Ali",
   "last_name": "Ahmadi",
-  "is_phone_verified": true,
+  "is_email_verified": true,
   "role": "USER"
 }
 
@@ -300,7 +300,7 @@ Authorization: Bearer <access_token>
 
 Request (any combination of):
 {
-  "display_name": "Ali Ahmadi",
+  "art_name": "Ali Ahmadi",
   "first_name": "Ali",
   "last_name": "Ahmadi"
 }
@@ -308,11 +308,11 @@ Request (any combination of):
 Response (200 OK):
 {
   "id": "uuid",
-  "phone_number": "09123456789",
-  "display_name": "Ali Ahmadi",
+  "email": "09123456789",
+  "art_name": "Ali Ahmadi",
   "first_name": "Ali",
   "last_name": "Ahmadi",
-  "is_phone_verified": true,
+  "is_email_verified": true,
   "role": "USER"
 }
 
@@ -324,7 +324,7 @@ Error Responses:
 How to use it:
 
 1. Include the access token as `Authorization: Bearer <access_token>`.
-2. Send any combination of `display_name`, `first_name`, and `last_name`.
+2. Send any combination of `art_name`, `first_name`, and `last_name`.
 3. Phone number, role, `is_staff`, and `is_active` are intentionally not editable here.
 
 ## Setup and Running
@@ -430,7 +430,7 @@ RABBITMQ_DEFAULT_PASS=hamdong_password
 ```bash
 curl -X POST http://localhost:8001/api/v1/auth/otp/request/ \
   -H "Content-Type: application/json" \
-  -d '{"phone_number": "09123456789"}'
+  -d '{"email": "09123456789"}'
 ```
 
 Response:
@@ -448,7 +448,7 @@ Response:
 ```bash
 curl -X POST http://localhost:8001/api/v1/auth/otp/verify/ \
   -H "Content-Type: application/json" \
-  -d '{"phone_number": "09123456789", "code": "123456"}'
+  -d '{"email": "09123456789", "code": "123456"}'
 ```
 
 Response:
@@ -460,9 +460,9 @@ Response:
   "expires_in": 900,
   "user": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "phone_number": "09123456789",
-    "display_name": null,
-    "is_phone_verified": true,
+    "email": "09123456789",
+    "art_name": null,
+    "is_email_verified": true,
     "role": "USER"
   }
 }
@@ -482,7 +482,7 @@ curl -X PATCH http://localhost:8001/api/v1/users/me/ \
   -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9..." \
   -H "Content-Type: application/json" \
   -d '{
-    "display_name": "Ali Ahmadi",
+    "art_name": "Ali Ahmadi",
     "first_name": "Ali",
     "last_name": "Ahmadi"
   }'
@@ -590,7 +590,7 @@ try:
         issuer="hamdong.identity-service"
     )
     user_id = payload["sub"]
-    phone_number = payload["phone_number"]
+    email = payload["email"]
     role = payload["role"]
 except jwt.InvalidTokenError:
     # Token is invalid

@@ -13,59 +13,66 @@ class TemplateService:
 
     def ensure_default_otp_template(self):
         return self.repository.ensure_template(
-            code=settings.SMS_TEMPLATE_OTP_LOGIN,
-            title="Login OTP",
-            body="کد ورود شما به هم‌دنگ: {code}\nاعتبار: {expires_in} ثانیه",
+            code=settings.EMAIL_TEMPLATE_OTP_LOGIN,
+            title="HamDong login code",
+            body=(
+                "HamDong login verification\n\n"
+                "Your one-time code is: {code}\n"
+                "This code is valid for {expires_in} seconds.\n"
+                "Do not share this code with anyone."
+            ),
         )
 
     def ensure_default_reminder_templates(self) -> dict[str, object]:
         templates = {
             "PAYMENT_REMINDER": self.repository.ensure_template(
-                code=settings.SMS_TEMPLATE_PAYMENT_REMINDER,
-                title="Payment reminder",
+                code=settings.EMAIL_TEMPLATE_PAYMENT_REMINDER,
+                title="HamDong payment reminder",
                 body=(
-                    "یادآوری هم‌دنگ:\n"
-                    "شما در گروه {group_title} مبلغ {amount} {currency} بدهکار هستید.\n"
-                    "لطفاً در زمان مناسب تسویه را انجام دهید."
+                    "HamDong payment reminder\n\n"
+                    "Group: {group_title}\n"
+                    "Amount due: {amount} {currency}\n"
+                    "Please settle your balance when possible."
                 ),
             ),
             "SETTLEMENT_CONFIRMATION_REMINDER": self.repository.ensure_template(
-                code=settings.SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER,
-                title="Settlement confirmation reminder",
+                code=settings.EMAIL_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER,
+                title="HamDong settlement confirmation reminder",
                 body=(
-                    "یادآوری هم‌دنگ:\n"
-                    "{payer_name} اعلام کرده مبلغ {amount} {currency} را پرداخت کرده است.\n"
-                    "لطفاً دریافت مبلغ را تأیید یا رد کنید."
+                    "HamDong settlement confirmation reminder\n\n"
+                    "{payer_name} reported a payment of {amount} {currency}.\n"
+                    "Please confirm or reject the settlement."
                 ),
             ),
             "PLAN_ITEM_REMINDER": self.repository.ensure_template(
-                code=settings.SMS_TEMPLATE_PLAN_ITEM_REMINDER,
-                title="Settlement plan item reminder",
+                code=settings.EMAIL_TEMPLATE_PLAN_ITEM_REMINDER,
+                title="HamDong settlement plan reminder",
                 body=(
-                    "یادآوری هم‌دنگ:\n"
-                    "برای تسویه گروه {group_title} لطفاً مبلغ {amount} {currency} را به {receiver_name} پرداخت کنید."
+                    "HamDong settlement plan reminder\n\n"
+                    "Group: {group_title}\n"
+                    "Amount: {amount} {currency}\n"
+                    "Please pay {receiver_name} to complete this settlement step."
                 ),
             ),
         }
-        # Legacy compatibility for older code paths that still expect a generic reminder template.
         self.repository.ensure_template(
-            code=settings.SMS_TEMPLATE_SETTLEMENT_REMINDER,
-            title="Settlement reminder",
-            body="یادآوری تسویه برای گروه {group_title}: {message}",
+            code=settings.EMAIL_TEMPLATE_SETTLEMENT_REMINDER,
+            title="HamDong settlement reminder",
+            body="HamDong settlement reminder\n\nGroup: {group_title}\n{message}",
         )
         return templates
 
-    def render_otp_message(self, code: str, expires_in: int) -> tuple[str, str]:
+    def render_otp_message(self, code: str, expires_in: int) -> tuple[str, str, str]:
         template = self.ensure_default_otp_template()
-        return template.code, template.body.format(code=code, expires_in=expires_in)
+        return template.code, template.title, template.body.format(code=code, expires_in=expires_in)
 
-    def render_reminder_message(self, reminder_type: str, context: dict) -> tuple[str, str]:
+    def render_reminder_message(self, reminder_type: str, context: dict) -> tuple[str, str, str]:
         templates = self.ensure_default_reminder_templates()
         template = templates.get(reminder_type)
         if template is None:
             template = self.repository.ensure_template(
-                code=settings.SMS_TEMPLATE_SETTLEMENT_REMINDER,
-                title="Settlement reminder",
-                body="یادآوری تسویه برای گروه {group_title}: {message}",
+                code=settings.EMAIL_TEMPLATE_SETTLEMENT_REMINDER,
+                title="HamDong settlement reminder",
+                body="HamDong settlement reminder\n\nGroup: {group_title}\n{message}",
             )
-        return template.code, template.body.format(**context)
+        return template.code, template.title, template.body.format(**context)

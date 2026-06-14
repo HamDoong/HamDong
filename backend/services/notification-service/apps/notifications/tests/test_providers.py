@@ -1,4 +1,4 @@
-"""Tests for SMS providers and provider factory."""
+"""Tests for Email providers and provider factory."""
 
 from django.test import SimpleTestCase
 
@@ -16,7 +16,7 @@ from apps.notifications.infrastructure.providers.melipayamak_provider import (
 class SmsProviderTests(SimpleTestCase):
     def test_fake_provider_sends_sms_successfully(self):
         provider = FakeSmsProvider()
-        result = provider.send_sms("09123456789", "Test message")
+        result = provider.send_email("artist@example.com", "Test message")
 
         self.assertTrue(result.success)
         self.assertEqual(result.provider, "fake")

@@ -2,26 +2,26 @@
 
 from django.utils import timezone
 
-from apps.notifications.application.sms_service import SmsService
+from apps.notifications.application.sms_service import EmailService
 from apps.notifications.domain.events import DomainEvent
 from apps.notifications.domain.models import NotificationMessageTypeChoices, NotificationStatusChoices
 from apps.notifications.infrastructure.repositories import NotificationRepository, OutboxRepository
 
 
-class SendTestSmsUseCase:
+class SendTestEmailUseCase:
     def __init__(self):
-        self.sms_service = SmsService()
+        self.email_service = EmailService()
 
-    def execute(self, phone_number: str, message: str):
-        return self.sms_service.send_sms(phone_number=phone_number, message=message)
+    def execute(self, email: str, message: str):
+        return self.email_service.send_test_email(email=email, message=message)
 
 
-class ProcessOtpSmsUseCase:
+class ProcessOtpEmailUseCase:
     def __init__(self):
-        self.sms_service = SmsService()
+        self.email_service = EmailService()
 
     def execute(self, payload: dict):
-        return self.sms_service.handle_otp_command(payload)
+        return self.email_service.handle_otp_command(payload)
 
 
 class ListNotificationMessagesUseCase:
@@ -39,7 +39,7 @@ class CreateNotificationUseCase:
     def execute(self, actor, *, recipient_user_id, channel, notification_type, title, body, metadata):
         notification = self.repository.create_notification_message(
             recipient_user_id=recipient_user_id,
-            recipient_phone_number=None,
+            recipient_email=None,
             channel=channel,
             message_type=notification_type,
             title=title or "",
@@ -128,4 +128,8 @@ class DeleteNotificationUseCase:
             payload=payload,
             exchange="events",
         )
-        return notification
+
+
+# Compatibility aliases.
+SendTestSmsUseCase = SendTestEmailUseCase
+ProcessOtpSmsUseCase = ProcessOtpEmailUseCase

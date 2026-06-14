@@ -1,34 +1,33 @@
-"""SMS provider base types and abstract contract."""
+"""Email provider base types and abstract contract."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
 
-from apps.notifications.domain.value_objects import SmsSendResult
-
-
-class InvalidSmsProviderError(Exception):
-    """Raised when the configured SMS provider is unsupported."""
+from apps.notifications.domain.value_objects import EmailSendResult
 
 
-class SmsProviderError(Exception):
-    """Generic SMS provider error."""
+class InvalidEmailProviderError(Exception):
+    """Raised when the configured email provider is unsupported."""
 
 
-class SmsProvider(ABC):
-    """Abstract SMS provider contract.
+class EmailProviderError(Exception):
+    """Generic email provider error."""
 
-    Implementations must avoid returning or logging raw OTP values. Providers
-    should return an instance of `SmsSendResult` describing the outcome.
-    """
 
+class EmailProvider(ABC):
     provider_name: str = "unknown"
 
     @abstractmethod
-    def send_sms(self, phone_number: str, message: str) -> SmsSendResult:
+    def send_email(self, email: str, subject: str, body: str) -> EmailSendResult:
         raise NotImplementedError
 
     @abstractmethod
-    def send_otp(self, phone_number: str, code: str, expires_in: int) -> SmsSendResult:
+    def send_otp(self, email: str, code: str, expires_in: int, subject: str, body: str) -> EmailSendResult:
         raise NotImplementedError
+
+
+# Compatibility aliases for older imports.
+InvalidSmsProviderError = InvalidEmailProviderError
+SmsProviderError = EmailProviderError
+SmsProvider = EmailProvider

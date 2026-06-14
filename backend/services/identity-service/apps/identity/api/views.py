@@ -1,5 +1,7 @@
 """API views for identity service."""
 
+from __future__ import annotations
+
 import logging
 
 from django.conf import settings
@@ -87,17 +89,17 @@ class RequestOtpView(APIView):
         if not serializer.is_valid():
             return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
 
-        phone_number = serializer.validated_data["phone_number"]
+        email = serializer.validated_data["email"]
         use_case = RequestOtpUseCase()
-        success, error_code, debug_otp, resend_after = use_case.execute(phone_number)
+        success, error_code, debug_otp, resend_after = use_case.execute(email)
 
         if not success:
-            if error_code == "INVALID_PHONE":
-                return _error_response("INVALID_PHONE", "Invalid phone number format.", status.HTTP_400_BAD_REQUEST)
+            if error_code == "INVALID_EMAIL":
+                return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
             if error_code == "OTP_RATE_LIMITED":
                 return _error_response("OTP_RATE_LIMITED", "Too many OTP requests. Please try again later.", status.HTTP_429_TOO_MANY_REQUESTS)
             if error_code == "OTP_IN_COOLDOWN":
-                cooldown = use_case.otp_service.get_resend_cooldown(phone_number)
+                cooldown = use_case.otp_service.get_resend_cooldown(email)
                 return _error_response(
                     "OTP_IN_COOLDOWN",
                     "Please wait before requesting a new OTP.",
@@ -129,7 +131,7 @@ class VerifyOtpView(APIView):
         ip_address = self._get_client_ip(request)
         use_case = VerifyOtpUseCase()
         success, error_code, token_data = use_case.execute(
-            serializer.validated_data["phone_number"],
+            serializer.validated_data["email"],
             serializer.validated_data["code"],
             user_agent,
             ip_address,
@@ -142,6 +144,8 @@ class VerifyOtpView(APIView):
                 return _error_response("OTP_EXPIRED", "The OTP code has expired.", status.HTTP_400_BAD_REQUEST)
             if error_code == "OTP_MAX_ATTEMPTS_EXCEEDED":
                 return _error_response("OTP_MAX_ATTEMPTS_EXCEEDED", "Maximum OTP verification attempts exceeded.", status.HTTP_429_TOO_MANY_REQUESTS)
+            if error_code == "INVALID_EMAIL":
+                return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
 
         return Response(token_data, status=status.HTTP_200_OK)
 
@@ -266,18 +270,17 @@ class PasswordChangeView(APIView):
         )
         if not success:
             mapping = {
-                "INVALID_CURRENT_PASSWORD": ("INVALID_CURRENT_PASSWORD", "Current password is incorrect.", status.HTTP_400_BAD_REQUEST),
                 "PASSWORD_CONFIRMATION_MISMATCH": ("PASSWORD_CONFIRMATION_MISMATCH", "Password confirmation does not match.", status.HTTP_400_BAD_REQUEST),
+                "INVALID_CURRENT_PASSWORD": ("INVALID_CURRENT_PASSWORD", "Current password is incorrect.", status.HTTP_400_BAD_REQUEST),
                 "PASSWORD_REUSE_NOT_ALLOWED": ("PASSWORD_REUSE_NOT_ALLOWED", "New password must be different from the current password.", status.HTTP_400_BAD_REQUEST),
                 "WEAK_PASSWORD": ("WEAK_PASSWORD", "Password does not meet security requirements.", status.HTTP_400_BAD_REQUEST),
             }
             code, message, http_status = mapping[error_code]
             return _error_response(code, message, http_status)
+        return Response({"message": "Password has been changed successfully."}, status=status.HTTP_200_OK)
 
-        return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
 
-
-class GetCurrentUserView(APIView):
+class MeView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -303,7 +306,6 @@ class GetCurrentUserView(APIView):
         try:
             _, updated_user = UpdateProfileUseCase().execute(
                 user,
-                display_name=serializer.validated_data.get("display_name"),
                 art_name=serializer.validated_data.get("art_name"),
                 first_name=serializer.validated_data.get("first_name"),
                 last_name=serializer.validated_data.get("last_name"),

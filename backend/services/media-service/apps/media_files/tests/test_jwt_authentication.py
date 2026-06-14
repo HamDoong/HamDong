@@ -47,7 +47,7 @@ def build_token() -> str:
     return jwt.encode(
         {
             "sub": "user-123",
-            "phone_number": "09123456789",
+            "email": "09123456789",
             "role": "USER",
             "type": "access",
             "jti": "jti-123",
@@ -67,7 +67,7 @@ def test_valid_access_token_is_accepted():
     auth.jwks_client = FakeJWKSClient()
     user, token = auth.authenticate(DummyRequest(build_token()))
     assert user.sub == "user-123"
-    assert user.phone_number == "09123456789"
+    assert user.email == "09123456789"
     assert user.role == "USER"
     assert user.token_jti == "jti-123"
     assert token

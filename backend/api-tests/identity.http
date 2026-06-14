@@ -16,7 +16,7 @@ POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "{{phone}}"
+  "email": "{{phone}}"
 }
 
 ### Verify OTP
@@ -24,7 +24,7 @@ POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "{{phone}}",
+  "email": "{{phone}}",
   "code": "{{otp}}"
 }
 
@@ -55,7 +55,7 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "display_name": "Ali Demo",
+  "art_name": "Ali Demo",
   "art_name": "{{artName}}",
   "first_name": "Ali",
   "last_name": "Tester"

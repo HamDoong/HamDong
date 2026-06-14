@@ -25,11 +25,11 @@ class OtpRequestTestCase(TestCase):
         # Clear OTP data
         self.otp_store.redis_client.flushdb()
 
-    def test_request_otp_with_valid_phone(self):
-        """Test requesting OTP with valid phone number."""
+    def test_request_otp_with_valid_email(self):
+        """Test requesting OTP with a valid email address."""
         response = self.client.post(
             self.url,
-            {"phone_number": "09123456789"},
+            {"email": "artist@example.com"},
             format="json",
         )
 
@@ -42,22 +42,22 @@ class OtpRequestTestCase(TestCase):
         assert len(data["debug_otp"]) == 6
         assert data["debug_otp"].isdigit()
 
-    def test_request_otp_with_invalid_phone(self):
-        """Test requesting OTP with invalid phone number."""
+    def test_request_otp_with_invalid_email(self):
+        """Test requesting OTP with an invalid email address."""
         response = self.client.post(
             self.url,
-            {"phone_number": "12345"},
+            {"email": "12345"},
             format="json",
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
-        assert data["error"]["code"] == "INVALID_PHONE"
+        assert data["error"]["code"] == "INVALID_EMAIL"
 
     def test_request_otp_rate_limit(self):
         """Test OTP request rate limiting."""
         url = self.url
-        phone_number = "09123456789"
+        email = "artist@example.com"
 
         cooldown_patch = patch(
             "apps.identity.infrastructure.redis_otp_store.RedisOtpStore.is_in_cooldown",
@@ -75,13 +75,13 @@ class OtpRequestTestCase(TestCase):
             # Make 3 requests (at limit)
             for _ in range(3):
                 response = self.client.post(
-                    url, {"phone_number": phone_number}, format="json"
+                    url, {"email": email}, format="json"
                 )
                 assert response.status_code == status.HTTP_200_OK
 
             # 4th request should be rate limited
             response = self.client.post(
-                url, {"phone_number": phone_number}, format="json"
+                url, {"email": email}, format="json"
             )
             assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
             data = response.json()
@@ -93,14 +93,14 @@ class OtpRequestTestCase(TestCase):
     def test_request_otp_cooldown(self):
         """Test OTP request cooldown period."""
         url = self.url
-        phone_number = "09123456789"
+        email = "artist@example.com"
 
         # First request
-        response = self.client.post(url, {"phone_number": phone_number}, format="json")
+        response = self.client.post(url, {"email": email}, format="json")
         assert response.status_code == status.HTTP_200_OK
 
         # Second request immediately should fail cooldown
-        response = self.client.post(url, {"phone_number": phone_number}, format="json")
+        response = self.client.post(url, {"email": email}, format="json")
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
         data = response.json()
         assert data["error"]["code"] == "OTP_IN_COOLDOWN"
@@ -129,16 +129,16 @@ class OtpVerifyTestCase(TestCase):
 
     def test_verify_otp_creates_new_user(self):
         """Test verifying OTP creates a new user."""
-        phone_number = "09123456789"
+        email = "artist@example.com"
         otp_code = "123456"
 
         # Store OTP
-        self.otp_service.store_otp(phone_number, otp_code, 120)
+        self.otp_service.store_otp(email, otp_code, 120)
 
         # Verify OTP
         response = self.client.post(
             self.url,
-            {"phone_number": phone_number, "code": otp_code},
+            {"email": email, "code": otp_code},
             format="json",
         )
 
@@ -148,30 +148,30 @@ class OtpVerifyTestCase(TestCase):
         assert "refresh_token" in data
         assert data["token_type"] == "Bearer"
         assert "user" in data
-        assert data["user"]["phone_number"] == phone_number
-        assert data["user"]["is_phone_verified"] is True
+        assert data["user"]["email"] == email
+        assert data["user"]["is_email_verified"] is True
 
         # User should be created
-        user = User.objects.get(phone_number=phone_number)
+        user = User.objects.get(email=email)
         assert user is not None
-        assert user.is_phone_verified is True
+        assert user.is_email_verified is True
 
     def test_verify_otp_logs_in_existing_user(self):
         """Test verifying OTP logs in existing user."""
-        phone_number = "09123456789"
+        email = "artist@example.com"
         otp_code = "123456"
 
         # Create user first
-        user = User.objects.create(phone_number=phone_number)
-        assert user.is_phone_verified is False
+        user = User.objects.create(email=email)
+        assert user.is_email_verified is False
 
         # Store OTP
-        self.otp_service.store_otp(phone_number, otp_code, 120)
+        self.otp_service.store_otp(email, otp_code, 120)
 
         # Verify OTP
         response = self.client.post(
             self.url,
-            {"phone_number": phone_number, "code": otp_code},
+            {"email": email, "code": otp_code},
             format="json",
         )
 
@@ -181,22 +181,22 @@ class OtpVerifyTestCase(TestCase):
 
         # User should be updated
         user.refresh_from_db()
-        assert user.is_phone_verified is True
+        assert user.is_email_verified is True
         assert user.last_login_at is not None
 
     def test_verify_otp_with_wrong_code(self):
         """Test verifying OTP with wrong code."""
-        phone_number = "09123456789"
+        email = "artist@example.com"
         correct_otp = "123456"
         wrong_otp = "000000"
 
         # Store correct OTP
-        self.otp_service.store_otp(phone_number, correct_otp, 120)
+        self.otp_service.store_otp(email, correct_otp, 120)
 
         # Try with wrong OTP
         response = self.client.post(
             self.url,
-            {"phone_number": phone_number, "code": wrong_otp},
+            {"email": email, "code": wrong_otp},
             format="json",
         )
 
@@ -206,13 +206,13 @@ class OtpVerifyTestCase(TestCase):
 
     def test_verify_otp_expired(self):
         """Test verifying expired OTP."""
-        phone_number = "09123456789"
+        email = "artist@example.com"
         otp_code = "123456"
 
         # Don't store OTP (simulating expired)
         response = self.client.post(
             self.url,
-            {"phone_number": phone_number, "code": otp_code},
+            {"email": email, "code": otp_code},
             format="json",
         )
 
@@ -222,18 +222,18 @@ class OtpVerifyTestCase(TestCase):
 
     def test_verify_otp_max_attempts(self):
         """Test max OTP verification attempts."""
-        phone_number = "09123456789"
+        email = "artist@example.com"
         correct_otp = "123456"
         wrong_otp = "000000"
 
         # Store OTP
-        self.otp_service.store_otp(phone_number, correct_otp, 120)
+        self.otp_service.store_otp(email, correct_otp, 120)
 
         # Make 5 wrong attempts
         for _ in range(5):
             response = self.client.post(
                 self.url,
-                {"phone_number": phone_number, "code": wrong_otp},
+                {"email": email, "code": wrong_otp},
                 format="json",
             )
             assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -241,7 +241,7 @@ class OtpVerifyTestCase(TestCase):
         # 6th attempt should fail with max attempts exceeded
         response = self.client.post(
             self.url,
-            {"phone_number": phone_number, "code": wrong_otp},
+            {"email": email, "code": wrong_otp},
             format="json",
         )
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
