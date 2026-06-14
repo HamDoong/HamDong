@@ -99,7 +99,7 @@ export function Sidebar({
     <aside
       className={cn(
         'flex flex-col bg-white',
-        mobile ? 'h-full w-full' : 'sticky top-0',
+        mobile ? 'h-full w-full' : 'h-screen',
         className,
       )}
     >

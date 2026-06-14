@@ -4,6 +4,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from 'react-router-dom';
 import { FeedbackProvider, useFeedback } from './components/feedback/FeedbackProvider';
@@ -12,6 +13,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
 import { logoutCurrentUser } from './lib/authApi';
+import { getAccessToken, getRefreshToken } from './lib/api';
 import { listGroupExpenses, type BackendExpense } from './lib/expenseApi';
 import {
   archiveGroup,
@@ -597,8 +599,8 @@ function AppContent() {
     <div dir="rtl" className="min-h-screen bg-background text-text">
       <MobileDrawer open={mobileDrawerOpen} onClose={() => setMobileDrawerOpen(false)} activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
-      <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
+      <div className="mx-auto min-h-screen max-w-[1536px] lg:relative lg:pr-[236px]">
+        <Sidebar className="hidden lg:fixed lg:right-[max(0px,calc((100vw-1536px)/2))] lg:top-0 lg:z-30 lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
         <div className="min-w-0">
           <TopBar
@@ -676,6 +678,17 @@ function AuthPageFrame({ children }: { children: ReactNode }) {
   );
 }
 
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const hasAuthToken = Boolean(getAccessToken() || getRefreshToken());
+
+  if (!hasAuthToken) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   const navigate = useNavigate();
 
@@ -711,9 +724,16 @@ function AppRoutes() {
           </AuthPageFrame>
         }
       />
-      <Route path="/Dashboard/*" element={<AppContent />} />
+      <Route
+        path="/Dashboard/*"
+        element={
+          <ProtectedRoute>
+            <AppContent />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/invites/:token" element={<AppContent />} />
-      <Route path="/groups/*" element={<Navigate to="/Dashboard" replace />} />
+      <Route path="/groups/*" element={<Navigate to="/Dashboard#groups" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
