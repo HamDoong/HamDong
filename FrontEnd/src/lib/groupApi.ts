@@ -25,7 +25,7 @@ export interface BackendGroupMember {
 
   art_name?: string;
   username?: string;
-  display_name_snapshot?: string;
+  display_name_snapshot?: string | null;
   display_name?: string;
   full_name?: string;
   phone_number?: string;
