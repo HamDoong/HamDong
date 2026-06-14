@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Home,
   LogOut,
-  Settings,
   Soup,
   TrendingUp,
   User,
@@ -30,11 +29,10 @@ export const primaryNavItems: NavItem[] = [
   { id: 'activity', label: 'فعالیت‌ها', icon: TrendingUp },
   { id: 'wallet', label: 'کیف پول', icon: Wallet },
   { id: 'notifications', label: 'اعلان‌ها', icon: Bell },
-  { id: 'profile', label: 'پروفایل', icon: User },
+  { id: 'profile', label: 'حساب کاربری', icon: User },
 ];
 
 export const secondaryNavItems: NavItem[] = [
-  { id: 'settings', label: 'تنظیمات', icon: Settings },
   { id: 'logout', label: 'خروج', icon: LogOut },
 ];
 

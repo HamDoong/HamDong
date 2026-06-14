@@ -38,11 +38,12 @@ import { InviteJoinPage } from './pages/InviteJoinPage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { SignUpPage } from './pages/SignUpPage';
 import { WalletPage } from './pages/WalletPage';
 import type { Group } from './types';
 
-type AppPage = 'dashboard' | 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications';
+type AppPage = 'dashboard' | 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications' | 'profile';
 type DashboardGroup = Group;
 
 function getExpenseTotal(expense: BackendExpense) {
@@ -184,16 +185,18 @@ function getSidebarActivePage(page: AppPage) {
   if (page === 'activities') return 'activities';
   if (page === 'wallet') return 'wallet';
   if (page === 'notifications') return 'notifications';
+  if (page === 'profile') return 'profile';
   return 'groups';
 }
 
-function getPageFromHash(): Extract<AppPage, 'dashboard' | 'groups' | 'activities' | 'wallet' | 'notifications'> {
+function getPageFromHash(): Extract<AppPage, 'dashboard' | 'groups' | 'activities' | 'wallet' | 'notifications' | 'profile'> {
   const hash = window.location.hash.replace('#', '');
 
   if (hash === 'groups') return 'groups';
   if (hash === 'activities') return 'activities';
   if (hash === 'wallet') return 'wallet';
   if (hash === 'notifications') return 'notifications';
+  if (hash === 'profile') return 'profile';
 
   return 'dashboard';
 }
@@ -380,6 +383,14 @@ function AppContent() {
       setInviteToken('');
       setPage('notifications');
       setBrowserPath('/Dashboard#notifications');
+      return;
+    }
+
+    if (itemId === 'profile') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('profile');
+      setBrowserPath('/Dashboard#profile');
       return;
     }
 
@@ -642,6 +653,7 @@ function AppContent() {
           {page === 'notifications' ? (
             <NotificationsPage onUnreadCountChange={setNotificationBadgeCount} />
           ) : null}
+          {page === 'profile' ? <ProfilePage /> : null}
 
           {page === 'create-group' ? (
             <CreateGroupWizard onBack={() => setPage('groups')} onComplete={handleCreateGroupComplete} />
