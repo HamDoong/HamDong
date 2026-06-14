@@ -113,13 +113,18 @@ def ensure_irr_currency(currency):
         raise InvalidCurrencyError()
 
 
-def mask_phone_number(phone_number):
-    if not phone_number:
+def mask_email(email):
+    if not email:
         return ""
-    digits = "".join(ch for ch in str(phone_number) if ch.isdigit())
-    if len(digits) <= 4:
-        return f"***{digits}"
-    return f"{digits[:4]}***{digits[-4:]}"
+    value = str(email).strip()
+    if "@" not in value:
+        return "***"
+    local_part, domain = value.split("@", 1)
+    if len(local_part) <= 2:
+        masked_local = local_part[:1] + "***"
+    else:
+        masked_local = local_part[:2] + "***"
+    return f"{masked_local}@{domain}"
 
 
 def balance_status(net_balance_minor):

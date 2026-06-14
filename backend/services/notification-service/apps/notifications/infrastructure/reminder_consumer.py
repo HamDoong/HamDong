@@ -8,10 +8,10 @@ import pika
 from django.conf import settings
 from django.utils import timezone
 
-from apps.notifications.application.sms_service import SmsService
+from apps.notifications.application.sms_service import EmailService
 from apps.notifications.application.template_service import TemplateService
-from apps.notifications.domain.models import NotificationJobStatusChoices, NotificationStatusChoices
-from apps.notifications.domain.rules import PhoneNumberRule
+from apps.notifications.domain.models import NotificationChannelChoices, NotificationJobStatusChoices, NotificationStatusChoices
+from apps.notifications.domain.rules import EmailRule
 from apps.notifications.infrastructure.event_envelope import validate_event_envelope
 from apps.notifications.infrastructure.repositories import InboxRepository, NotificationRepository
 
@@ -31,7 +31,7 @@ class SettlementReminderConsumer:
         self.dlq = f"{self.queue}{getattr(settings, 'EVENT_DLQ_SUFFIX', '.dlq')}"
         self.connection = None
         self.channel = None
-        self.sms_service = SmsService()
+        self.email_service = EmailService()
         self.template_service = TemplateService()
         self.repository = NotificationRepository()
         self.retry_delay_seconds = 2
@@ -57,28 +57,28 @@ class SettlementReminderConsumer:
             logger.exception("Failed to parse reminder payload")
             return None
 
-    def _render_message(self, payload: dict) -> tuple[str, str]:
+    def _render_message(self, payload: dict) -> tuple[str, str, str]:
         data = payload.get("data") or {}
         event_type = payload["event_type"]
         reminder_type = SUPPORTED_REMINDER_EVENTS[event_type]
         if event_type == "PaymentReminderRequested":
             context = {
-                "group_title": (data.get("message_context") or {}).get("group_title", "هم‌دنگ"),
+                "group_title": (data.get("message_context") or {}).get("group_title", "HamDong"),
                 "amount": data.get("amount_minor"),
                 "currency": data.get("currency", "IRR"),
             }
         elif event_type == "SettlementConfirmationReminderRequested":
             context = {
-                "payer_name": data.get("payer_display_name", "کاربر"),
+                "payer_name": data.get("payer_art_name", "User"),
                 "amount": data.get("amount_minor"),
                 "currency": data.get("currency", "IRR"),
             }
         else:
             context = {
-                "group_title": (data.get("message_context") or {}).get("group_title", "هم‌دنگ"),
+                "group_title": (data.get("message_context") or {}).get("group_title", "HamDong"),
                 "amount": data.get("amount_minor"),
                 "currency": data.get("currency", "IRR"),
-                "receiver_name": data.get("receiver_display_name", "گیرنده"),
+                "receiver_name": data.get("receiver_art_name", "Receiver"),
             }
         return self.template_service.render_reminder_message(reminder_type, context)
 
@@ -102,27 +102,27 @@ class SettlementReminderConsumer:
             channel.basic_ack(delivery_tag=method.delivery_tag)
             return
         data = payload.get("data") or {}
-        phone_number = PhoneNumberRule.normalize(data.get("target_phone_number") or data.get("receiver_phone_number") or data.get("payer_phone_number") or data.get("recipient_phone_number"))
-        if not phone_number:
-            InboxRepository.mark_failed(event_id, event_type, payload["source_service"], payload["routing_key"], payload, "Missing phone number.")
+        email = EmailRule.normalize(data.get("target_email") or data.get("receiver_email") or data.get("payer_email") or data.get("recipient_email"))
+        if not email:
+            InboxRepository.mark_failed(event_id, event_type, payload["source_service"], payload["routing_key"], payload, "Missing recipient email.")
             channel.basic_ack(delivery_tag=method.delivery_tag)
             return
         if self.repository.get_notification_job(event_id):
             InboxRepository.mark_skipped(event_id, event_type, payload["source_service"], payload["routing_key"], payload)
             channel.basic_ack(delivery_tag=method.delivery_tag)
             return
-        template_code, rendered_message = self._render_message(payload)
+        template_code, subject, rendered_message = self._render_message(payload)
         notification_job = self.repository.create_notification_job(
             event_id=event_id,
             source_service=payload.get("source_service") or "settlement-service",
             source_event_type=event_type,
             reminder_type=SUPPORTED_REMINDER_EVENTS[event_type],
             notification_type=SUPPORTED_REMINDER_EVENTS[event_type],
-            channel="SMS",
+            channel=NotificationChannelChoices.EMAIL,
             recipient_user_id=data.get("target_user_id") or data.get("receiver_user_id") or data.get("payer_user_id"),
-            recipient=phone_number,
-            recipient_phone_number=phone_number,
-            recipient_masked=PhoneNumberRule.mask(phone_number),
+            recipient=email,
+            recipient_email=email,
+            recipient_masked=EmailRule.mask(email),
             template_code=template_code,
             rendered_message=rendered_message,
             payload=payload,
@@ -131,7 +131,7 @@ class SettlementReminderConsumer:
             last_attempt_at=timezone.now(),
         )
         try:
-            notification_message = self.sms_service.send_sms(phone_number, rendered_message)
+            notification_message = self.email_service.send_email(email, subject, rendered_message)
             if notification_message.status == NotificationStatusChoices.FAILED:
                 self.repository.update_notification_job(
                     notification_job,

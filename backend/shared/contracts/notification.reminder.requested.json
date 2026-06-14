@@ -5,7 +5,7 @@
   "data_example": {
     "group_title": "Trip to Shiraz",
     "message": "لطفاً مبلغ این آیتم تسویه را پرداخت کنید.",
-    "recipient_phone_number": "09123456789",
+    "recipient_email": "09123456789",
     "template_code": "SETTLEMENT_REMINDER"
   }
 }

@@ -1,7 +1,7 @@
 @baseUrl = http://localhost:8080
 
-@aliPhone = 09120000001
-@saraPhone = 09120000002
+@aliEmail = ali@example.com
+@saraEmail = sara@example.com
 @aliOtp =
 @saraOtp =
 @aliAccessToken =
@@ -28,7 +28,7 @@ POST {{baseUrl}}/api/v1/auth/otp/request/
 Content-Type: application/json
 
 {
-  "phone_number": "{{aliPhone}}"
+  "email": "{{aliEmail}}"
 }
 
 ### 2. Verify OTP for Ali
@@ -36,7 +36,7 @@ POST {{baseUrl}}/api/v1/auth/otp/verify/
 Content-Type: application/json
 
 {
-  "phone_number": "{{aliPhone}}",
+  "email": "{{aliEmail}}",
   "code": "{{aliOtp}}"
 }
 

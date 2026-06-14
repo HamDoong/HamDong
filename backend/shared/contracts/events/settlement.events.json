@@ -165,8 +165,8 @@
       "payload_keys": [
         "group_id",
         "target_user_id",
-        "target_phone_number",
-        "target_display_name",
+        "target_email",
+        "target_art_name",
         "amount_minor",
         "currency",
         "reason",
@@ -180,8 +180,8 @@
         "settlement_id",
         "group_id",
         "receiver_user_id",
-        "receiver_phone_number",
-        "payer_display_name",
+        "receiver_email",
+        "payer_art_name",
         "amount_minor",
         "currency"
       ]
@@ -194,8 +194,8 @@
         "item_id",
         "group_id",
         "payer_user_id",
-        "payer_phone_number",
-        "receiver_display_name",
+        "payer_email",
+        "receiver_art_name",
         "amount_minor",
         "currency",
         "message_context"

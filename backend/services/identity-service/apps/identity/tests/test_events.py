@@ -17,7 +17,7 @@ class IdentityEventPublishingTestCase(TestCase):
     """Test identity event publishing from use cases."""
 
     def setUp(self):
-        self.phone_number = "09123456789"
+        self.email = "09123456789"
 
     def tearDown(self):
         User.objects.all().delete()
@@ -34,7 +34,7 @@ class IdentityEventPublishingTestCase(TestCase):
         use_case = RequestOtpUseCase()
 
         success, error_code, debug_otp, resend_after = use_case.execute(
-            self.phone_number
+            self.email
         )
 
         self.assertTrue(success)
@@ -45,8 +45,8 @@ class IdentityEventPublishingTestCase(TestCase):
 
         event_data, routing_key = publish_mock.call_args.args
         self.assertEqual(routing_key, "identity.otp.requested")
-        self.assertEqual(event_data["event_type"], "SendOtpSmsRequested")
-        self.assertEqual(event_data["data"]["phone_number"], self.phone_number)
+        self.assertEqual(event_data["event_type"], "SendOtpEmailRequested")
+        self.assertEqual(event_data["data"]["email"], self.email)
         self.assertEqual(event_data["data"]["code"], "123456")
         self.assertEqual(event_data["data"]["expires_in"], use_case.otp_service.otp_ttl)
 
@@ -74,14 +74,14 @@ class IdentityEventPublishingTestCase(TestCase):
         token_generate_mock,
         publish_mock,
     ):
-        user = User.objects.create(phone_number=self.phone_number)
+        user = User.objects.create(email=self.email)
         get_or_create_mock.return_value = (user, True)
         mark_verified_mock.return_value = user
         update_login_mock.return_value = user
 
         use_case = VerifyOtpUseCase()
         success, error_code, token_data = use_case.execute(
-            self.phone_number,
+            self.email,
             "123456",
             user_agent="pytest",
             ip_address="127.0.0.1",
@@ -111,22 +111,22 @@ class IdentityEventPublishingTestCase(TestCase):
         self, update_profile_mock, publish_mock
     ):
         user = User.objects.create(
-            phone_number=self.phone_number, display_name="Old Name"
+            email=self.email, art_name="Old Name"
         )
-        user.display_name = "New Name"
+        user.art_name = "New Name"
         update_profile_mock.return_value = user
 
         use_case = UpdateProfileUseCase()
-        success, updated_user = use_case.execute(user, display_name="New Name")
+        success, updated_user = use_case.execute(user, art_name="New Name")
 
         self.assertTrue(success)
-        self.assertEqual(updated_user.display_name, "New Name")
+        self.assertEqual(updated_user.art_name, "New Name")
         publish_mock.assert_called_once()
 
         event_data, routing_key = publish_mock.call_args.args
         self.assertEqual(routing_key, "identity.user.updated")
         self.assertEqual(event_data["event_type"], "UserUpdated")
-        self.assertEqual(event_data["data"]["phone_number"], self.phone_number)
+        self.assertEqual(event_data["data"]["email"], self.email)
 
     @patch(
         "apps.identity.application.use_cases.RabbitMqPublisher.publish",
@@ -142,7 +142,7 @@ class IdentityEventPublishingTestCase(TestCase):
         use_case = RequestOtpUseCase()
 
         success, error_code, debug_otp, resend_after = use_case.execute(
-            self.phone_number
+            self.email
         )
 
         self.assertTrue(success)

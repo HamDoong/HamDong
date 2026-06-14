@@ -117,10 +117,10 @@ class InviteCreateResponseSerializer(serializers.Serializer):
 class MemberSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     user_id = serializers.UUIDField()
-    display_name_snapshot = serializers.CharField(allow_null=True)
+    art_name_snapshot = serializers.CharField(allow_null=True)
     role = serializers.CharField()
     joined_at = serializers.DateTimeField()
-    phone_number = serializers.CharField(allow_null=True)
+    email = serializers.CharField(allow_null=True)
 
 
 class InviteAcceptResponseSerializer(serializers.Serializer):

@@ -7,7 +7,7 @@ from apps.settlements.domain.rules import (
     balance_status,
     ensure_active_member,
     ensure_group_active,
-    mask_phone_number,
+    mask_email,
 )
 from apps.settlements.infrastructure.repositories import (
     DebtLedgerRepository,
@@ -85,14 +85,14 @@ class BalanceService:
         return GroupBalanceSnapshotRepository.get(group_id, user_id, currency=currency)
 
     def format_snapshot(self, snapshot, member=None):
-        phone_number = member.phone_number if member else ""
-        display_name = member.display_name_snapshot if member else None
+        email = member.email if member else ""
+        art_name = member.art_name_snapshot if member else None
         if member is None:
-            display_name = None
+            art_name = None
         return {
             "user_id": str(snapshot.user_id),
-            "display_name": display_name,
-            "phone_number": mask_phone_number(phone_number),
+            "art_name": art_name,
+            "email": mask_email(email),
             "net_balance_minor": snapshot.net_balance_minor,
             "status": balance_status(snapshot.net_balance_minor),
         }

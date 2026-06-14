@@ -1,6 +1,9 @@
 """User management service."""
 
+from __future__ import annotations
+
 import logging
+import uuid
 from typing import Optional
 
 from django.contrib.auth.password_validation import validate_password
@@ -8,7 +11,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 
 from apps.identity.domain.models import User
-from apps.identity.domain.rules import ArtNameRule, PhoneNumberRule
+from apps.identity.domain.rules import ArtNameRule, EmailRule
 from apps.identity.infrastructure.repositories import RefreshTokenRepository, UserRepository
 
 logger = logging.getLogger(__name__)
@@ -18,16 +21,51 @@ class UserService:
     """Service for user operations."""
 
     @staticmethod
-    def get_or_create(phone_number: str) -> tuple[User, bool]:
-        user = UserRepository.get_by_phone(phone_number)
+    def _build_art_name_candidate(value: str | None, user_id: str | None = None) -> str:
+        candidate = ArtNameRule.sanitize_candidate(value)
+        if candidate and ArtNameRule.is_valid(candidate):
+            return candidate
+        suffix = (str(user_id or uuid.uuid4()).replace("-", "")[:8]).lower()
+        return f"user-{suffix}"[:32]
+
+    @staticmethod
+    def _generate_unique_art_name(seed: str | None, user_id: str | None = None) -> str:
+        candidate = UserService._build_art_name_candidate(seed, user_id=user_id)
+        existing = UserRepository.get_by_art_name(candidate)
+        if not existing or str(existing.id) == str(user_id):
+            return candidate
+        suffix = (str(user_id or uuid.uuid4()).replace("-", "")[:6]).lower()
+        base = candidate[: max(3, 32 - len(suffix) - 1)].rstrip("-")
+        candidate = f"{base}-{suffix}"
+        existing = UserRepository.get_by_art_name(candidate)
+        if not existing or str(existing.id) == str(user_id):
+            return candidate
+        return f"user-{suffix}"[:32]
+
+    @staticmethod
+    def get_or_create(email: str) -> tuple[User, bool]:
+        normalized_email = EmailRule.normalize(email)
+        user = UserRepository.get_by_email(normalized_email) if normalized_email else None
         if user:
+            if not user.art_name:
+                user = UserRepository.update(
+                    user,
+                    art_name=UserService._generate_unique_art_name(
+                        normalized_email.split("@", 1)[0], user.id
+                    ),
+                )
             return user, False
 
+        if not normalized_email:
+            raise ValueError("INVALID_EMAIL")
+
+        art_name = UserService._generate_unique_art_name(normalized_email.split("@", 1)[0])
         user = UserRepository.create(
-            phone_number=phone_number,
+            email=normalized_email,
+            art_name=art_name,
             role=User.RoleChoices.USER,
         )
-        logger.info("New user created: %s", PhoneNumberRule.mask(phone_number))
+        logger.info("New user created: %s", EmailRule.mask(normalized_email))
         return user, True
 
     @staticmethod
@@ -35,8 +73,10 @@ class UserService:
         return UserRepository.get_by_id(user_id)
 
     @staticmethod
-    def mark_phone_verified(user: User) -> User:
-        return UserRepository.update(user, is_phone_verified=True)
+    def mark_email_verified(user: User) -> User:
+        if user.is_email_verified:
+            return user
+        return UserRepository.update(user, is_email_verified=True)
 
     @staticmethod
     def update_last_login(user: User) -> User:
@@ -45,15 +85,12 @@ class UserService:
     @staticmethod
     def update_profile(
         user: User,
-        display_name: str = None,
         first_name: str = None,
         last_name: str = None,
         art_name: str = None,
     ) -> User:
         update_data = {}
 
-        if display_name is not None:
-            update_data["display_name"] = display_name
         if first_name is not None:
             update_data["first_name"] = first_name
         if last_name is not None:

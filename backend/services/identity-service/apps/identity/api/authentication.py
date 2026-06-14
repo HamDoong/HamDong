@@ -1,4 +1,4 @@
-"""JWT authentication Backend for identity service."""
+"""JWT authentication backend for identity service."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class JWTAuthentication(BaseAuthentication):
 
         user = AuthenticatedUser(
             id=str(payload["sub"]),
-            phone_number=payload.get("phone_number"),
+            email=payload.get("email"),
             role=str(payload["role"]),
             token_jti=str(payload["jti"]),
         )

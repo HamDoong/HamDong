@@ -17,7 +17,7 @@ ROUTING_KEYS = {
     "NotificationFailed": "notification.failed",
     "SmsSent": "notification.sms.sent",
     "SmsFailed": "notification.sms.failed",
-    "SendOtpSmsRequested": "identity.otp.requested",
+    "SendOtpEmailRequested": "identity.otp.requested",
 }
 
 
@@ -42,10 +42,10 @@ class DomainEvent:
         )
 
 
-class SendOtpSmsRequested(DomainEvent):
-    def __init__(self, phone_number: str, code: str, purpose: str = "login", expires_in: int = 120):
+class SendOtpEmailRequested(DomainEvent):
+    def __init__(self, email: str, code: str, purpose: str = "login", expires_in: int = 120):
         super().__init__(
-            "SendOtpSmsRequested",
-            {"phone_number": phone_number, "code": code, "purpose": purpose, "expires_in": expires_in},
+            "SendOtpEmailRequested",
+            {"email": email, "code": code, "purpose": purpose, "expires_in": expires_in},
             source_service="identity-service",
         )

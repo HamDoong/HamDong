@@ -13,16 +13,16 @@ class PasswordAuthenticationTests(TestCase):
         self.client = APIClient()
         self.token_service = TokenService()
         self.otp_store = RedisOtpStore()
-        self.phone_number = "09120000001"
+        self.email = "09120000001"
 
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
 
     def _otp_login(self):
-        response = self.client.post("/api/v1/auth/otp/request/", {"phone_number": self.phone_number}, format="json")
+        response = self.client.post("/api/v1/auth/otp/request/", {"email": self.email}, format="json")
         self.assertEqual(response.status_code, 200)
         code = response.json()["debug_otp"]
-        response = self.client.post("/api/v1/auth/otp/verify/", {"phone_number": self.phone_number, "code": code}, format="json")
+        response = self.client.post("/api/v1/auth/otp/verify/", {"email": self.email, "code": code}, format="json")
         self.assertEqual(response.status_code, 200)
         return response.json()
 
@@ -43,8 +43,8 @@ class PasswordAuthenticationTests(TestCase):
         self.assertEqual(response.json()["art_name"], "ali_artist")
 
     def test_duplicate_art_name_fails(self):
-        User.objects.create(phone_number="09120000001", art_name="taken_name")
-        user2 = User.objects.create(phone_number="09120000002")
+        User.objects.create(email="09120000001", art_name="taken_name")
+        user2 = User.objects.create(email="09120000002")
         access_token, _, _ = self.token_service.generate_tokens(user2)
         response = self.client.patch(
             "/api/v1/users/me/",
@@ -86,7 +86,7 @@ class PasswordAuthenticationTests(TestCase):
         self.assertEqual(login_data["user"]["art_name"], "ali_artist")
 
         refresh_token = login_data["refresh_token"]
-        self.assertTrue(RefreshToken.objects.filter(user__phone_number=self.phone_number, revoked_at__isnull=True).exists())
+        self.assertTrue(RefreshToken.objects.filter(user__email=self.email, revoked_at__isnull=True).exists())
 
         response = self.client.post(
             "/api/v1/auth/password/change/",

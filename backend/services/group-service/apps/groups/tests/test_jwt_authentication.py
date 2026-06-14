@@ -50,7 +50,7 @@ def build_token(*, private_key: str = PRIVATE_KEY, **overrides) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": "user-123",
-        "phone_number": "09123456789",
+        "email": "09123456789",
         "role": "USER",
         "type": "access",
         "jti": "jti-123",
@@ -84,7 +84,7 @@ def make_auth(public_key: str = PUBLIC_KEY):
 def test_valid_access_token_is_accepted():
     user, token = make_auth().authenticate(make_request(build_token()))
     assert user.sub == "user-123"
-    assert user.phone_number == "09123456789"
+    assert user.email == "09123456789"
     assert user.role == "USER"
     assert user.token_jti == "jti-123"
     assert token

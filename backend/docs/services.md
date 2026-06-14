@@ -6,7 +6,7 @@
 - **Database:** identity database.
 - **Main endpoints:** `/api/v1/auth/otp/request/`, `/api/v1/auth/otp/verify/`, `/api/v1/auth/token/refresh/`, `/api/v1/auth/logout/`, `/api/v1/auth/jwks/`, `/api/v1/auth/.well-known/jwks.json`, `/api/v1/users/me/`.
 - **Input events:** none for the core login flow.
-- **Output events:** `UserCreated`, `UserUpdated`, `UserLoggedIn`, `SendOtpSmsRequested`.
+- **Output events:** `UserCreated`, `UserUpdated`, `UserLoggedIn`, `SendOtpEmailRequested`.
 - **Consumers:** none required for core identity flows.
 - **Dispatchers:** `identity-outbox-dispatcher`.
 - **Important notes:** private signing key stays here only; raw OTP values are verified here and not persisted in plain text.
@@ -16,7 +16,7 @@
 - **Responsibility:** OTP SMS delivery, reminder SMS delivery, notification jobs, provider safety controls.
 - **Database:** notification database.
 - **Main endpoints:** `/api/v1/notifications/health/`, `/api/v1/notifications/sms/test/`, `/api/v1/notifications/messages/`.
-- **Input events:** `SendOtpSmsRequested`, `PaymentReminderRequested`, `SettlementConfirmationReminderRequested`, `SettlementPlanItemReminderRequested`.
+- **Input events:** `SendOtpEmailRequested`, `PaymentReminderRequested`, `SettlementConfirmationReminderRequested`, `SettlementPlanItemReminderRequested`.
 - **Output events:** `NotificationSent`, `NotificationFailed`, `SmsSent`, `SmsFailed`.
 - **Consumers:** `notification-consumer`, `notification-reminder-consumer`.
 - **Dispatchers:** `notification-outbox-dispatcher`.

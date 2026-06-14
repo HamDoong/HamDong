@@ -93,8 +93,8 @@ class SettlementPlanEventTypeChoices(models.TextChoices):
 class UserProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     identity_user_id = models.UUIDField(unique=True, db_index=True)
-    phone_number = models.CharField(max_length=32)
-    display_name = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=254)
+    art_name = models.CharField(max_length=255, null=True, blank=True)
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
     role = models.CharField(
@@ -135,8 +135,8 @@ class GroupMemberProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group_id = models.UUIDField(db_index=True)
     user_id = models.UUIDField(db_index=True)
-    phone_number = models.CharField(max_length=32)
-    display_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=254)
+    art_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
     role = models.CharField(
         max_length=10,
         choices=GroupMemberRoleChoices.choices,
@@ -373,7 +373,7 @@ class ReminderDispatchLog(models.Model):
     settlement_plan_item_id = models.UUIDField(null=True, blank=True, db_index=True)
     manual_settlement_id = models.UUIDField(null=True, blank=True, db_index=True)
     recipient_user_id = models.UUIDField(db_index=True)
-    recipient_phone_number = models.CharField(max_length=32)
+    recipient_email = models.CharField(max_length=254)
     source_event_id = models.UUIDField(null=True, blank=True, db_index=True)
     sent_count = models.PositiveIntegerField(default=0)
     last_sent_at = models.DateTimeField(null=True, blank=True)

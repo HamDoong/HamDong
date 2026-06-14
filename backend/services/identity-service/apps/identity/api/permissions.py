@@ -28,7 +28,7 @@ class IsAuthenticated(BasePermission):
 
             # Store user info in request for later use
             request.user_id = payload.get("sub")
-            request.phone_number = payload.get("phone_number")
+            request.email = payload.get("email")
             request.user_role = payload.get("role")
 
             return True

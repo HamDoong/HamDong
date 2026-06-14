@@ -10,8 +10,8 @@ from apps.notifications.api.serializers import (
     NotificationCreateSerializer,
     NotificationMessageSerializer,
     NotificationUpdateSerializer,
-    TestSmsRequestSerializer,
-    TestSmsResponseSerializer,
+    TestEmailRequestSerializer,
+    TestEmailResponseSerializer,
 )
 from apps.notifications.application.use_cases import (
     CreateNotificationUseCase,
@@ -19,11 +19,11 @@ from apps.notifications.application.use_cases import (
     GetNotificationDetailUseCase,
     ListInboxNotificationsUseCase,
     ListNotificationMessagesUseCase,
-    SendTestSmsUseCase,
+    SendTestEmailUseCase,
     UpdateNotificationUseCase,
 )
 from apps.notifications.infrastructure.jwt_authentication import JWTAuthentication
-from apps.notifications.infrastructure.providers.base import InvalidSmsProviderError, SmsProviderError
+from apps.notifications.infrastructure.providers.base import InvalidEmailProviderError, EmailProviderError
 
 
 NotificationListResponseSerializer = inline_serializer(
@@ -63,29 +63,29 @@ class HealthView(APIView):
         )
 
 
-class TestSmsView(APIView):
+class TestEmailView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    @extend_schema(tags=["Notifications"], summary="Send a test SMS", request=TestSmsRequestSerializer, responses={200: TestSmsResponseSerializer, 403: OpenApiResponse(description="Disabled outside local/debug")})
+    @extend_schema(tags=["Notifications"], summary="Send a test email", request=TestEmailRequestSerializer, responses={200: TestEmailResponseSerializer, 403: OpenApiResponse(description="Disabled outside local/debug")})
     def post(self, request):
         if not _is_local_debug():
-            return _error_response("FORBIDDEN", "Test SMS endpoint is only available in local/debug environments.", status.HTTP_403_FORBIDDEN)
+            return _error_response("FORBIDDEN", "Test email endpoint is only available in local/debug environments.", status.HTTP_403_FORBIDDEN)
 
-        serializer = TestSmsRequestSerializer(data=request.data)
+        serializer = TestEmailRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        use_case = SendTestSmsUseCase()
+        use_case = SendTestEmailUseCase()
 
         try:
             notification_message = use_case.execute(
-                phone_number=serializer.validated_data["phone_number"],
+                email=serializer.validated_data["email"],
                 message=serializer.validated_data["message"],
             )
-        except InvalidSmsProviderError:
-            return _error_response("INVALID_SMS_PROVIDER", "Configured SMS provider is not supported.", status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except SmsProviderError:
-            return _error_response("SMS_PROVIDER_FAILED", "SMS provider failed to send the message.", status.HTTP_502_BAD_GATEWAY)
+        except InvalidEmailProviderError:
+            return _error_response("INVALID_EMAIL_PROVIDER", "Configured email provider is not supported.", status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except EmailProviderError:
+            return _error_response("EMAIL_PROVIDER_FAILED", "Email provider failed to send the message.", status.HTTP_502_BAD_GATEWAY)
 
         return Response(
             {
@@ -125,68 +125,57 @@ class NotificationListCreateView(AuthenticatedNotificationAPIView):
     def get(self, request):
         limit = int(request.query_params.get("limit", 20))
         notifications = ListInboxNotificationsUseCase().execute(request.user, limit=limit)
-        return Response({"results": NotificationMessageSerializer(notifications, many=True).data}, status=status.HTTP_200_OK)
+        serializer = NotificationMessageSerializer(notifications, many=True)
+        return Response({"results": serializer.data}, status=status.HTTP_200_OK)
 
     @extend_schema(tags=["Notifications"], summary="Create notification", request=NotificationCreateSerializer, responses={201: NotificationMessageSerializer})
     def post(self, request):
         serializer = NotificationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        recipient_user_id = serializer.validated_data.get("recipient_user_id") or getattr(request.user, "sub", request.user.id)
-        actor_role = getattr(request.user, "role", "USER")
-        if str(recipient_user_id) != str(getattr(request.user, "sub", request.user.id)) and actor_role not in ("ADMIN", "SYSTEM"):
-            return _error_response("PERMISSION_DENIED", "You do not have permission to create this notification.", status.HTTP_403_FORBIDDEN)
-
         notification = CreateNotificationUseCase().execute(
             request.user,
-            recipient_user_id=recipient_user_id,
+            recipient_user_id=serializer.validated_data.get("recipient_user_id"),
             channel=serializer.validated_data["channel"],
             notification_type=serializer.validated_data["notification_type"],
-            title=serializer.validated_data.get("title", ""),
-            body=serializer.validated_data.get("body", ""),
-            metadata=serializer.validated_data.get("metadata", {}),
+            title=serializer.validated_data.get("title"),
+            body=serializer.validated_data.get("body"),
+            metadata=serializer.validated_data.get("metadata"),
         )
         return Response(NotificationMessageSerializer(notification).data, status=status.HTTP_201_CREATED)
 
 
 class NotificationDetailView(AuthenticatedNotificationAPIView):
-    def get_object(self, request, notification_id):
-        return GetNotificationDetailUseCase().execute(request.user, notification_id)
-
     @extend_schema(tags=["Notifications"], summary="Get notification detail", responses={200: NotificationMessageSerializer})
     def get(self, request, notification_id):
-        notification = self.get_object(request, notification_id)
+        notification = GetNotificationDetailUseCase().execute(request.user, notification_id)
         if not notification:
-            return _error_response("NOTIFICATION_NOT_FOUND", "Notification not found.", status.HTTP_404_NOT_FOUND)
+            return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(NotificationMessageSerializer(notification).data, status=status.HTTP_200_OK)
 
     @extend_schema(tags=["Notifications"], summary="Update notification", request=NotificationUpdateSerializer, responses={200: NotificationMessageSerializer})
     def patch(self, request, notification_id):
-        notification = self.get_object(request, notification_id)
+        notification = GetNotificationDetailUseCase().execute(request.user, notification_id)
         if not notification:
-            return _error_response("NOTIFICATION_NOT_FOUND", "Notification not found.", status.HTTP_404_NOT_FOUND)
-
+            return Response(status=status.HTTP_404_NOT_FOUND)
         serializer = NotificationUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-
-        try:
-            notification = UpdateNotificationUseCase().execute(request.user, notification, **serializer.validated_data)
-        except PermissionError:
-            return _error_response("PERMISSION_DENIED", "You do not have permission to edit this notification.", status.HTTP_403_FORBIDDEN)
-        except ValueError:
-            return _error_response("NOTIFICATION_NOT_EDITABLE", "Sent notifications cannot be edited.", status.HTTP_409_CONFLICT)
-
-        return Response(NotificationMessageSerializer(notification).data, status=status.HTTP_200_OK)
+        updated = UpdateNotificationUseCase().execute(
+            request.user,
+            notification,
+            title=serializer.validated_data.get("title"),
+            body=serializer.validated_data.get("body"),
+            metadata=serializer.validated_data.get("metadata"),
+        )
+        return Response(NotificationMessageSerializer(updated).data, status=status.HTTP_200_OK)
 
     @extend_schema(tags=["Notifications"], summary="Delete notification", responses={200: NotificationDeleteResponseSerializer})
     def delete(self, request, notification_id):
-        notification = self.get_object(request, notification_id)
+        notification = GetNotificationDetailUseCase().execute(request.user, notification_id)
         if not notification:
-            return _error_response("NOTIFICATION_NOT_FOUND", "Notification not found.", status.HTTP_404_NOT_FOUND)
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        DeleteNotificationUseCase().execute(request.user, notification)
+        return Response({"message": "Notification deleted."}, status=status.HTTP_200_OK)
 
-        try:
-            DeleteNotificationUseCase().execute(request.user, notification)
-        except PermissionError:
-            return _error_response("PERMISSION_DENIED", "You do not have permission to delete this notification.", status.HTTP_403_FORBIDDEN)
 
-        return Response({"message": "Notification deleted successfully."}, status=status.HTTP_200_OK)
+# Compatibility alias.
+TestSmsView = TestEmailView

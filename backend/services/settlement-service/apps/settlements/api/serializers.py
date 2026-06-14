@@ -4,8 +4,8 @@ from django.conf import settings
 
 class BalanceItemSerializer(serializers.Serializer):
     user_id = serializers.UUIDField()
-    display_name = serializers.CharField(allow_null=True, required=False)
-    phone_number = serializers.CharField(required=False)
+    art_name = serializers.CharField(allow_null=True, required=False)
+    email = serializers.CharField(required=False)
     net_balance_minor = serializers.IntegerField()
     status = serializers.CharField()
 
@@ -96,9 +96,9 @@ class SettlementRejectSerializer(serializers.Serializer):
 class SettlementPlanItemSummarySerializer(serializers.Serializer):
     id = serializers.UUIDField()
     payer_user_id = serializers.UUIDField()
-    payer_display_name = serializers.CharField(allow_null=True, required=False)
+    payer_art_name = serializers.CharField(allow_null=True, required=False)
     receiver_user_id = serializers.UUIDField()
-    receiver_display_name = serializers.CharField(allow_null=True, required=False)
+    receiver_art_name = serializers.CharField(allow_null=True, required=False)
     amount_minor = serializers.IntegerField()
     status = serializers.CharField()
     order_index = serializers.IntegerField()

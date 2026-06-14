@@ -366,8 +366,8 @@ class ExpenseService:
             participants.append(
                 {
                     "user_id": UUID(str(user_id)),
-                    "phone_number": member.phone_number or "",
-                    "display_name_snapshot": member.display_name_snapshot,
+                    "email": member.email or "",
+                    "art_name_snapshot": member.art_name_snapshot,
                     "base_share_minor": int(base_share),
                     "tax_share_minor": int(tax_share),
                     "service_fee_share_minor": int(service_fee_share),

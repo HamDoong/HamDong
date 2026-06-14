@@ -1,38 +1,50 @@
 """Domain rules for notification-service."""
 
+from __future__ import annotations
+
 import re
 from typing import Optional
 
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 
-class PhoneNumberRule:
-    """Validate and mask Iranian mobile numbers."""
+
+class EmailRule:
+    """Validate and mask email addresses."""
 
     @staticmethod
-    def normalize(phone_number: str) -> Optional[str]:
-        if not isinstance(phone_number, str):
+    def normalize(email: str) -> Optional[str]:
+        if not isinstance(email, str):
             return None
-
-        cleaned = phone_number.strip().replace("+98", "0").replace("0098", "0")
-        cleaned = re.sub(r"\D", "", cleaned)
-
-        if cleaned.startswith("98") and len(cleaned) == 12:
-            cleaned = f"0{cleaned[2:]}"
-
-        if cleaned.startswith("9") and len(cleaned) == 10:
-            cleaned = f"0{cleaned}"
-
-        return cleaned if re.match(r"^09\d{9}$", cleaned) else None
+        cleaned = email.strip().lower()
+        if not cleaned:
+            return None
+        try:
+            validate_email(cleaned)
+        except ValidationError:
+            return None
+        return cleaned
 
     @staticmethod
-    def is_valid(phone_number: str) -> bool:
-        return PhoneNumberRule.normalize(phone_number) is not None
+    def is_valid(email: str) -> bool:
+        return EmailRule.normalize(email) is not None
 
     @staticmethod
-    def mask(phone_number: str) -> str:
-        normalized = PhoneNumberRule.normalize(phone_number) or ""
-        if len(normalized) >= 8:
-            return f"{normalized[:4]}***{normalized[-4:]}"
-        return "***"
+    def mask(email: str) -> str:
+        normalized = EmailRule.normalize(email) or ""
+        if not normalized or "@" not in normalized:
+            return "***"
+        local_part, domain = normalized.split("@", 1)
+        if len(local_part) <= 2:
+            masked_local = local_part[:1] + "***"
+        else:
+            masked_local = local_part[:2] + "***"
+        if "." in domain:
+            domain_name, dot, suffix = domain.partition(".")
+            masked_domain = (domain_name[:1] + "***" if domain_name else "***") + dot + suffix
+        else:
+            masked_domain = domain[:1] + "***"
+        return f"{masked_local}@{masked_domain}"
 
 
 def sanitize_message_text(message: str) -> str:

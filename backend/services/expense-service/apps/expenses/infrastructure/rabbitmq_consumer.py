@@ -22,8 +22,8 @@ class ExpenseEventConsumer:
     def process_identity_event(self, event_type: str, payload: Dict[str, Any]) -> bool:
         uid = uuid.UUID(str(payload.get("user_id")))
         defaults = {
-            "phone_number": payload.get("phone_number", ""),
-            "display_name": payload.get("display_name"),
+            "email": payload.get("email", ""),
+            "art_name": payload.get("art_name"),
             "first_name": payload.get("first_name"),
             "last_name": payload.get("last_name"),
             "role": payload.get("role", "USER"),
@@ -64,12 +64,12 @@ class ExpenseEventConsumer:
             if not uid_value:
                 return True
             uid = uuid.UUID(str(uid_value))
-            phone = payload.get("phone_number", "")
-            display = payload.get("display_name_snapshot") or payload.get("display_name")
+            phone = payload.get("email", "")
+            display = payload.get("art_name_snapshot") or payload.get("art_name")
             if event_type == "GroupMemberJoined":
                 defaults = {
-                    "phone_number": phone,
-                    "display_name_snapshot": display,
+                    "email": phone,
+                    "art_name_snapshot": display,
                     "role": payload.get("role", "MEMBER"),
                     "status": "ACTIVE",
                     "joined_at": parse_datetime(payload.get("joined_at")) if payload.get("joined_at") else None,
@@ -81,7 +81,7 @@ class ExpenseEventConsumer:
             GroupMemberProjection.objects.update_or_create(
                 group_id=gid,
                 user_id=uid,
-                defaults={"phone_number": phone, "display_name_snapshot": display, "role": payload.get("role", "MEMBER"), "status": status},
+                defaults={"email": phone, "art_name_snapshot": display, "role": payload.get("role", "MEMBER"), "status": status},
             )
             GroupProjection.objects.filter(group_id=gid).update(member_count=GroupMemberProjection.objects.filter(group_id=gid, status="ACTIVE").count())
             return True

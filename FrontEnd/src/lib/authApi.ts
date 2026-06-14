@@ -1,13 +1,29 @@
-import { apiRequest, clearTokens, getRefreshToken, setTokens } from './api';
+import {
+  clearTokens,
+  getRefreshToken,
+  identityApiRequest,
+  setTokens,
+} from './api';
 import type { CurrentUser } from './userApi';
 
 export interface AuthResponse {
   access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_in: number;
-  user: CurrentUser;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  user?: CurrentUser;
 }
+
+type RawAuthResponse = Partial<AuthResponse> & {
+  access?: string;
+  refresh?: string;
+  tokens?: {
+    access_token?: string;
+    refresh_token?: string;
+    access?: string;
+    refresh?: string;
+  };
+};
 
 export interface OtpRequestResponse {
   message: string;
@@ -20,15 +36,36 @@ export interface MessageResponse {
   message: string;
 }
 
-function persistAuthTokens(response: AuthResponse) {
-  setTokens(response.access_token, response.refresh_token);
-  return response;
+function persistAuthTokens(response: RawAuthResponse): AuthResponse {
+  const accessToken =
+    response.access_token ||
+    response.access ||
+    response.tokens?.access_token ||
+    response.tokens?.access;
+  const refreshToken =
+    response.refresh_token ||
+    response.refresh ||
+    response.tokens?.refresh_token ||
+    response.tokens?.refresh;
+
+  if (!accessToken) {
+    throw new Error('Login response does not include an access token.');
+  }
+
+  setTokens(accessToken, refreshToken);
+
+  return {
+    ...response,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  };
 }
 
 export async function loginWithPassword(payload: { art_name: string; password: string }) {
-  const response = await apiRequest<AuthResponse>('/auth/password/login/', {
+  const response = await identityApiRequest<RawAuthResponse>('/auth/password/login/', {
     method: 'POST',
     auth: false,
+    skipAuthRefresh: true,
     body: JSON.stringify(payload),
   });
 
@@ -36,17 +73,19 @@ export async function loginWithPassword(payload: { art_name: string; password: s
 }
 
 export async function requestLoginOtp(phoneNumber: string) {
-  return apiRequest<OtpRequestResponse>('/auth/otp/request/', {
+  return identityApiRequest<OtpRequestResponse>('/auth/otp/request/', {
     method: 'POST',
     auth: false,
+    skipAuthRefresh: true,
     body: JSON.stringify({ phone_number: phoneNumber }),
   });
 }
 
 export async function verifyLoginOtp(payload: { phone_number: string; code: string }) {
-  const response = await apiRequest<AuthResponse>('/auth/otp/verify/', {
+  const response = await identityApiRequest<RawAuthResponse>('/auth/otp/verify/', {
     method: 'POST',
     auth: false,
+    skipAuthRefresh: true,
     body: JSON.stringify(payload),
   });
 
@@ -59,7 +98,7 @@ export async function updateSignupProfile(payload: {
   first_name?: string;
   last_name?: string;
 }) {
-  return apiRequest<CurrentUser>('/users/me/', {
+  return identityApiRequest<CurrentUser>('/users/me/', {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
@@ -69,7 +108,7 @@ export async function setInitialPassword(payload: {
   new_password: string;
   new_password_confirm: string;
 }) {
-  return apiRequest<MessageResponse>('/auth/password/set/', {
+  return identityApiRequest<MessageResponse>('/auth/password/set/', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -84,7 +123,7 @@ export async function logoutCurrentUser() {
   }
 
   try {
-    await apiRequest<MessageResponse>('/auth/logout/', {
+    await identityApiRequest<MessageResponse>('/auth/logout/', {
       method: 'POST',
       auth: false,
       skipAuthRefresh: true,

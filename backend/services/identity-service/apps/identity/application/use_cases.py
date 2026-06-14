@@ -1,14 +1,16 @@
 """Use case orchestration for identity-service."""
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict, Optional, Tuple
 
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
-from apps.identity.domain.events import SendOtpSmsRequested, UserCreated, UserLoggedIn, UserUpdated
+from apps.identity.domain.events import SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
 from apps.identity.domain.models import User
-from apps.identity.domain.rules import ArtNameRule, PhoneNumberRule
+from apps.identity.domain.rules import ArtNameRule, EmailRule
 from apps.identity.infrastructure.rabbitmq_publisher import RabbitMqPublisher
 from apps.identity.infrastructure.repositories import RefreshTokenRepository, UserRepository
 
@@ -28,10 +30,12 @@ def build_token_response(
         "expires_in": token_service.access_token_lifetime,
         "user": {
             "id": str(user.id),
-            "phone_number": user.phone_number,
-            "display_name": user.display_name,
+            "email": user.email,
             "art_name": user.art_name,
-            "is_phone_verified": user.is_phone_verified,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "avatar_url": user.avatar_url,
+            "is_email_verified": user.is_email_verified,
             "role": user.role,
         },
     }
@@ -45,20 +49,16 @@ class RequestOtpUseCase:
         self.publisher = RabbitMqPublisher()
 
     def execute(
-        self, phone_number: str
+        self, email: str
     ) -> Tuple[bool, Optional[str], Optional[str], Optional[int]]:
-        request_result = self.otp_service.request_otp(phone_number)
-        if len(request_result) == 3:
-            success, error_code, debug_otp = request_result
-            otp_code = debug_otp
-        else:
-            success, error_code, otp_code, debug_otp = request_result
+        request_result = self.otp_service.request_otp(email)
+        success, error_code, otp_code, debug_otp = request_result
 
         if not success:
             return False, error_code, None, None
 
-        event = SendOtpSmsRequested(
-            phone_number=phone_number,
+        event = SendOtpEmailRequested(
+            email=EmailRule.normalize(email),
             code=otp_code,
             purpose="login",
             expires_in=self.otp_service.otp_ttl,
@@ -78,17 +78,17 @@ class VerifyOtpUseCase:
 
     def execute(
         self,
-        phone_number: str,
+        email: str,
         otp_code: str,
         user_agent: str = None,
         ip_address: str = None,
     ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
-        success, error_code = self.otp_service.verify_otp(phone_number, otp_code)
+        success, error_code = self.otp_service.verify_otp(email, otp_code)
         if not success:
             return False, error_code, None
 
-        user, is_created = self.user_service.get_or_create(phone_number)
-        user = self.user_service.mark_phone_verified(user)
+        user, is_created = self.user_service.get_or_create(email)
+        user = self.user_service.mark_email_verified(user)
         user = self.user_service.update_last_login(user)
 
         access_token, refresh_token, _ = self.token_service.generate_tokens(
@@ -100,15 +100,16 @@ class VerifyOtpUseCase:
         if is_created:
             event = UserCreated(
                 user_id=user.id,
-                phone_number=user.phone_number,
-                display_name=user.display_name,
+                email=user.email,
                 art_name=user.art_name,
+                first_name=user.first_name,
+                last_name=user.last_name,
                 role=user.role,
                 is_active=user.is_active,
             )
             self.publisher.publish(event.to_dict(), "identity.user.created")
 
-        event = UserLoggedIn(user_id=user.id, phone_number=user.phone_number)
+        event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
 
         return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
@@ -151,7 +152,7 @@ class LogoutUseCase:
             return False, "INVALID_TOKEN"
 
         RefreshTokenRepository.revoke(db_token)
-        logger.info("User logged out: %s", PhoneNumberRule.mask(db_token.user.phone_number))
+        logger.info("User logged out: %s", EmailRule.mask(db_token.user.email))
         return True, None
 
 
@@ -165,14 +166,12 @@ class UpdateProfileUseCase:
     def execute(
         self,
         user: User,
-        display_name: str = None,
         first_name: str = None,
         last_name: str = None,
         art_name: str = None,
     ) -> Tuple[bool, Optional[User]]:
         updated_user = self.user_service.update_profile(
             user,
-            display_name=display_name,
             first_name=first_name,
             last_name=last_name,
             art_name=art_name,
@@ -180,9 +179,10 @@ class UpdateProfileUseCase:
 
         event = UserUpdated(
             user_id=updated_user.id,
-            phone_number=updated_user.phone_number,
-            display_name=updated_user.display_name,
+            email=updated_user.email,
             art_name=updated_user.art_name,
+            first_name=updated_user.first_name,
+            last_name=updated_user.last_name,
             role=updated_user.role,
             is_active=updated_user.is_active,
         )
@@ -233,7 +233,7 @@ class PasswordLoginUseCase:
             user_agent=user_agent,
             ip_address=ip_address,
         )
-        event = UserLoggedIn(user_id=user.id, phone_number=user.phone_number)
+        event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
         return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
 

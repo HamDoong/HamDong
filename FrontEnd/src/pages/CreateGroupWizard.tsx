@@ -68,7 +68,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-function normalizePhone(phone?: string) {
+function normalizePhone(phone?: string | null) {
   return (phone || '').replace(/\s+/g, '').trim();
 }
 
@@ -77,7 +77,15 @@ function getMemberUserId(member: BackendGroupMember) {
 }
 
 function getMemberName(member: BackendGroupMember) {
-  return member.display_name || member.full_name || member.phone_number || member.phone || 'عضو گروه';
+  return (
+    member.art_name ||
+    member.username ||
+    member.display_name ||
+    member.full_name ||
+    member.phone_number ||
+    member.phone ||
+    'عضو گروه'
+  );
 }
 
 function getMemberPhone(member: BackendGroupMember) {

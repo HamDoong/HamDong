@@ -10,11 +10,11 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 APP_ENV = env("APP_ENV", default="local")
 
-POSTGRES_DB = os.environ["POSTGRES_DB"]
-POSTGRES_USER = os.environ["POSTGRES_USER"]
-POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.environ.get("POSTGRES_DB") or os.environ.get("DJANGO_DB_NAME", "notification_db")
+POSTGRES_USER = os.environ.get("POSTGRES_USER") or os.environ.get("DJANGO_DB_USER", "postgres")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD") or os.environ.get("DJANGO_DB_PASSWORD", "postgres")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST") or os.getenv("DJANGO_DB_HOST", "postgres")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT") or os.getenv("DJANGO_DB_PORT", "5432")
 
 RABBITMQ_HOST = env("RABBITMQ_HOST", default="rabbitmq")
 RABBITMQ_PORT = env("RABBITMQ_PORT", default=5672, cast=int)
@@ -74,13 +74,13 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": os.getenv("DJANGO_DB_ENGINE", "django.db.backends.postgresql"),
         "NAME": POSTGRES_DB,
         "USER": POSTGRES_USER,
         "PASSWORD": POSTGRES_PASSWORD,
         "HOST": POSTGRES_HOST,
         "PORT": POSTGRES_PORT,
-        "TEST": {"NAME": f"test_{POSTGRES_DB}"},
+        "TEST": {"NAME": os.environ.get("DJANGO_TEST_DB_NAME", f"test_{POSTGRES_DB}")},
     }
 }
 
@@ -123,64 +123,41 @@ SPECTACULAR_SETTINGS = {
     "SECURITY": [{"BearerAuth": []}],
 }
 
-IDENTITY_RABBITMQ_EXCHANGE = env(
-    "IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity"
-)
-NOTIFICATION_RABBITMQ_EXCHANGE = env(
-    "NOTIFICATION_RABBITMQ_EXCHANGE", default="hamdong.notification"
-)
-IDENTITY_OTP_QUEUE = env(
-    "IDENTITY_OTP_QUEUE", default="notification.identity.otp.requested"
-)
-IDENTITY_OTP_DLX = env(
-    "IDENTITY_OTP_DLX", default="notification.identity.otp.requested.dlx"
-)
-IDENTITY_OTP_DLQ = env(
-    "IDENTITY_OTP_DLQ", default="notification.identity.otp.requested.dlq"
-)
+IDENTITY_RABBITMQ_EXCHANGE = env("IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity")
+NOTIFICATION_RABBITMQ_EXCHANGE = env("NOTIFICATION_RABBITMQ_EXCHANGE", default="hamdong.notification")
+IDENTITY_OTP_QUEUE = env("IDENTITY_OTP_QUEUE", default="notification.identity.otp.requested")
+IDENTITY_OTP_DLX = env("IDENTITY_OTP_DLX", default="notification.identity.otp.requested.dlx")
+IDENTITY_OTP_DLQ = env("IDENTITY_OTP_DLQ", default="notification.identity.otp.requested.dlq")
 
-SMS_PROVIDER = env("SMS_PROVIDER", default="fake")
-SMS_API_KEY = env("SMS_API_KEY", default="")
-SMS_SENDER = env("SMS_SENDER", default="")
-SMS_TEMPLATE_OTP_LOGIN = env("SMS_TEMPLATE_OTP_LOGIN", default="OTP_LOGIN")
-SMS_TEMPLATE_SETTLEMENT_REMINDER = env(
-    "SMS_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER"
-)
-
-SMS_TEMPLATE_PAYMENT_REMINDER = env(
-    "SMS_TEMPLATE_PAYMENT_REMINDER",
-    default="PAYMENT_REMINDER",
-)
-
-SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER = env(
-    "SMS_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER",
+EMAIL_PROVIDER = env("EMAIL_PROVIDER", default="fake")
+EMAIL_TEMPLATE_OTP_LOGIN = env("EMAIL_TEMPLATE_OTP_LOGIN", default="OTP_LOGIN")
+EMAIL_TEMPLATE_SETTLEMENT_REMINDER = env("EMAIL_TEMPLATE_SETTLEMENT_REMINDER", default="SETTLEMENT_REMINDER")
+EMAIL_TEMPLATE_PAYMENT_REMINDER = env("EMAIL_TEMPLATE_PAYMENT_REMINDER", default="PAYMENT_REMINDER")
+EMAIL_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER = env(
+    "EMAIL_TEMPLATE_SETTLEMENT_CONFIRMATION_REMINDER",
     default="SETTLEMENT_CONFIRMATION_REMINDER",
 )
+EMAIL_TEMPLATE_PLAN_ITEM_REMINDER = env("EMAIL_TEMPLATE_PLAN_ITEM_REMINDER", default="PLAN_ITEM_REMINDER")
+EMAIL_CIRCUIT_FAIL_MAX = env("EMAIL_CIRCUIT_FAIL_MAX", default=5, cast=int)
+EMAIL_CIRCUIT_RESET_TIMEOUT_SECONDS = env("EMAIL_CIRCUIT_RESET_TIMEOUT_SECONDS", default=60, cast=int)
+EMAIL_OTP_MAX_RETRIES = env("EMAIL_OTP_MAX_RETRIES", default=2, cast=int)
+EMAIL_OTP_RETRY_DELAYS_SECONDS = env("EMAIL_OTP_RETRY_DELAYS_SECONDS", default="10,30")
 
-SMS_TEMPLATE_PLAN_ITEM_REMINDER = env(
-    "SMS_TEMPLATE_PLAN_ITEM_REMINDER",
-    default="PLAN_ITEM_REMINDER",
-)
-SMS_CIRCUIT_FAIL_MAX = env("SMS_CIRCUIT_FAIL_MAX", default=5, cast=int)
-SMS_CIRCUIT_RESET_TIMEOUT_SECONDS = env(
-    "SMS_CIRCUIT_RESET_TIMEOUT_SECONDS", default=60, cast=int
-)
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="smtp.gmail.com")
+EMAIL_PORT = env("EMAIL_PORT", default=587, cast=int)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_TIMEOUT_SECONDS = env("EMAIL_TIMEOUT_SECONDS", default=10, cast=int)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="HamDong <no-reply@example.com>")
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 
-SMS_OTP_MAX_RETRIES = env("SMS_OTP_MAX_RETRIES", default=2, cast=int)
-SMS_OTP_RETRY_DELAYS_SECONDS = env("SMS_OTP_RETRY_DELAYS_SECONDS", default="10,30")
-
-SETTLEMENT_RABBITMQ_EXCHANGE = env(
-    "SETTLEMENT_RABBITMQ_EXCHANGE", default="hamdong.settlement"
-)
-SETTLEMENT_REMINDER_QUEUE = env(
-    "SETTLEMENT_REMINDER_QUEUE", default="notification.settlement.reminders"
-)
-SETTLEMENT_REMINDER_DLX = env(
-    "SETTLEMENT_REMINDER_DLX", default="notification.settlement.reminders.dlx"
-)
-SETTLEMENT_REMINDER_DLQ = env(
-    "SETTLEMENT_REMINDER_DLQ", default="notification.settlement.reminders.dlq"
-)
+SETTLEMENT_RABBITMQ_EXCHANGE = env("SETTLEMENT_RABBITMQ_EXCHANGE", default="hamdong.settlement")
+SETTLEMENT_REMINDER_QUEUE = env("SETTLEMENT_REMINDER_QUEUE", default="notification.settlement.reminders")
+SETTLEMENT_REMINDER_DLX = env("SETTLEMENT_REMINDER_DLX", default="notification.settlement.reminders.dlx")
+SETTLEMENT_REMINDER_DLQ = env("SETTLEMENT_REMINDER_DLQ", default="notification.settlement.reminders.dlq")
 
 CORS_ALLOW_ALL_ORIGINS = True
 

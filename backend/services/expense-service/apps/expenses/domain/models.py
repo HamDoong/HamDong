@@ -8,8 +8,8 @@ class UserProjection(models.Model):
     """User projection for expense-service. Consumed from identity-service events."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     identity_user_id = models.UUIDField(unique=True)
-    phone_number = models.CharField(max_length=32)
-    display_name = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=254)
+    art_name = models.CharField(max_length=255, null=True, blank=True)
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
 
@@ -59,8 +59,8 @@ class GroupMemberProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group_id = models.UUIDField(db_index=True)
     user_id = models.UUIDField(db_index=True)
-    phone_number = models.CharField(max_length=32)
-    display_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=254)
+    art_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
 
     ROLE_OWNER = "OWNER"
     ROLE_ADMIN = "ADMIN"
@@ -161,8 +161,8 @@ class ExpenseParticipant(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     expense = models.ForeignKey("Expense", related_name="participants", on_delete=models.CASCADE)
     user_id = models.UUIDField(db_index=True)
-    phone_number = models.CharField(max_length=32)
-    display_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=254)
+    art_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
     base_share_minor = models.BigIntegerField()
     tax_share_minor = models.BigIntegerField(default=0)
     service_fee_share_minor = models.BigIntegerField(default=0)

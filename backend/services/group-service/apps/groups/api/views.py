@@ -42,13 +42,18 @@ def _error_response(code: str, message: str, http_status: int) -> Response:
     return Response({"error": {"code": code, "message": message}}, status=http_status)
 
 
-def _mask_phone(phone_number: str | None) -> str | None:
-    if not phone_number:
+def _mask_email(email: str | None) -> str | None:
+    if not email:
         return None
-    phone_number = str(phone_number)
-    if len(phone_number) < 4:
-        return "****"
-    return "****" + phone_number[-4:]
+    value = str(email).strip()
+    if "@" not in value:
+        return "***"
+    local_part, domain = value.split("@", 1)
+    if len(local_part) <= 2:
+        masked_local = local_part[:1] + "***"
+    else:
+        masked_local = local_part[:2] + "***"
+    return f"{masked_local}@{domain}"
 
 
 class GroupListCreateView(GenericAPIView):
@@ -311,10 +316,10 @@ class MembersListView(APIView):
                     {
                         "id": member.id,
                         "user_id": member.user_id,
-                        "display_name_snapshot": member.display_name_snapshot,
+                        "art_name_snapshot": member.art_name_snapshot,
                         "role": member.role,
                         "joined_at": member.joined_at,
-                        "phone_number": _mask_phone(member.phone_number),
+                        "email": _mask_email(member.email),
                     }
                     for member in members
                 ],

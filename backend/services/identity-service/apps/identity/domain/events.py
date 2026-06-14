@@ -11,7 +11,7 @@ ROUTING_KEYS = {
     "UserCreated": "identity.user.created",
     "UserUpdated": "identity.user.updated",
     "UserLoggedIn": "identity.user.logged_in",
-    "SendOtpSmsRequested": "identity.otp.requested",
+    "SendOtpEmailRequested": "identity.otp.requested",
 }
 
 
@@ -35,12 +35,12 @@ class DomainEvent:
         )
 
 
-class SendOtpSmsRequested(DomainEvent):
-    def __init__(self, phone_number: str, code: str, purpose: str = "login", expires_in: int = 120):
+class SendOtpEmailRequested(DomainEvent):
+    def __init__(self, email: str, code: str, purpose: str = "login", expires_in: int = 120):
         super().__init__(
-            "SendOtpSmsRequested",
+            "SendOtpEmailRequested",
             {
-                "phone_number": phone_number,
+                "email": email,
                 "code": code,
                 "purpose": purpose,
                 "expires_in": expires_in,
@@ -52,8 +52,7 @@ class UserCreated(DomainEvent):
     def __init__(
         self,
         user_id: str,
-        phone_number: str,
-        display_name: str = None,
+        email: str,
         art_name: str | None = None,
         first_name: str | None = None,
         last_name: str | None = None,
@@ -64,8 +63,7 @@ class UserCreated(DomainEvent):
             "UserCreated",
             {
                 "user_id": str(user_id),
-                "phone_number": phone_number,
-                "display_name": display_name,
+                "email": email,
                 "art_name": art_name,
                 "first_name": first_name,
                 "last_name": last_name,
@@ -79,8 +77,7 @@ class UserUpdated(DomainEvent):
     def __init__(
         self,
         user_id: str,
-        phone_number: str,
-        display_name: str = None,
+        email: str,
         art_name: str | None = None,
         first_name: str | None = None,
         last_name: str | None = None,
@@ -91,8 +88,7 @@ class UserUpdated(DomainEvent):
             "UserUpdated",
             {
                 "user_id": str(user_id),
-                "phone_number": phone_number,
-                "display_name": display_name,
+                "email": email,
                 "art_name": art_name,
                 "first_name": first_name,
                 "last_name": last_name,
@@ -103,11 +99,11 @@ class UserUpdated(DomainEvent):
 
 
 class UserLoggedIn(DomainEvent):
-    def __init__(self, user_id: str, phone_number: str):
+    def __init__(self, user_id: str, email: str):
         super().__init__(
             "UserLoggedIn",
             {
                 "user_id": str(user_id),
-                "phone_number": phone_number,
+                "email": email,
             },
         )

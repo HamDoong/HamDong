@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from django.contrib.auth.hashers import check_password as django_check_password
@@ -14,15 +16,16 @@ class User(models.Model):
         ADMIN = "ADMIN", "Admin"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    phone_number = models.CharField(max_length=20, unique=True)
-    display_name = models.CharField(max_length=255, null=True, blank=True)
-    art_name = models.CharField(max_length=32, unique=True, null=True, blank=True)
+    email = models.EmailField(max_length=254, unique=True)
+    legacy_phone_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    legacy_display_name = models.CharField(max_length=255, null=True, blank=True)
+    art_name = models.CharField(max_length=32, unique=True)
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
     avatar_url = models.URLField(null=True, blank=True)
     password_hash = models.CharField(max_length=128, null=True, blank=True)
     password_changed_at = models.DateTimeField(null=True, blank=True)
-    is_phone_verified = models.BooleanField(default=False)
+    is_email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     role = models.CharField(
@@ -36,7 +39,7 @@ class User(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     version = models.IntegerField(default=1)
 
-    USERNAME_FIELD = "phone_number"
+    USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
     objects = models.Manager()
 
@@ -45,7 +48,7 @@ class User(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"User({self.phone_number})"
+        return f"User({self.email})"
 
     @property
     def last_login(self):
@@ -97,7 +100,7 @@ class RefreshToken(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"RefreshToken({self.user.phone_number})"
+        return f"RefreshToken({self.user.email})"
 
     @property
     def is_revoked(self):

@@ -24,9 +24,9 @@ class ReportPlanItemTests(TestCase):
         self.owner = auth_user()
         self.group = create_group(owner_user_id=self.owner.sub)
         create_member(self.group.group_id, user_id=self.owner.sub, role="OWNER")
-        self.payer = create_member(self.group.group_id, display_name_snapshot="Payer")
+        self.payer = create_member(self.group.group_id, art_name_snapshot="Payer")
         self.receiver = create_member(
-            self.group.group_id, display_name_snapshot="Receiver"
+            self.group.group_id, art_name_snapshot="Receiver"
         )
         self.client = api_client(self.owner)
         self.service = SettlementPlanService()

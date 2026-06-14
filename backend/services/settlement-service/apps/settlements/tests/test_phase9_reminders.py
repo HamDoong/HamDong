@@ -25,13 +25,13 @@ class SettlementReminderSchedulerTests(TestCase):
     def test_scheduler_creates_outbox_message_for_pending_plan_item(self):
         owner = UserProjection.objects.create(
             identity_user_id="00000000-0000-0000-0000-000000000001",
-            phone_number="09120000001",
-            display_name="Owner",
+            email="09120000001",
+            art_name="Owner",
         )
         payer = UserProjection.objects.create(
             identity_user_id="00000000-0000-0000-0000-000000000002",
-            phone_number="09120000002",
-            display_name="Payer",
+            email="09120000002",
+            art_name="Payer",
         )
         group = GroupProjection.objects.create(
             group_id="00000000-0000-0000-0000-000000000010",
@@ -41,8 +41,8 @@ class SettlementReminderSchedulerTests(TestCase):
         GroupMemberProjection.objects.create(
             group_id=group.group_id,
             user_id=payer.identity_user_id,
-            phone_number=payer.phone_number,
-            display_name_snapshot=payer.display_name,
+            email=payer.email,
+            art_name_snapshot=payer.art_name,
         )
         plan = SettlementPlan.objects.create(
             group_id=group.group_id,
@@ -76,4 +76,4 @@ class SettlementReminderSchedulerTests(TestCase):
             outbox.payload["event_type"],
             "SettlementPlanItemReminderRequested",
         )
-        self.assertEqual(outbox.payload["data"]["payer_phone_number"], payer.phone_number)
+        self.assertEqual(outbox.payload["data"]["payer_email"], payer.email)

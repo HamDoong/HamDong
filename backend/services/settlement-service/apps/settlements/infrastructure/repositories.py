@@ -49,8 +49,8 @@ class UserProjectionRepository:
         if not identity_user_id:
             return None
         defaults = {
-            "phone_number": data.get("phone_number", ""),
-            "display_name": data.get("display_name"),
+            "email": data.get("email", ""),
+            "art_name": data.get("art_name"),
             "first_name": data.get("first_name"),
             "last_name": data.get("last_name"),
             "role": data.get("role", "USER"),
@@ -120,7 +120,7 @@ class GroupMemberProjectionRepository:
         user = UserProjectionRepository.get(user_id)
         if not user:
             return None, ""
-        return user.display_name, user.phone_number
+        return user.art_name, user.email
 
     @staticmethod
     def upsert_joined(**data):
@@ -128,16 +128,16 @@ class GroupMemberProjectionRepository:
         user_id = normalize_uuid(data.get("user_id"))
         if not group_id or not user_id:
             return None
-        display_name = data.get("display_name_snapshot") or data.get("display_name")
-        phone_number = data.get("phone_number")
-        if not phone_number:
-            fallback_display, phone_number = (
+        art_name = data.get("art_name_snapshot") or data.get("art_name")
+        email = data.get("email")
+        if not email:
+            fallback_display, email = (
                 GroupMemberProjectionRepository._display_snapshot(user_id)
             )
-            display_name = display_name or fallback_display
+            art_name = art_name or fallback_display
         defaults = {
-            "phone_number": phone_number or "",
-            "display_name_snapshot": display_name,
+            "email": email or "",
+            "art_name_snapshot": art_name,
             "role": data.get("role", "MEMBER"),
             "status": "ACTIVE",
             "joined_at": data.get("joined_at") or timezone.now(),
@@ -163,7 +163,7 @@ class GroupMemberProjectionRepository:
             member = GroupMemberProjection(
                 group_id=group_id,
                 user_id=user_id,
-                phone_number=data.get("phone_number", ""),
+                email=data.get("email", ""),
                 role=data.get("role", "MEMBER"),
             )
         member.status = "LEFT"
@@ -186,7 +186,7 @@ class GroupMemberProjectionRepository:
             member = GroupMemberProjection(
                 group_id=group_id,
                 user_id=user_id,
-                phone_number=data.get("phone_number", ""),
+                email=data.get("email", ""),
                 role=data.get("role", "MEMBER"),
             )
         member.status = "REMOVED"
@@ -777,7 +777,7 @@ class ReminderDispatchRepository:
     def upsert_target(**data):
         defaults = {
             "source_event_id": normalize_uuid(data.get("source_event_id")),
-            "recipient_phone_number": data.get("recipient_phone_number", ""),
+            "recipient_email": data.get("recipient_email", ""),
             "sent_count": data.get("sent_count", 0),
             "last_sent_at": data.get("last_sent_at"),
             "next_allowed_at": data.get("next_allowed_at"),

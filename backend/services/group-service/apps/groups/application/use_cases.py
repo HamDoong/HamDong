@@ -38,15 +38,15 @@ class CreateGroupUseCase:
             group_type=group_type,
             status="ACTIVE",
             created_by_user_id=creator.sub,
-            created_by_phone_number=creator.phone_number,
+            created_by_email=creator.email,
             member_count=1,
         )
 
         GroupMemberRepository.add_owner(
             group=group,
             user_id=creator.sub,
-            phone_number=creator.phone_number,
-            display_name=getattr(creator, "display_name", None),
+            email=creator.email,
+            art_name=getattr(creator, "art_name", None),
         )
         self.publisher.publish("GroupCreated", {"group_id": str(group.id), "created_by": creator.sub}, "group.created")
         self.publisher.publish(
@@ -283,8 +283,8 @@ class InviteService:
             member.left_at = None
             member.removed_at = None
             member.joined_at = timezone.now()
-            member.phone_number = user.phone_number
-            member.display_name_snapshot = getattr(user, "display_name", None)
+            member.email = user.email
+            member.art_name_snapshot = getattr(user, "art_name", None)
             member.save(
                 update_fields=[
                     "status",
@@ -292,8 +292,8 @@ class InviteService:
                     "left_at",
                     "removed_at",
                     "joined_at",
-                    "phone_number",
-                    "display_name_snapshot",
+                    "email",
+                    "art_name_snapshot",
                     "updated_at",
                 ]
             )
@@ -303,16 +303,16 @@ class InviteService:
             member.role = "MEMBER"
             member.left_at = None
             member.joined_at = timezone.now()
-            member.phone_number = user.phone_number
-            member.display_name_snapshot = getattr(user, "display_name", None)
+            member.email = user.email
+            member.art_name_snapshot = getattr(user, "art_name", None)
             member.save(
                 update_fields=[
                     "status",
                     "role",
                     "left_at",
                     "joined_at",
-                    "phone_number",
-                    "display_name_snapshot",
+                    "email",
+                    "art_name_snapshot",
                     "updated_at",
                 ]
             )
@@ -320,8 +320,8 @@ class InviteService:
             member = GroupMember.objects.create(
                 group=invite.group,
                 user_id=user.sub,
-                phone_number=user.phone_number,
-                display_name_snapshot=getattr(user, "display_name", None),
+                email=user.email,
+                art_name_snapshot=getattr(user, "art_name", None),
                 role="MEMBER",
                 status="ACTIVE",
             )

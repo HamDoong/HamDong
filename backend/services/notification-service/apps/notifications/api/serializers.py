@@ -3,12 +3,12 @@ from rest_framework import serializers
 from apps.notifications.domain.models import NotificationMessage, NotificationMessageTypeChoices
 
 
-class TestSmsRequestSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
+class TestEmailRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
     message = serializers.CharField()
 
 
-class TestSmsResponseSerializer(serializers.Serializer):
+class TestEmailResponseSerializer(serializers.Serializer):
     status = serializers.CharField()
     provider = serializers.CharField()
     message_id = serializers.CharField(allow_null=True)
@@ -54,3 +54,8 @@ class NotificationMessageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+# Compatibility aliases.
+TestSmsRequestSerializer = TestEmailRequestSerializer
+TestSmsResponseSerializer = TestEmailResponseSerializer

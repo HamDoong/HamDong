@@ -9,7 +9,7 @@
         "notification_job_id",
         "channel",
         "notification_type",
-        "recipient_phone_number"
+        "recipient_email"
       ]
     },
     {
@@ -19,7 +19,7 @@
         "notification_job_id",
         "channel",
         "notification_type",
-        "recipient_phone_number",
+        "recipient_email",
         "error"
       ]
     },
@@ -28,7 +28,7 @@
       "routing_key": "notification.sms.sent",
       "payload_keys": [
         "notification_job_id",
-        "recipient_phone_number"
+        "recipient_email"
       ]
     },
     {
@@ -36,7 +36,7 @@
       "routing_key": "notification.sms.failed",
       "payload_keys": [
         "notification_job_id",
-        "recipient_phone_number",
+        "recipient_email",
         "error"
       ]
     }

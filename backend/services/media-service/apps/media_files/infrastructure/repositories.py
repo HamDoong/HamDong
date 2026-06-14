@@ -12,8 +12,8 @@ class UserProjectionRepository:
         if not identity_user_id:
             return None
         defaults = {
-            "phone_number": data.get("phone_number", ""),
-            "display_name": data.get("display_name"),
+            "email": data.get("email", ""),
+            "art_name": data.get("art_name"),
             "first_name": data.get("first_name"),
             "last_name": data.get("last_name"),
             "role": data.get("role", "USER"),
@@ -60,10 +60,10 @@ class GroupProjectionRepository:
 
 class GroupMemberProjectionRepository:
     @staticmethod
-    def _phone_snapshot(user_id, fallback=""):
+    def _contact_snapshot(user_id, fallback=""):
         user = UserProjectionRepository.get(user_id)
         if user:
-            return user.phone_number, user.display_name
+            return user.email, user.art_name
         return fallback, None
 
     @staticmethod
@@ -72,14 +72,14 @@ class GroupMemberProjectionRepository:
         user_id = data.get("user_id")
         if not group_id or not user_id:
             return None
-        phone_number = data.get("phone_number")
-        display_name = data.get("display_name_snapshot") or data.get("display_name")
-        if not phone_number:
-            phone_number, fallback_display = GroupMemberProjectionRepository._phone_snapshot(user_id)
-            display_name = display_name or fallback_display
+        email = data.get("email")
+        art_name = data.get("art_name_snapshot") or data.get("art_name")
+        if not email:
+            email, fallback_display = GroupMemberProjectionRepository._contact_snapshot(user_id)
+            art_name = art_name or fallback_display
         defaults = {
-            "phone_number": phone_number or "",
-            "display_name_snapshot": display_name,
+            "email": email or "",
+            "art_name_snapshot": art_name,
             "role": data.get("role", "MEMBER"),
             "status": "ACTIVE",
             "joined_at": timezone.now(),
@@ -98,7 +98,7 @@ class GroupMemberProjectionRepository:
             return None
         member = GroupMemberProjection.objects.filter(group_id=group_id, user_id=user_id).first()
         if not member:
-            member = GroupMemberProjection(group_id=group_id, user_id=user_id, phone_number=data.get("phone_number", ""), role=data.get("role", "MEMBER"))
+            member = GroupMemberProjection(group_id=group_id, user_id=user_id, email=data.get("email", ""), role=data.get("role", "MEMBER"))
         member.status = "LEFT"
         member.left_at = timezone.now()
         member.removed_at = None
@@ -114,7 +114,7 @@ class GroupMemberProjectionRepository:
             return None
         member = GroupMemberProjection.objects.filter(group_id=group_id, user_id=user_id).first()
         if not member:
-            member = GroupMemberProjection(group_id=group_id, user_id=user_id, phone_number=data.get("phone_number", ""), role=data.get("role", "MEMBER"))
+            member = GroupMemberProjection(group_id=group_id, user_id=user_id, email=data.get("email", ""), role=data.get("role", "MEMBER"))
         member.status = "REMOVED"
         member.removed_at = timezone.now()
         member.left_at = None

@@ -7,8 +7,8 @@
       "routing_key": "identity.user.created",
       "payload_keys": [
         "user_id",
-        "phone_number",
-        "display_name",
+        "email",
+        "art_name",
         "first_name",
         "last_name",
         "role",
@@ -20,8 +20,8 @@
       "routing_key": "identity.user.updated",
       "payload_keys": [
         "user_id",
-        "phone_number",
-        "display_name",
+        "email",
+        "art_name",
         "first_name",
         "last_name",
         "role",
@@ -33,14 +33,14 @@
       "routing_key": "identity.user.logged_in",
       "payload_keys": [
         "user_id",
-        "phone_number"
+        "email"
       ]
     },
     {
-      "event_type": "SendOtpSmsRequested",
+      "event_type": "SendOtpEmailRequested",
       "routing_key": "identity.otp.requested",
       "payload_keys": [
-        "phone_number",
+        "email",
         "code",
         "purpose",
         "expires_in"

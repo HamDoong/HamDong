@@ -1,11 +1,13 @@
 """Value objects for notification-service."""
 
+from __future__ import annotations
+
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
 
 @dataclass(slots=True)
-class SmsSendResult:
+class EmailSendResult:
     success: bool
     provider: str
     provider_message_id: Optional[str] = None
@@ -18,8 +20,8 @@ class SmsSendResult:
 
 
 @dataclass(slots=True)
-class OtpSmsCommand:
-    phone_number: str
+class OtpEmailCommand:
+    email: str
     code: str
     purpose: str
     expires_in: int

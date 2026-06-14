@@ -51,15 +51,15 @@ def create_member(
     group_id,
     user_id=None,
     status=GroupMemberStatusChoices.ACTIVE,
-    phone_number="+989121234567",
+    email="+989121234567",
     role="MEMBER",
 ):
     user_id = user_id or uuid.uuid4()
     return GroupMemberProjection.objects.create(
         group_id=group_id,
         user_id=user_id,
-        phone_number=phone_number,
-        display_name_snapshot="Member",
+        email=email,
+        art_name_snapshot="Member",
         role=role,
         status=status,
     )
@@ -551,8 +551,8 @@ class SettlementConsumerTests(TestCase):
             "event_type": "UserCreated",
             "data": {
                 "identity_user_id": str(uuid.uuid4()),
-                "phone_number": "+15550001",
-                "display_name": "Test User",
+                "email": "+15550001",
+                "art_name": "Test User",
                 "first_name": "Test",
                 "last_name": "User",
                 "role": "USER",
@@ -579,8 +579,8 @@ class SettlementConsumerTests(TestCase):
             "event_type": "UserCreated",
             "data": {
                 "identity_user_id": str(user_id),
-                "phone_number": "+989121111111",
-                "display_name": "User A",
+                "email": "+989121111111",
+                "art_name": "User A",
                 "first_name": "User",
                 "last_name": "A",
                 "role": "USER",
@@ -592,8 +592,8 @@ class SettlementConsumerTests(TestCase):
             "event_type": "UserUpdated",
             "data": {
                 "identity_user_id": str(user_id),
-                "phone_number": "+989121111111",
-                "display_name": "User Updated",
+                "email": "+989121111111",
+                "art_name": "User Updated",
                 "first_name": "User",
                 "last_name": "Updated",
                 "role": "ADMIN",
@@ -603,7 +603,7 @@ class SettlementConsumerTests(TestCase):
         self.consumer.process_identity_payload(created)
         self.consumer.process_identity_payload(updated)
         user = UserProjection.objects.get(identity_user_id=user_id)
-        self.assertEqual(user.display_name, "User Updated")
+        self.assertEqual(user.art_name, "User Updated")
         self.assertEqual(user.role, "ADMIN")
 
     def test_group_created_and_member_joined_and_removed_updates_projection(self):
@@ -630,8 +630,8 @@ class SettlementConsumerTests(TestCase):
                 "data": {
                     "group_id": str(group_id),
                     "user_id": str(member_user_id),
-                    "phone_number": "+989121222222",
-                    "display_name": "Member 1",
+                    "email": "+989121222222",
+                    "art_name": "Member 1",
                     "role": "MEMBER",
                 },
             }

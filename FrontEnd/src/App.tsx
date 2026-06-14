@@ -335,7 +335,7 @@ function AppContent() {
     setInviteToken('');
     setNotificationBadgeCount(0);
     setCurrentUserDisplayName('کاربر');
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   };
 
   const handleSidebarNavigate = (itemId: string) => {
@@ -719,7 +719,7 @@ function AppRoutes() {
         element={
           <AuthPageFrame>
             <LoginPage
-              onLogin={() => navigate('/Dashboard')}
+              onLogin={() => navigate('/Dashboard', { replace: true })}
               onSignUp={() => navigate('/signup')}
             />
           </AuthPageFrame>
@@ -731,7 +731,7 @@ function AppRoutes() {
           <AuthPageFrame>
             <SignUpPage
               onLogin={() => navigate('/login')}
-              onSignUp={() => navigate('/Dashboard')}
+              onSignUp={() => navigate('/Dashboard', { replace: true })}
             />
           </AuthPageFrame>
         }
@@ -744,6 +744,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route path="/landing" element={<Navigate to="/" replace />} />
       <Route path="/invites/:token" element={<AppContent />} />
       <Route path="/groups/*" element={<Navigate to="/Dashboard#groups" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />

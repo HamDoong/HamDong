@@ -3,7 +3,7 @@
 ## OTP Login Flow
 
 1. Client calls identity-service to request an OTP.
-2. identity-service hashes the OTP, stores expiration/cooldown state, and writes `SendOtpSmsRequested` to the outbox.
+2. identity-service hashes the OTP, stores expiration/cooldown state, and writes `SendOtpEmailRequested` to the outbox.
 3. `identity-outbox-dispatcher` publishes the event to the `hamdong.identity` exchange.
 4. notification-service consumes the event, records inbox state, sends the OTP SMS, and stores delivery status.
 

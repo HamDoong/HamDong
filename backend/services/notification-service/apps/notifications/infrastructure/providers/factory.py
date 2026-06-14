@@ -1,37 +1,25 @@
-"""SMS provider factory."""
+"""Email provider factory."""
 
 from __future__ import annotations
 
 from django.conf import settings
 
-from apps.notifications.infrastructure.providers.base import InvalidSmsProviderError
-from apps.notifications.infrastructure.providers.fake_provider import FakeSmsProvider
+from apps.notifications.infrastructure.providers.base import InvalidEmailProviderError
+from apps.notifications.infrastructure.providers.fake_provider import FakeEmailProvider
+from apps.notifications.infrastructure.providers.smtp_provider import SmtpEmailProvider
 
 
-def get_sms_provider(provider_name: str | None = None):
-    """Return an instance of the configured SMS provider.
-
-    If `provider_name` is None, `settings.SMS_PROVIDER` is used. Lazily imports
-    provider implementations to avoid importing HTTP client dependencies at
-    module import time.
-    """
-    provider = (provider_name or settings.SMS_PROVIDER or "fake").lower()
+def get_email_provider(provider_name: str | None = None):
+    provider = (provider_name or settings.EMAIL_PROVIDER or "fake").lower()
 
     if provider == "fake":
-        return FakeSmsProvider()
+        return FakeEmailProvider()
 
-    if provider == "kavenegar":
-        from apps.notifications.infrastructure.providers.kavenegar_provider import (
-            KavenegarSmsProvider,
-        )
+    if provider == "smtp":
+        return SmtpEmailProvider()
 
-        return KavenegarSmsProvider()
+    raise InvalidEmailProviderError(f"Unsupported email provider: {provider}")
 
-    if provider == "melipayamak":
-        from apps.notifications.infrastructure.providers.melipayamak_provider import (
-            MelipayamakSmsProvider,
-        )
 
-        return MelipayamakSmsProvider()
-
-    raise InvalidSmsProviderError(f"Unsupported SMS provider: {provider}")
+# Backwards-compatible alias.
+get_sms_provider = get_email_provider

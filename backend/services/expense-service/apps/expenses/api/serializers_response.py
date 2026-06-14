@@ -7,8 +7,8 @@ from rest_framework import serializers
 
 class ExpenseParticipantResponseSerializer(serializers.Serializer):
     user_id = serializers.UUIDField()
-    phone_number = serializers.CharField()
-    display_name_snapshot = serializers.CharField(allow_null=True)
+    email = serializers.CharField()
+    art_name_snapshot = serializers.CharField(allow_null=True)
     base_share_minor = serializers.IntegerField()
     tax_share_minor = serializers.IntegerField()
     service_fee_share_minor = serializers.IntegerField()
@@ -56,8 +56,8 @@ def serialize_expense(expense) -> dict:
             "participants": [
                 {
                     "user_id": participant.user_id,
-                    "phone_number": participant.phone_number,
-                    "display_name_snapshot": participant.display_name_snapshot,
+                    "email": participant.email,
+                    "art_name_snapshot": participant.art_name_snapshot,
                     "base_share_minor": participant.base_share_minor,
                     "tax_share_minor": participant.tax_share_minor,
                     "service_fee_share_minor": participant.service_fee_share_minor,

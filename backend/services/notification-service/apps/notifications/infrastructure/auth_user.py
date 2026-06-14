@@ -6,7 +6,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class AuthenticatedUser:
     id: str
-    phone_number: str | None
+    email: str | None
     role: str
     token_jti: str
 
@@ -24,7 +24,7 @@ class AuthenticatedUser:
 
     @property
     def username(self) -> str:
-        return self.phone_number or self.id
+        return self.email or self.id
 
     @property
     def is_authenticated(self) -> bool:

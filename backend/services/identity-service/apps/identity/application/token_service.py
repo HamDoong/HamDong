@@ -12,13 +12,13 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from django.conf import settings
 
-from apps.identity.domain.models import *
+from apps.identity.domain.models import User
 from apps.identity.infrastructure.key_loader import JwtKeyLoader
 from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
 
 ACCESS_TOKEN_KID = "hamdong-main-key"
-ACCESS_REQUIRED_CLAIMS = ["sub", "phone_number", "role", "type", "jti", "iat", "exp", "iss", "aud"]
+ACCESS_REQUIRED_CLAIMS = ["sub", "email", "role", "type", "jti", "iat", "exp", "iss", "aud"]
 REFRESH_REQUIRED_CLAIMS = ["sub", "type", "jti", "iat", "exp", "iss", "aud"]
 
 
@@ -64,7 +64,7 @@ class TokenService:
         expires_at = now + timedelta(seconds=self.access_token_lifetime)
         payload = {
             "sub": str(user.id),
-            "phone_number": user.phone_number,
+            "email": user.email,
             "role": user.role,
             "type": "access",
             "jti": jti,
