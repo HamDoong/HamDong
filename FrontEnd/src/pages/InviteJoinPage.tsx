@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Link2, Users } from 'lucide-react';
-import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
+import { ArrowLeft, CheckCircle2, Users } from 'lucide-react';
+import {
+  InlineLoader,
+  useFeedback,
+} from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
 import {
   acceptInvite,
@@ -20,7 +23,11 @@ function getPreviewTitle(preview: InvitePreview | null) {
 }
 
 function getPreviewDescription(preview: InvitePreview | null) {
-  return preview?.group?.description || preview?.description || 'برای مشاهده جزئیات و عضویت در گروه، دعوت را بررسی کن.';
+  return (
+    preview?.group?.description ||
+    preview?.description ||
+    'برای عضویت در این گروه، دکمه عضویت را بزن.'
+  );
 }
 
 function getPreviewType(preview: InvitePreview | null) {
@@ -28,16 +35,67 @@ function getPreviewType(preview: InvitePreview | null) {
   return type === 'EVENT' ? 'رویداد' : 'عمومی';
 }
 
-function getBackendMessage(error: unknown) {
-  if (isApiError(error)) {
-    if (typeof error.body === 'object' && error.body && 'detail' in error.body) {
-      return String((error.body as { detail?: unknown }).detail);
-    }
+function getInviteStatusLabel(status?: string) {
+  if (!status) return 'فعال';
+  if (status === 'ACTIVE' || status === 'VALID') return 'فعال';
+  if (status === 'EXPIRED') return 'منقضی‌شده';
+  if (status === 'REVOKED') return 'لغوشده';
 
-    if (error.bodyText) return error.bodyText;
+  return status;
+}
+
+function getBackendErrorCode(error: unknown) {
+  if (!isApiError(error)) return '';
+
+  if (typeof error.body !== 'object' || !error.body) {
+    return '';
   }
 
-  return '';
+  const body = error.body as {
+    code?: unknown;
+    error?: {
+      code?: unknown;
+    };
+  };
+
+  return String(body.error?.code || body.code || '');
+}
+
+function getBackendMessage(error: unknown) {
+  if (!isApiError(error)) {
+    return 'خطای غیرمنتظره‌ای رخ داد. لطفاً دوباره تلاش کنید.';
+  }
+
+  const code = getBackendErrorCode(error);
+
+  if (code === 'ALREADY_GROUP_MEMBER') {
+    return 'شما در حال حاضر عضو این گروه هستید.';
+  }
+
+  if (code === 'INVITE_EXPIRED') {
+    return 'این لینک دعوت منقضی شده است.';
+  }
+
+  if (
+    code === 'INVITE_NOT_FOUND' ||
+    code === 'INVALID_INVITE'
+  ) {
+    return 'لینک دعوت معتبر نیست.';
+  }
+
+  if (error.status === 401) {
+    return 'برای ادامه دوباره وارد حساب خود شوید.';
+  }
+
+  if (error.status === 403) {
+    return 'اجازه استفاده از این دعوت را ندارید.';
+  }
+
+  if (error.status >= 500) {
+    return 'مشکلی در سرور رخ داده است. کمی بعد دوباره تلاش کنید.';
+  }
+
+  return 'عضویت انجام نشد. لطفاً دوباره تلاش کنید.';
 }
 
 export function InviteJoinPage({
@@ -46,34 +104,41 @@ export function InviteJoinPage({
   onAccepted,
 }: InviteJoinPageProps) {
   const { notify } = useFeedback();
-  const [inviteInput, setInviteInput] = useState(initialToken);
-  const [token, setToken] = useState(extractInviteToken(initialToken));
-  const [preview, setPreview] = useState<InvitePreview | null>(null);
+
+  const [token, setToken] = useState(
+    extractInviteToken(initialToken),
+  );
+  const [preview, setPreview] =
+    useState<InvitePreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const normalizedToken = useMemo(() => extractInviteToken(token), [token]);
+  const normalizedToken = useMemo(
+    () => extractInviteToken(token),
+    [token],
+  );
 
   async function loadPreview(nextToken = normalizedToken) {
     const cleanToken = extractInviteToken(nextToken);
 
     if (!cleanToken) {
-      setError('لینک یا توکن دعوت را وارد کن.');
+      setError('لینک دعوت معتبر نیست.');
       return;
     }
 
     try {
       setLoading(true);
       setError(null);
+
       const invitePreview = await getInvitePreview(cleanToken);
+
       setPreview(invitePreview);
       setToken(cleanToken);
-      setInviteInput(cleanToken);
     } catch (err) {
       console.error(err);
       setPreview(null);
-      setError(getBackendMessage(err) || 'دعوت پیدا نشد یا منقضی شده است.');
+      setError(getBackendMessage(err));
     } finally {
       setLoading(false);
     }
@@ -84,40 +149,48 @@ export function InviteJoinPage({
 
     if (cleanToken) {
       setToken(cleanToken);
-      setInviteInput(cleanToken);
       loadPreview(cleanToken);
+    } else {
+      setError('لینک دعوت معتبر نیست.');
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialToken]);
 
-  async function handleCheckInvite() {
-    const cleanToken = extractInviteToken(inviteInput);
-    await loadPreview(cleanToken);
-  }
-
   async function handleAcceptInvite() {
-    const cleanToken = extractInviteToken(token || inviteInput);
+    const cleanToken = extractInviteToken(token);
 
     if (!cleanToken) {
-      setError('اول لینک دعوت را وارد یا بررسی کن.');
+      setError('لینک دعوت معتبر نیست.');
       return;
     }
 
     try {
       setAccepting(true);
+
       await acceptInvite(cleanToken);
+
       notify({
         type: 'success',
         title: 'عضویت انجام شد',
-        description: 'گروه به لیست گروه‌های تو اضافه شد.',
+        description: 'گروه به لیست گروه‌های شما اضافه شد.',
       });
+
       onAccepted();
     } catch (err) {
       console.error(err);
+
+      const alreadyMember =
+        getBackendErrorCode(err) === 'ALREADY_GROUP_MEMBER';
+
       notify({
-        type: 'error',
-        title: 'عضویت ناموفق بود',
-        description: getBackendMessage(err) || 'ممکن است دعوت منقضی شده باشد یا قبلاً عضو گروه باشی.',
+        type: alreadyMember ? 'info' : 'error',
+        title: alreadyMember
+          ? 'شما عضو این گروه هستید'
+          : 'عضویت انجام نشد',
+        description: alreadyMember
+          ? 'امکان عضویت دوباره در این گروه وجود ندارد.'
+          : getBackendMessage(err),
       });
     } finally {
       setAccepting(false);
@@ -142,90 +215,96 @@ export function InviteJoinPage({
               <h1 className="text-[30px] font-extrabold tracking-[-0.03em] text-text">
                 پیوستن به گروه
               </h1>
+
               <p className="mt-2 text-sm leading-7 text-muted">
-                لینک دعوت را وارد کن؛ بعد از بررسی می‌توانی به گروه بپیوندی.
+                اطلاعات گروه را بررسی کن و در صورت تمایل عضو شو.
               </p>
             </div>
+
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600">
               <Users className="h-7 w-7" />
             </div>
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-            <label className="mb-2 block text-sm font-semibold text-text">
-              لینک یا توکن دعوت
-            </label>
-            <div className="relative">
-              <Link2 className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-              <input
-                dir="ltr"
-                value={inviteInput}
-                onChange={(event) => setInviteInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') handleCheckInvite();
-                }}
-                placeholder="https://localhost:5173/invites/..."
-                className="h-12 w-full rounded-2xl border border-border bg-white pr-11 pl-4 text-left text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleCheckInvite}
-              disabled={loading || !extractInviteToken(inviteInput)}
-              className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-5 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              {loading ? <InlineLoader label="در حال بررسی..." /> : 'بررسی دعوت'}
-            </button>
-
-            {error ? (
-              <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm leading-7 text-rose-600">
-                {error}
-              </div>
-            ) : null}
-          </section>
-
+        <div className="mx-auto max-w-[520px]">
           <aside className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-6 shadow-soft">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-
-            <h2 className="text-2xl font-extrabold text-text">
-              {getPreviewTitle(preview)}
-            </h2>
-            <p className="mt-2 text-sm leading-7 text-muted">
-              {getPreviewDescription(preview)}
-            </p>
-
-            <div className="mt-5 space-y-3 rounded-2xl bg-white/70 p-4 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted">نوع گروه</span>
-                <span className="font-bold text-text">{getPreviewType(preview)}</span>
+            {loading ? (
+              <div className="flex min-h-[250px] items-center justify-center">
+                <InlineLoader label="در حال دریافت اطلاعات گروه..." />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted">وضعیت دعوت</span>
-                <span className="font-bold text-text">
-                  {preview ? preview.invite_status || preview.status || 'قابل استفاده' : 'بررسی نشده'}
-                </span>
-              </div>
-              {preview?.expires_at ? (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted">اعتبار تا</span>
-                  <span className="truncate font-bold text-text">{preview.expires_at}</span>
+            ) : (
+              <>
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
+                  <CheckCircle2 className="h-5 w-5" />
                 </div>
-              ) : null}
-            </div>
 
-            <button
-              type="button"
-              onClick={handleAcceptInvite}
-              disabled={accepting || !preview}
-              className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(0,168,107,0.20)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55"
-            >
-              {accepting ? <InlineLoader label="در حال عضویت..." /> : 'عضویت در گروه'}
-            </button>
+                <h2 className="text-2xl font-extrabold text-text">
+                  {getPreviewTitle(preview)}
+                </h2>
+
+                <p className="mt-2 text-sm leading-7 text-muted">
+                  {getPreviewDescription(preview)}
+                </p>
+
+                <div className="mt-5 space-y-3 rounded-2xl bg-white/70 p-4 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">نوع گروه</span>
+                    <span className="font-bold text-text">
+                      {getPreviewType(preview)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted">وضعیت دعوت</span>
+                    <span className="font-bold text-text">
+                      {getInviteStatusLabel(
+                        preview?.invite_status || preview?.status,
+                      )}
+                    </span>
+                  </div>
+
+                  {preview?.expires_at ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted">اعتبار تا</span>
+                      <span className="truncate font-bold text-text">
+                        {preview.expires_at}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {error ? (
+                  <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm leading-7 text-rose-600">
+                    {error}
+                  </div>
+                ) : null}
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleAcceptInvite}
+                    disabled={accepting || !preview}
+                    className="inline-flex h-12 items-center justify-center rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(0,168,107,0.20)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {accepting ? (
+                      <InlineLoader label="در حال عضویت..." />
+                    ) : (
+                      'عضویت در گروه'
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onBack}
+                    disabled={accepting}
+                    className="h-12 rounded-2xl border border-border bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-55"
+                  >
+                    لغو
+                  </button>
+                </div>
+              </>
+            )}
           </aside>
         </div>
       </div>
