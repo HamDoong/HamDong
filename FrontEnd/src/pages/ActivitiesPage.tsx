@@ -139,7 +139,15 @@ function getExpenseTotal(expense: BackendExpense) {
 }
 
 function getMemberName(member: BackendGroupMember) {
-  return member.display_name || member.full_name || member.phone_number || member.phone || 'عضو گروه';
+  return (
+    member.art_name ||
+    member.username ||
+    member.display_name ||
+    member.full_name ||
+    member.phone_number ||
+    member.phone ||
+    'عضو گروه'
+  );
 }
 
 function getMemberUserId(member: BackendGroupMember) {

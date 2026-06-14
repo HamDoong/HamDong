@@ -93,7 +93,16 @@ function getMemberUserId(member: BackendGroupMember) {
 }
 
 function getMemberName(member: BackendGroupMember) {
-  return member.display_name || member.full_name || member.phone_number || member.phone || 'عضو گروه';
+  return (
+    member.display_name_snapshot ||
+    member.art_name ||
+    member.display_name ||
+    member.username ||
+    member.full_name ||
+    member.phone_number ||
+    member.phone ||
+    'عضو گروه'
+  );
 }
 
 function getMemberPhone(member: BackendGroupMember) {
@@ -108,17 +117,31 @@ function getRoleLabel(role?: string) {
 }
 
 function getBackendMessage(error: unknown) {
-  if (isApiError(error)) {
-    if (typeof error.body === 'object' && error.body) {
-      if ('detail' in error.body) return String((error.body as { detail?: unknown }).detail);
-      if ('message' in error.body) return String((error.body as { message?: unknown }).message);
-      return JSON.stringify(error.body);
-    }
-
-    if (error.bodyText) return error.bodyText;
+  if (!isApiError(error)) {
+    return 'خطای غیرمنتظره‌ای رخ داد. لطفاً دوباره تلاش کنید.';
   }
 
-  return '';
+  if (error.status === 400) {
+    return 'اطلاعات واردشده صحیح نیست.';
+  }
+
+  if (error.status === 401) {
+    return 'نشست شما منقضی شده است. دوباره وارد شوید.';
+  }
+
+  if (error.status === 403) {
+    return 'شما اجازه انجام این عملیات را ندارید.';
+  }
+
+  if (error.status === 404) {
+    return 'اطلاعات موردنظر پیدا نشد.';
+  }
+
+  if (error.status >= 500) {
+    return 'مشکلی در سرور رخ داده است. کمی بعد دوباره تلاش کنید.';
+  }
+
+  return 'عملیات انجام نشد. لطفاً دوباره تلاش کنید.';
 }
 
 function formatMoney(minor = 0) {
@@ -343,23 +366,63 @@ export function GroupDetailPage({
   async function loadMembers() {
     try {
       setMembersLoading(true);
-      const backendMembers = await getGroupMembers(groupId);
-      setMembers(backendMembers);
 
-      const ids = backendMembers.map(getMemberUserId).filter(Boolean);
-      setExpenseParticipantIds(ids);
+      const backendMembers = await getGroupMembers(groupId);
 
       const me = await getCurrentUser().catch(() => null);
       setCurrentUser(me);
 
-      const defaultPayer = me?.id ? String(me.id) : ids[0] || '';
+      const fullName = [me?.first_name, me?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      const currentUserName =
+        me?.art_name ||
+        me?.display_name ||
+        me?.username ||
+        fullName ||
+        me?.phone_number ||
+        me?.phone ||
+        '';
+
+      const normalizedMembers = backendMembers.map((member) => {
+        const isCurrentUser =
+          Boolean(me?.id) &&
+          getMemberUserId(member) === String(me?.id);
+
+        if (!isCurrentUser || !currentUserName) {
+          return member;
+        }
+
+        return {
+          ...member,
+          display_name: currentUserName,
+        };
+      });
+
+      setMembers(normalizedMembers);
+
+      const ids = normalizedMembers
+        .map(getMemberUserId)
+        .filter(Boolean);
+
+      setExpenseParticipantIds(ids);
+
+      const defaultPayer = me?.id
+        ? String(me.id)
+        : ids[0] || '';
+
       setExpensePayerId(defaultPayer);
     } catch (err) {
       console.error(err);
+
       notify({
         type: 'error',
         title: 'دریافت اعضا ناموفق بود',
-        description: getBackendMessage(err) || 'Network و Console را بررسی کن.',
+        description:
+          getBackendMessage(err) ||
+          'Network و Console را بررسی کن.',
       });
     } finally {
       setMembersLoading(false);
@@ -814,7 +877,19 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'لینک دعوت ساخته شد', description: 'لینک را کپی کن و برای کاربر دیگر بفرست.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'ساخت لینک دعوت ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+
+      const permissionDenied =
+        isApiError(err) && err.status === 403;
+
+      notify({
+        type: 'error',
+        title: permissionDenied
+          ? 'امکان ساخت لینک دعوت وجود ندارد'
+          : 'ساخت لینک دعوت انجام نشد',
+        description: permissionDenied
+          ? 'شما مدیر گروه نیستید و فعلاً اجازه ساخت لینک دعوت را ندارید.'
+          : getBackendMessage(err),
+      });
     } finally {
       setInviteLoading(false);
     }
