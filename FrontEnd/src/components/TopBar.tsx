@@ -1,5 +1,5 @@
 import { Bell, ChevronDown, Menu, Search } from 'lucide-react';
-import { LogoMark } from './Sidebar';
+import { LogoMark } from './BrandLogo';
 
 function HeaderAvatar({
   compact = false,
@@ -61,7 +61,7 @@ export function TopBar({
         </button>
 
         <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-3">
-          <LogoMark className="h-8 w-8" />
+          <LogoMark className="h-8 w-8 sm:h-9 sm:w-9" />
           <span className="truncate text-lg font-extrabold tracking-[-0.03em] text-text">
             همدنگ
           </span>
