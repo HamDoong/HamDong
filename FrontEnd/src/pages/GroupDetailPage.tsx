@@ -165,11 +165,25 @@ function getSettlementStatusLabel(status?: string) {
   if (status === 'ACTIVE') return 'فعال';
   if (status === 'DRAFT') return 'پیش‌نویس';
   if (status === 'COMPLETED') return 'تکمیل شده';
+  if (status === 'PENDING_CONFIRMATION') return 'در انتظار تأیید';
+  if (status === 'EXPIRED') return 'منقضی شده';
   return status;
 }
 
 function isOpenSettlementStatus(status?: string) {
-  return !status || ['PENDING', 'REPORTED', 'ACTIVE', 'DRAFT'].includes(status);
+  return !status || ['PENDING', 'PENDING_CONFIRMATION', 'REPORTED', 'ACTIVE', 'DRAFT'].includes(status);
+}
+
+function canModifyManualSettlement(status?: string) {
+  return status === 'PENDING_CONFIRMATION';
+}
+
+function canReportPlanItem(item: SettlementPlanItem, plan?: SettlementPlan | null) {
+  return plan?.status === 'ACTIVE' && ['PENDING', 'REJECTED'].includes(item.status || 'PENDING');
+}
+
+function canReviewPlanItem(item: SettlementPlanItem) {
+  return item.status === 'REPORTED';
 }
 
 function parseAmountToMinor(value: string) {
@@ -224,7 +238,7 @@ function getUserDisplayFromId(userId: string, members: BackendGroupMember[]) {
 }
 
 function getBalanceDisplayName(balance: BalanceItem, members: BackendGroupMember[]) {
-  return balance.display_name || balance.phone_number || getUserDisplayFromId(balance.user_id, members);
+  return balance.display_name || balance.art_name || balance.email || balance.phone_number || getUserDisplayFromId(balance.user_id, members);
 }
 
 function getDebtPartyName(userId: string, members: BackendGroupMember[]) {
@@ -232,8 +246,8 @@ function getDebtPartyName(userId: string, members: BackendGroupMember[]) {
 }
 
 function getPlanPartyName(item: SettlementPlanItem, type: 'payer' | 'receiver', members: BackendGroupMember[]) {
-  if (type === 'payer') return item.payer_display_name || getUserDisplayFromId(item.payer_user_id, members);
-  return item.receiver_display_name || getUserDisplayFromId(item.receiver_user_id, members);
+  if (type === 'payer') return item.payer_display_name || item.payer_art_name || getUserDisplayFromId(item.payer_user_id, members);
+  return item.receiver_display_name || item.receiver_art_name || getUserDisplayFromId(item.receiver_user_id, members);
 }
 
 function buildExpenseStats(expenses: BackendExpense[], members: BackendGroupMember[]) {
@@ -458,11 +472,11 @@ export function GroupDetailPage({
         listGroupSettlements(groupId),
       ]);
 
-      if (balancesResult.status === 'fulfilled') setBalances(balancesResult.value.balances || []);
-      if (myBalanceResult.status === 'fulfilled') setMyBalance(myBalanceResult.value);
-      if (debtsResult.status === 'fulfilled') setDebts(debtsResult.value.debts || []);
-      if (planResult.status === 'fulfilled') setSettlementPlan(planResult.value);
-      if (settlementsResult.status === 'fulfilled') setSettlements(settlementsResult.value || []);
+      setBalances(balancesResult.status === 'fulfilled' ? balancesResult.value.balances || [] : []);
+      setMyBalance(myBalanceResult.status === 'fulfilled' ? myBalanceResult.value : null);
+      setDebts(debtsResult.status === 'fulfilled' ? debtsResult.value.debts || [] : []);
+      setSettlementPlan(planResult.status === 'fulfilled' ? planResult.value : null);
+      setSettlements(settlementsResult.status === 'fulfilled' ? settlementsResult.value || [] : []);
     } catch (err) {
       console.error(err);
       notify({
@@ -1222,8 +1236,8 @@ export function GroupDetailPage({
                 ) : (
                   <div className="space-y-3">
                     {settlementPlan.items.map((item) => {
-                      const isPayer = item.payer_user_id === currentUserId;
-                      const isReceiver = item.receiver_user_id === currentUserId;
+                      const isPayer = item.payer_user_id === currentUserId && canReportPlanItem(item, settlementPlan);
+                      const isReceiver = item.receiver_user_id === currentUserId && canReviewPlanItem(item);
                       return (
                         <div key={item.id} className="rounded-2xl border border-border bg-slate-50 p-3 text-right">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1257,8 +1271,8 @@ export function GroupDetailPage({
                 ) : (
                   <div className="space-y-3">
                     {settlements.map((settlement) => {
-                      const isReceiver = settlement.receiver_user_id === currentUserId;
-                      const isPayer = settlement.payer_user_id === currentUserId;
+                      const isReceiver = settlement.receiver_user_id === currentUserId && canModifyManualSettlement(settlement.status);
+                      const isPayer = settlement.payer_user_id === currentUserId && canModifyManualSettlement(settlement.status);
                       return (
                         <div key={settlement.id} className="rounded-2xl border border-border bg-slate-50 p-3 text-right">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

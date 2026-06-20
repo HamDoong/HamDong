@@ -2,6 +2,7 @@ import { apiRequest } from './api';
 
 export type SettlementStatus =
   | 'PENDING'
+  | 'PENDING_CONFIRMATION'
   | 'REPORTED'
   | 'CONFIRMED'
   | 'REJECTED'
@@ -9,11 +10,14 @@ export type SettlementStatus =
   | 'ACTIVE'
   | 'DRAFT'
   | 'COMPLETED'
+  | 'EXPIRED'
   | string;
 
 export interface BalanceItem {
   user_id: string;
+  art_name?: string;
   display_name?: string;
+  email?: string;
   phone_number?: string;
   net_balance_minor: number;
   status?: string;
@@ -54,12 +58,15 @@ export interface GroupDebtsResponse {
 export interface SettlementPlanItem {
   id: string;
   payer_user_id: string;
+  payer_art_name?: string | null;
   payer_display_name?: string;
   receiver_user_id: string;
+  receiver_art_name?: string | null;
   receiver_display_name?: string;
   amount_minor: number;
   status?: SettlementStatus;
   order_index?: number;
+  manual_settlement_id?: string | null;
 }
 
 export interface SettlementPlan {
@@ -92,6 +99,11 @@ export interface GroupSettlementsResponse {
   settlements: SettlementItem[];
 }
 
+export interface SettlementMessageResponse {
+  message?: string;
+  manual_settlement_id?: string;
+}
+
 export interface CreateSettlementInput {
   receiver_user_id: string;
   amount_minor: number;
@@ -102,6 +114,17 @@ export interface CreateSettlementInput {
 function unwrapList<T>(data: T[] | { results?: T[]; data?: T[]; settlements?: T[] }) {
   if (Array.isArray(data)) return data;
   return data.results || data.data || data.settlements || [];
+}
+
+function normalizeSettlementPlan(plan: SettlementPlan): SettlementPlan {
+  return {
+    ...plan,
+    items: (plan.items || []).map((item) => ({
+      ...item,
+      payer_display_name: item.payer_display_name || item.payer_art_name || undefined,
+      receiver_display_name: item.receiver_display_name || item.receiver_art_name || undefined,
+    })),
+  };
 }
 
 export async function getGroupBalances(groupId: string) {
@@ -117,13 +140,16 @@ export async function getGroupDebts(groupId: string) {
 }
 
 export async function getSettlementPlan(groupId: string) {
-  return apiRequest<SettlementPlan>(`/groups/${groupId}/settlement-plan/`);
+  const plan = await apiRequest<SettlementPlan>(`/groups/${groupId}/settlement-plan/`);
+  return normalizeSettlementPlan(plan);
 }
 
 export async function generateSettlementPlan(groupId: string) {
-  return apiRequest<SettlementPlan>(`/groups/${groupId}/settlement-plan/generate/`, {
+  const plan = await apiRequest<SettlementPlan>(`/groups/${groupId}/settlement-plan/generate/`, {
     method: 'POST',
   });
+
+  return normalizeSettlementPlan(plan);
 }
 
 export async function listGroupSettlements(groupId: string) {
@@ -151,49 +177,52 @@ export async function createGroupSettlement(groupId: string, input: CreateSettle
 }
 
 export async function activateSettlementPlan(planId: string) {
-  return apiRequest<SettlementPlan>(`/settlement-plans/${planId}/activate/`, {
+  return apiRequest<SettlementMessageResponse>(`/settlement-plans/${planId}/activate/`, {
     method: 'POST',
   });
 }
 
 export async function cancelSettlementPlan(planId: string) {
-  return apiRequest<SettlementPlan>(`/settlement-plans/${planId}/cancel/`, {
+  return apiRequest<SettlementMessageResponse>(`/settlement-plans/${planId}/cancel/`, {
     method: 'POST',
   });
 }
 
-export async function reportPlanItemPaid(itemId: string) {
-  return apiRequest<SettlementPlanItem>(`/settlement-plan-items/${itemId}/report-paid/`, {
+export async function reportPlanItemPaid(itemId: string, description = '') {
+  return apiRequest<SettlementMessageResponse>(`/settlement-plan-items/${itemId}/report-paid/`, {
     method: 'POST',
+    body: JSON.stringify({ description }),
   });
 }
 
 export async function confirmPlanItem(itemId: string) {
-  return apiRequest<SettlementPlanItem>(`/settlement-plan-items/${itemId}/confirm/`, {
+  return apiRequest<SettlementMessageResponse>(`/settlement-plan-items/${itemId}/confirm/`, {
     method: 'POST',
   });
 }
 
-export async function rejectPlanItem(itemId: string) {
-  return apiRequest<SettlementPlanItem>(`/settlement-plan-items/${itemId}/reject/`, {
+export async function rejectPlanItem(itemId: string, reason = '') {
+  return apiRequest<SettlementMessageResponse>(`/settlement-plan-items/${itemId}/reject/`, {
     method: 'POST',
+    body: JSON.stringify({ reason }),
   });
 }
 
 export async function confirmSettlement(settlementId: string) {
-  return apiRequest<SettlementItem>(`/settlements/${settlementId}/confirm/`, {
+  return apiRequest<SettlementMessageResponse>(`/settlements/${settlementId}/confirm/`, {
     method: 'POST',
   });
 }
 
-export async function rejectSettlement(settlementId: string) {
-  return apiRequest<SettlementItem>(`/settlements/${settlementId}/reject/`, {
+export async function rejectSettlement(settlementId: string, reason = '') {
+  return apiRequest<SettlementMessageResponse>(`/settlements/${settlementId}/reject/`, {
     method: 'POST',
+    body: JSON.stringify({ reason }),
   });
 }
 
 export async function cancelSettlement(settlementId: string) {
-  return apiRequest<SettlementItem>(`/settlements/${settlementId}/cancel/`, {
+  return apiRequest<SettlementMessageResponse>(`/settlements/${settlementId}/cancel/`, {
     method: 'POST',
   });
 }

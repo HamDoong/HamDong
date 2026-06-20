@@ -26,6 +26,7 @@ import {
   type BackendGroupType,
 } from './lib/groupApi';
 import { getPendingNotificationCount } from './lib/notificationApi';
+import { getMyGroupBalance } from './lib/settlementApi';
 import { getCurrentUser, type CurrentUser } from './lib/userApi';
 import { ActivitiesPage } from './pages/ActivitiesPage';
 import {
@@ -135,6 +136,23 @@ async function buildGroupBalanceSummary(
   currentUser: CurrentUser | null,
 ): Promise<GroupBalanceSummary> {
   const userId = currentUser?.id ? String(currentUser.id) : '';
+
+  try {
+    const balance = await getMyGroupBalance(group.id);
+    const netMinor = balance.net_balance_minor || 0;
+
+    return {
+      groupId: group.id,
+      groupName: group.title,
+      status: group.status,
+      paidMinor: netMinor > 0 ? netMinor : 0,
+      shareMinor: netMinor < 0 ? Math.abs(netMinor) : 0,
+      netMinor,
+    };
+  } catch (error) {
+    console.warn(`Could not load settlement balance for group ${group.id}. Falling back to expense math.`, error);
+  }
+
   const expenses = await listGroupExpenses(group.id, { page_size: 100 }).catch(() => []);
   const activeExpenses = expenses.filter(
     (expense) => expense.status !== 'DELETED' && expense.status !== 'CANCELLED',
