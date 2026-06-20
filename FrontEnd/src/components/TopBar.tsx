@@ -1,5 +1,6 @@
 import { Bell, ChevronDown, Menu, Search } from 'lucide-react';
 import { LogoMark } from './BrandLogo';
+import { ThemeToggle } from './theme/ThemeToggle';
 
 function HeaderAvatar({
   compact = false,
@@ -49,7 +50,7 @@ export function TopBar({
   onOpenNotifications,
 }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-20 border-b border-border/90 bg-white/95 backdrop-blur">
+    <header className="app-topbar sticky top-0 z-20 border-b border-border/90 bg-white/95 backdrop-blur">
       <div className="flex h-[78px] items-center justify-between px-4 sm:h-[86px] sm:px-6 lg:hidden">
         <button
           type="button"
@@ -68,6 +69,7 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
+          <ThemeToggle className="h-10 w-10 rounded-full sm:h-10 sm:w-10" />
           <button
             type="button"
             onClick={onOpenNotifications}
@@ -118,6 +120,8 @@ export function TopBar({
               </span>
             ) : null}
           </button>
+
+          <ThemeToggle className="h-11 w-11 rounded-full" />
         </div>
 
         <DesktopSearch />

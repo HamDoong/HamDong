@@ -253,6 +253,18 @@
   user-select: none;
 }
 
+.auth-theme-toggle {
+  position: fixed;
+  z-index: 30;
+  top: max(0.9rem, env(safe-area-inset-top));
+  right: max(1rem, calc((100vw - 1480px) / 2 + clamp(1.25rem, 4.2vw, 5rem)));
+  left: auto;
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 1rem;
+}
+
 .login-form-panel {
   position: relative;
   display: flex;
@@ -891,6 +903,12 @@
 }
 
 @media (max-width: 1120px) {
+  .auth-theme-toggle {
+    top: 0.85rem;
+    right: auto;
+    left: max(0.9rem, calc((100vw - min(32rem, calc(100vw - 2rem))) / 2));
+  }
+
   .login-page {
     height: 100vh;
     height: 100svh;
@@ -986,6 +1004,14 @@
 }
 
 @media (max-width: 760px) {
+  .auth-theme-toggle {
+    top: max(0.7rem, env(safe-area-inset-top));
+    left: max(0.75rem, calc((100dvw - min(22.5rem, calc(100dvw - 3rem))) / 2));
+    width: 2.45rem;
+    height: 2.45rem;
+    border-radius: 0.86rem;
+  }
+
   .login-page {
     direction: ltr;
     width: 100vw;
@@ -1202,6 +1228,13 @@
 }
 
 @media (max-width: 360px) {
+  .auth-theme-toggle {
+    top: 0.45rem;
+    left: 0.7rem;
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
   .login-main {
     height: 100svh;
     min-height: 0;
@@ -1302,5 +1335,193 @@
   .login-register {
     margin-top: 0.46rem;
     font-size: 0.76rem;
+  }
+}
+
+html.dark .login-page {
+  color: rgb(var(--color-text));
+  background:
+    linear-gradient(135deg, var(--bg-app) 0%, var(--bg-header) 52%, var(--bg-app) 100%);
+}
+
+html.dark .login-copy h2,
+html.dark .login-benefit strong,
+html.dark .login-card-heading h1,
+html.dark .login-field,
+html.dark .login-social-grid button,
+html.dark .login-footer svg {
+  color: rgb(var(--color-text));
+}
+
+html.dark .login-copy h2 span,
+html.dark .login-card-heading h1 span,
+html.dark .login-register button,
+html.dark .login-input-icon {
+  color: var(--brand-primary-light);
+}
+
+html.dark .login-benefit small,
+html.dark .login-card-heading p,
+html.dark .signup-profile-hint,
+html.dark .login-options-row,
+html.dark .login-footer,
+html.dark .login-footer nav a {
+  color: var(--text-secondary);
+}
+
+html.dark .login-benefit-icon {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.22), transparent 34%),
+    linear-gradient(135deg, #10B981 0%, #07966E 48%, #05624F 100%);
+  border-color: rgba(10, 24, 38, 0.9);
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.28),
+    var(--shadow-green);
+}
+
+html.dark .login-card {
+  background: rgba(15, 34, 51, 0.9);
+  border-color: rgb(var(--color-border) / 0.9);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.18),
+    0 8px 20px rgba(16, 185, 129, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html.dark .login-auth-tabs {
+  background: rgba(11, 27, 42, 0.94);
+  border-color: rgb(var(--color-border) / 0.9);
+}
+
+html.dark .login-auth-tabs button {
+  color: var(--text-secondary);
+}
+
+html.dark .login-auth-tabs button.is-active {
+  color: var(--text-primary);
+  background: var(--surface-active);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+html.dark .signup-step-indicator span {
+  color: var(--text-muted);
+  background: rgb(var(--color-surface-muted));
+  border-color: rgb(var(--color-border));
+}
+
+html.dark .signup-step-indicator span.is-active,
+html.dark .signup-step-indicator span.is-complete {
+  color: var(--text-inverse);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+html.dark .signup-step-indicator i {
+  background: rgb(var(--color-border));
+}
+
+html.dark .signup-step-indicator i.is-complete {
+  background: var(--brand-primary);
+}
+
+html.dark .login-input-wrap,
+html.dark .login-social-grid button,
+html.dark .login-options-row input {
+  background: rgba(11, 27, 42, 0.86);
+  border-color: rgb(var(--color-border) / 0.9);
+}
+
+html.dark .login-input-wrap:focus-within {
+  border-color: rgba(16, 185, 129, 0.54);
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+}
+
+html.dark .login-input-wrap input {
+  color: rgb(var(--color-text));
+}
+
+html.dark .login-input-icon-muted,
+html.dark .login-password-toggle {
+  color: var(--text-muted);
+}
+
+html.dark .login-password-toggle:hover .login-input-icon,
+html.dark .login-password-toggle:focus-visible .login-input-icon {
+  color: rgb(var(--color-text));
+}
+
+html.dark .login-secondary-action {
+  color: var(--brand-primary-light);
+  background: var(--surface-active);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+html.dark .login-secondary-action:hover {
+  color: var(--text-primary);
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.42);
+}
+
+html.dark .login-form-message-error {
+  color: var(--danger);
+  background: rgba(255, 92, 122, 0.11);
+  border-color: rgba(255, 92, 122, 0.24);
+}
+
+html.dark .login-form-message-success {
+  color: var(--success);
+  background: rgba(34, 199, 138, 0.11);
+  border-color: rgba(34, 199, 138, 0.22);
+}
+
+html.dark .login-submit {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.2), transparent 28%),
+    linear-gradient(135deg, #10B981 0%, #07966E 48%, #05624F 100%);
+  box-shadow:
+    0 10px 24px rgba(16, 185, 129, 0.1),
+    0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+html.dark .login-footer {
+  background: rgba(10, 24, 38, 0.78);
+  border-color: rgb(var(--color-border) / 0.78);
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.22);
+}
+
+html.dark .login-footer nav a + a::before,
+html.dark .login-divider::before,
+html.dark .login-divider::after {
+  background: rgb(var(--color-border));
+}
+
+html.dark .login-settled-badge {
+  color: var(--brand-primary-light);
+  background: rgba(15, 34, 51, 0.94);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.18),
+    0 4px 12px rgba(16, 185, 129, 0.06);
+}
+
+html.dark .login-settled-badge::after {
+  background: rgba(15, 34, 51, 0.94);
+}
+
+html.dark .login-wallet-asset {
+  content: url("/login/wallet-coins-receipt-dark.png");
+  mix-blend-mode: normal;
+  width: 12rem;
+  bottom: 1.35rem;
+  left: 48%;
+  filter: drop-shadow(0 22px 9px rgba(0, 0, 0, 0.28));
+}
+
+@media (max-width: 1320px) {
+  html.dark .login-wallet-asset {
+    width: 11.5rem;
+    bottom: 1.15rem;
+    left: 46%;
   }
 }

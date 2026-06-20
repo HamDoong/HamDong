@@ -52,7 +52,7 @@ export function MobileDrawer({
         aria-modal="true"
         aria-label="منوی موبایل"
         className={[
-          'absolute right-0 top-0 h-full w-[88vw] max-w-[360px] border-l border-border/90 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out',
+          'app-sidebar-drawer absolute right-0 top-0 h-full w-[88vw] max-w-[360px] border-l border-border/90 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out',
           open ? 'translate-x-0' : 'translate-x-full',
         ].join(' ')}
       >

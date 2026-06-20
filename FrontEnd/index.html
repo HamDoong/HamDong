@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/brand/hamdong-logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (() => {
+        try {
+          const storedSource = localStorage.getItem('hamdong-theme-source');
+          const storedTheme = localStorage.getItem('hamdong-theme');
+          const hasManualTheme =
+            storedSource === 'manual' && (storedTheme === 'dark' || storedTheme === 'light');
+          const prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const theme = hasManualTheme ? storedTheme : prefersDark ? 'dark' : 'light';
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
     <title>همدنگ | مدیریت هزینه‌های گروهی</title>
     <meta
       name="description"

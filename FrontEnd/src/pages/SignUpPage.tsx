@@ -8,6 +8,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { isApiError } from '../lib/api';
+import { ThemeToggle } from '../components/theme/ThemeToggle';
 import {
   requestLoginOtp,
   setInitialPassword,
@@ -427,6 +428,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 export function SignUpPage({ onLogin, onSignUp }: SignUpPageProps) {
   return (
     <main className="login-page" dir="rtl">
+      <ThemeToggle className="auth-theme-toggle" />
       <section className="login-main">
         <AuthShowcase />
 

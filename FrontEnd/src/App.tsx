@@ -10,6 +10,7 @@ import {
 import { FeedbackProvider, useFeedback } from './components/feedback/FeedbackProvider';
 import { MobileDrawer } from './components/MobileDrawer';
 import { Sidebar } from './components/Sidebar';
+import { ThemeProvider } from './components/theme/ThemeProvider';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
 import { logoutCurrentUser } from './lib/authApi';
@@ -675,9 +676,11 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <FeedbackProvider>
-        <AppRoutes />
-      </FeedbackProvider>
+      <ThemeProvider>
+        <FeedbackProvider>
+          <AppRoutes />
+        </FeedbackProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

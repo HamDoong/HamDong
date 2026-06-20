@@ -86,7 +86,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'flex flex-col bg-white',
+        'app-sidebar flex flex-col bg-white',
         mobile ? 'h-full w-full' : 'h-screen',
         className,
       )}

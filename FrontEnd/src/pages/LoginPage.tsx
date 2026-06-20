@@ -21,6 +21,7 @@ import {
   requestLoginOtp,
   verifyLoginOtp,
 } from '../lib/authApi';
+import { ThemeToggle } from '../components/theme/ThemeToggle';
 import './LoginPage.css';
 
 type LoginPageProps = {
@@ -479,6 +480,7 @@ export function AuthShowcase() {
 export function LoginPage({ onLogin, onSignUp }: LoginPageProps) {
   return (
     <main className="login-page" dir="rtl">
+      <ThemeToggle className="auth-theme-toggle" />
       <section className="login-main">
         <AuthShowcase />
 
