@@ -17,7 +17,7 @@ class IdentityEventPublishingTestCase(TestCase):
     """Test identity event publishing from use cases."""
 
     def setUp(self):
-        self.email = "09123456789"
+        self.email = "artist@example.com"
 
     def tearDown(self):
         User.objects.all().delete()
@@ -59,7 +59,7 @@ class IdentityEventPublishingTestCase(TestCase):
         return_value=("access", "refresh", "jti"),
     )
     @patch("apps.identity.application.use_cases.UserService.update_last_login")
-    @patch("apps.identity.application.use_cases.UserService.mark_phone_verified")
+    @patch("apps.identity.application.use_cases.UserService.mark_email_verified")
     @patch("apps.identity.application.use_cases.UserService.get_or_create")
     @patch(
         "apps.identity.application.use_cases.OtpService.verify_otp",
@@ -111,16 +111,16 @@ class IdentityEventPublishingTestCase(TestCase):
         self, update_profile_mock, publish_mock
     ):
         user = User.objects.create(
-            email=self.email, art_name="Old Name"
+            email=self.email, art_name="old-name"
         )
-        user.art_name = "New Name"
+        user.art_name = "new-name"
         update_profile_mock.return_value = user
 
         use_case = UpdateProfileUseCase()
-        success, updated_user = use_case.execute(user, art_name="New Name")
+        success, updated_user = use_case.execute(user, art_name="new-name")
 
         self.assertTrue(success)
-        self.assertEqual(updated_user.art_name, "New Name")
+        self.assertEqual(updated_user.art_name, "new-name")
         publish_mock.assert_called_once()
 
         event_data, routing_key = publish_mock.call_args.args
@@ -134,7 +134,7 @@ class IdentityEventPublishingTestCase(TestCase):
     )
     @patch(
         "apps.identity.application.use_cases.OtpService.request_otp",
-        return_value=(True, None, None),
+        return_value=(True, None, "123456", None),
     )
     def test_rabbitmq_unavailable_does_not_break_otp_request(
         self, request_otp_mock, publish_mock

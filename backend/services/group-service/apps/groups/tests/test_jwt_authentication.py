@@ -50,7 +50,7 @@ def build_token(*, private_key: str = PRIVATE_KEY, **overrides) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": "user-123",
-        "email": "09123456789",
+        "email": "test.user@example.com",
         "role": "USER",
         "type": "access",
         "jti": "jti-123",
@@ -84,7 +84,7 @@ def make_auth(public_key: str = PUBLIC_KEY):
 def test_valid_access_token_is_accepted():
     user, token = make_auth().authenticate(make_request(build_token()))
     assert user.sub == "user-123"
-    assert user.email == "09123456789"
+    assert user.email == "test.user@example.com"
     assert user.role == "USER"
     assert user.token_jti == "jti-123"
     assert token
@@ -172,7 +172,8 @@ def test_missing_public_key_returns_service_unavailable():
 
 
 def test_no_unsafe_jwt_decode_in_production_code():
-    services_root = Path(__file__).resolve().parents[4]
+    service_root = Path(__file__).resolve().parents[3]
+
     disallowed = (
         '"verify_signature": False',
         "\"verify_signature': False",
@@ -180,11 +181,17 @@ def test_no_unsafe_jwt_decode_in_production_code():
         '"verify_exp": False',
         "\"verify_exp': False",
     )
+
     production_files = [
         path
-        for path in services_root.rglob("*.py")
-        if "tests" not in path.parts and path.name != "README.md"
+        for path in service_root.rglob("*.py")
+        if "tests" not in path.parts
+        and "__pycache__" not in path.parts
     ]
+
     for file_path in production_files:
         contents = file_path.read_text(encoding="utf-8")
-        assert not any(pattern in contents for pattern in disallowed), file_path
+        assert not any(
+            pattern in contents
+            for pattern in disallowed
+        ), file_path

@@ -48,7 +48,7 @@ class OtpService:
         logger.info("OTP requested for email=%s", EmailRule.mask(normalized_email))
 
         debug_otp = None
-        if settings.OTP_DEBUG_RETURN_CODE:
+        if settings.DEBUG and settings.OTP_DEBUG_RETURN_CODE:
             debug_otp = otp_code
 
         return True, None, otp_code, debug_otp

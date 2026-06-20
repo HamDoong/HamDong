@@ -10,13 +10,23 @@ from apps.groups.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 
 
 class FakeUser:
-    def __init__(self, sub=None, email="+10000000000", art_name="Test User", role="USER"):
+    def __init__(
+        self,
+        sub=None,
+        email="test.user@example.com",
+        art_name="test_user",
+        role="USER",
+    ):
         self.sub = sub or uuid.uuid4()
         self.id = str(self.sub)
         self.email = email
         self.art_name = art_name
         self.role = role
-        self.payload = {"sub": str(self.sub), "email": email, "role": role}
+        self.payload = {
+            "sub": str(self.sub),
+            "email": email,
+            "role": role,
+        }
 
     @property
     def is_authenticated(self):
@@ -130,9 +140,17 @@ def test_member_list_remove_and_leave(api_client):
 @pytest.mark.django_db
 def test_user_projection_consumer():
     uid = uuid.uuid4()
-    UserProjection.objects.create(identity_user_id=uid, email="+1234567890")
-    up = UserProjection.objects.filter(identity_user_id=uid).first()
-    assert up is not None
+
+    UserProjection.objects.create(
+        identity_user_id=uid,
+        email="projection.user@example.com",
+        art_name="projection_user",
+    )
+
+    projection = UserProjection.objects.get(identity_user_id=uid)
+
+    assert projection.email == "projection.user@example.com"
+    assert projection.art_name == "projection_user"
 
 
 @pytest.mark.django_db

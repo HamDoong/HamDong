@@ -8,12 +8,23 @@ from apps.groups.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 
 
 class FakeUser:
-    def __init__(self, sub=None, email="+10000000000", art_name="Test User", role="USER"):
+    def __init__(
+        self,
+        sub=None,
+        email="test.user@example.com",
+        art_name="test_user",
+        role="USER",
+    ):
         self.sub = sub or uuid.uuid4()
         self.id = str(self.sub)
         self.email = email
         self.art_name = art_name
         self.role = role
+        self.payload = {
+            "sub": str(self.sub),
+            "email": email,
+            "role": role,
+        }
 
     @property
     def is_authenticated(self):
@@ -34,15 +45,7 @@ def disable_publishing(monkeypatch):
 
 def auth_client(monkeypatch, user):
     client = APIClient()
-
-    def fake_auth(self, request):
-        auth = request.META.get("HTTP_AUTHORIZATION")
-        if not auth:
-            return None
-        return (user, None)
-
-    monkeypatch.setattr(JWTAuthentication, "authenticate", fake_auth)
-    client.credentials(HTTP_AUTHORIZATION="Bearer faketoken")
+    client.force_authenticate(user=user)
     return client
 
 
@@ -86,7 +89,7 @@ def test_title_parts_and_removed_member_requires_new_invite(monkeypatch):
     invite = owner_client.post(f"/api/v1/groups/{group_id}/invites/", {"max_uses": 3}, format="json")
     token = invite.json()["invite_url"].rstrip("/").split("/")[-1]
 
-    removed_user = FakeUser(sub=uuid.uuid4(), email="+10000000001")
+    removed_user = FakeUser(sub=uuid.uuid4(), email="removed.user@example.com", art_name="removed_user")
     removed_client = auth_client(monkeypatch, removed_user)
     first_accept = removed_client.post(f"/api/v1/groups/invites/{token}/accept/", format="json")
     assert first_accept.status_code == 200

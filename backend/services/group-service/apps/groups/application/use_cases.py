@@ -51,7 +51,15 @@ class CreateGroupUseCase:
         self.publisher.publish("GroupCreated", {"group_id": str(group.id), "created_by": creator.sub}, "group.created")
         self.publisher.publish(
             "GroupMemberJoined",
-            {"group_id": str(group.id), "user_id": creator.sub, "role": "OWNER", "join_reason": "NEW_JOIN"},
+            {
+                "group_id": str(group.id),
+                "user_id": str(creator.sub),
+                "email": creator.email,
+                "art_name": getattr(creator, "art_name", None),
+                "role": "OWNER",
+                "status": "ACTIVE",
+                "join_reason": "NEW_JOIN",
+            },
             "group.member.joined",
         )
         return group
@@ -331,7 +339,19 @@ class InviteService:
         invite.group.save(update_fields=["member_count", "updated_at"])
 
         self.publisher.publish("GroupInviteAccepted", {"group_id": str(invite.group.id), "invite_id": str(invite.id), "user_id": user.sub}, "group.invite.accepted")
-        self.publisher.publish("GroupMemberJoined", {"group_id": str(invite.group.id), "user_id": user.sub, "join_reason": join_reason}, "group.member.joined")
+        self.publisher.publish(
+            "GroupMemberJoined",
+            {
+                "group_id": str(invite.group.id),
+                "user_id": str(user.sub),
+                "email": member.email,
+                "art_name": member.art_name_snapshot,
+                "role": member.role,
+                "status": member.status,
+                "join_reason": join_reason,
+            },
+            "group.member.joined",
+        )    
         return member
 
     def revoke_invite(self, invite, actor):

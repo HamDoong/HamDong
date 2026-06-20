@@ -103,7 +103,35 @@ class AuthenticatedNotificationAPIView(APIView):
 
     def handle_exception(self, exc):
         if isinstance(exc, (AuthenticationFailed, NotAuthenticated)):
-            return _error_response("NOT_AUTHENTICATED", "Authentication credentials were not provided.", status.HTTP_401_UNAUTHORIZED)
+            return _error_response(
+                "NOT_AUTHENTICATED",
+                "Authentication credentials were not provided.",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+    
+        if isinstance(exc, PermissionError):
+            return _error_response(
+                str(exc),
+                "You do not have permission to perform this action.",
+                status.HTTP_403_FORBIDDEN,
+            )
+    
+        if isinstance(exc, ValueError):
+            error_code = str(exc)
+    
+            if error_code == "NOTIFICATION_NOT_EDITABLE":
+                return _error_response(
+                    error_code,
+                    "This notification can no longer be edited.",
+                    status.HTTP_409_CONFLICT,
+                )
+    
+            return _error_response(
+                error_code,
+                "The requested operation is invalid.",
+                status.HTTP_400_BAD_REQUEST,
+            )
+    
         return super().handle_exception(exc)
 
 

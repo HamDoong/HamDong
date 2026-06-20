@@ -12,17 +12,29 @@ from apps.notifications.domain.models import (
     NotificationStatusChoices,
     ProviderDeliveryLog,
 )
-from apps.notifications.infrastructure.providers.base import SmsProviderError
+from apps.notifications.infrastructure.providers.base import EmailProviderError
 
 
 class FailingProvider:
     provider_name = "fake"
 
-    def send_email(self, email: str, message: str):
-        raise SmsProviderError("EMAIL_PROVIDER_FAILED", "Provider failure")
+    def send_email(
+        self,
+        email: str,
+        subject: str,
+        body: str,
+    ):
+        raise EmailProviderError("Provider failure")
 
-    def send_otp(self, email: str, code: str, expires_in: int):
-        raise SmsProviderError("EMAIL_PROVIDER_FAILED", "Provider failure")
+    def send_otp(
+        self,
+        email: str,
+        code: str,
+        expires_in: int,
+        subject: str,
+        body: str,
+    ):
+        raise EmailProviderError("Provider failure")
 
 
 class SmsFlowTests(TestCase):
@@ -57,18 +69,18 @@ class SmsFlowTests(TestCase):
         notification_message = service.handle_otp_command(payload)
 
         self.assertEqual(notification_message.status, NotificationStatusChoices.SENT)
-        self.assertEqual(notification_message.recipient_masked, "0912***6789")
+        self.assertEqual(notification_message.recipient_masked, "ar***@e***.com")
         self.assertEqual(NotificationMessage.objects.count(), 1)
         self.assertEqual(ProviderDeliveryLog.objects.count(), 1)
 
         log = ProviderDeliveryLog.objects.first()
-        self.assertEqual(log.request_payload_masked["email"], "0912***6789")
+        self.assertEqual(log.request_payload_masked["email"], "ar***@e***.com")
         self.assertEqual(log.request_payload_masked["code"], "******")
         self.assertNotIn("123456", json.dumps(log.request_payload_masked))
         self.assertNotIn("123456", json.dumps(log.response_payload))
 
     @override_settings(EMAIL_PROVIDER="fake", EMAIL_OTP_MAX_RETRIES=0)
-    @patch("apps.notifications.application.sms_service.get_sms_provider")
+    @patch("apps.notifications.application.sms_service.get_email_provider")
     def test_notification_message_failed_on_provider_failure(self, provider_mock):
         service = EmailService()
         provider_mock.return_value = FailingProvider()
@@ -98,7 +110,7 @@ class SmsFlowTests(TestCase):
         EMAIL_OTP_RETRY_DELAYS_SECONDS="0",
     )
     @patch("apps.notifications.application.sms_service.time.sleep", return_value=None)
-    @patch("apps.notifications.application.sms_service.get_sms_provider")
+    @patch("apps.notifications.application.sms_service.get_email_provider")
     def test_circuit_breaker_opens_after_repeated_provider_failures(
         self, provider_mock, sleep_mock
     ):
@@ -152,7 +164,7 @@ class SmsFlowTests(TestCase):
         self.assertEqual(ProviderDeliveryLog.objects.count(), 1)
 
     @override_settings(EMAIL_PROVIDER="fake")
-    def test_raw_otp_is_not_stored_and_phone_is_masked(self):
+    def test_raw_otp_is_not_stored_and_email_is_masked(self):
         service = EmailService()
         payload = {
             "event_id": "event-5",
@@ -170,9 +182,9 @@ class SmsFlowTests(TestCase):
         notification_message = service.handle_otp_command(payload)
         log = ProviderDeliveryLog.objects.first()
 
-        self.assertEqual(notification_message.recipient_masked, "0912***6789")
+        self.assertEqual(notification_message.recipient_masked, "ar***@e***.com")
         self.assertNotIn(
             "654321", json.dumps(notification_message.__dict__, default=str)
         )
-        self.assertEqual(log.request_payload_masked["email"], "0912***6789")
+        self.assertEqual(log.request_payload_masked["email"], "ar***@e***.com")
         self.assertNotIn("654321", json.dumps(log.request_payload_masked))
