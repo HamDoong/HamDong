@@ -205,7 +205,12 @@ class EmailService:
                 raise EmailProviderError(result.error_code or "EMAIL_PROVIDER_FAILED")
             except (EmailProviderError, InvalidEmailProviderError, pybreaker.CircuitBreakerError) as exc:
                 duration_ms = int((time.perf_counter() - started) * 1000)
-                error_code = str(exc) if isinstance(exc, InvalidEmailProviderError) else "EMAIL_PROVIDER_FAILED"
+                if isinstance(exc, pybreaker.CircuitBreakerError):
+                    error_code = "EMAIL_CIRCUIT_OPEN"
+                elif isinstance(exc, InvalidEmailProviderError):
+                    error_code = "INVALID_EMAIL_PROVIDER"
+                else:
+                    error_code = "EMAIL_PROVIDER_FAILED"
                 self._log_attempt(
                     notification_message,
                     request_payload=request_payload,
@@ -229,29 +234,37 @@ class EmailService:
 
     def handle_otp_command(self, payload: dict):
         data = payload.get("data") or {}
+
         normalized_email = EmailRule.normalize(data.get("email"))
         if not normalized_email:
             raise ValueError("INVALID_EMAIL")
 
         code = data["code"]
         expires_in = int(data["expires_in"])
+
         template_code, subject, body = self.template_service.render_otp_message(
             code=code,
             expires_in=expires_in,
         )
+
         metadata = {
             "purpose": data.get("purpose", "login"),
             "expires_in": expires_in,
             "event_id": payload.get("event_id"),
         }
+
         provider_name = self._current_provider_name()
+
+        # Never persist the raw OTP code in the database.
+        stored_body = sanitize_message_text(body)
+
         notification_message = self.repository.create_notification_message(
             recipient_user_id=None,
             recipient_email=normalized_email,
             channel=NotificationChannelChoices.EMAIL,
             message_type=NotificationMessageTypeChoices.OTP,
             title=subject,
-            body=body,
+            body=stored_body,
             metadata=metadata,
             recipient=normalized_email,
             recipient_masked=EmailRule.mask(normalized_email),
@@ -259,12 +272,41 @@ class EmailService:
             provider=provider_name,
             status=NotificationStatusChoices.PENDING,
         )
+
         request_payload = self._build_otp_payload(
             normalized_email,
             code,
             expires_in,
             data.get("purpose", "login"),
         )
+
+        expires_at = self._parse_expires_at(
+            payload.get("occurred_at"),
+            expires_in,
+        )
+
+        if django_timezone.now() >= expires_at:
+            error_message = "OTP expired before email delivery."
+
+            notification_message = self.repository.update_notification_message(
+                notification_message,
+                status=NotificationStatusChoices.SKIPPED,
+                error_code="OTP_EXPIRED",
+                error_message=error_message,
+                last_error=error_message,
+                last_attempt_at=django_timezone.now(),
+            )
+
+            self._log_attempt(
+                notification_message,
+                request_payload=request_payload,
+                response_payload={"error": "OTP_EXPIRED"},
+                is_success=False,
+                duration_ms=0,
+            )
+
+            return notification_message
+
         return self._deliver_message(
             notification_message=notification_message,
             email=normalized_email,
@@ -274,7 +316,6 @@ class EmailService:
             code=code,
             expires_in=expires_in,
         )
-
 
 # Compatibility alias.
 SmsService = EmailService

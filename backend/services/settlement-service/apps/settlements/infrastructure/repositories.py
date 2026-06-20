@@ -57,8 +57,18 @@ class UserProjectionRepository:
             "is_active": data.get("is_active", True),
         }
         obj, _ = UserProjection.objects.update_or_create(
-            identity_user_id=identity_user_id, defaults=defaults
+            identity_user_id=identity_user_id,
+            defaults=defaults,
         )
+        
+        GroupMemberProjection.objects.filter(
+            user_id=identity_user_id,
+        ).update(
+            email=obj.email,
+            art_name_snapshot=obj.art_name,
+            updated_at=timezone.now(),
+        )
+        
         return obj
 
     @staticmethod

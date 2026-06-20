@@ -87,7 +87,20 @@ class RequestOtpView(APIView):
     def post(self, request):
         serializer = RequestOtpSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         email = serializer.validated_data["email"]
         use_case = RequestOtpUseCase()
@@ -125,7 +138,20 @@ class VerifyOtpView(APIView):
     def post(self, request):
         serializer = VerifyOtpSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         user_agent = request.META.get("HTTP_USER_AGENT")
         ip_address = self._get_client_ip(request)
@@ -163,7 +189,20 @@ class RefreshTokenView(APIView):
     def post(self, request):
         serializer = RefreshTokenSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         user_agent = request.META.get("HTTP_USER_AGENT")
         ip_address = VerifyOtpView._get_client_ip(request)
@@ -186,7 +225,20 @@ class LogoutView(APIView):
     def post(self, request):
         serializer = LogoutSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         success, _ = LogoutUseCase().execute(serializer.validated_data["refresh_token"])
         if not success:
@@ -207,7 +259,20 @@ class PasswordSetView(APIView):
 
         serializer = PasswordSetSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         success, error_code = SetPasswordUseCase().execute(
             user,
@@ -233,7 +298,20 @@ class PasswordLoginView(APIView):
     def post(self, request):
         serializer = PasswordLoginSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         user_agent = request.META.get("HTTP_USER_AGENT")
         ip_address = VerifyOtpView._get_client_ip(request)
@@ -260,7 +338,20 @@ class PasswordChangeView(APIView):
 
         serializer = PasswordChangeSerializer(data=request.data)
         if not serializer.is_valid():
-            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response(
+                    "INVALID_EMAIL",
+                    "Invalid email format.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
+            return _error_response(
+                "INVALID_REQUEST",
+                "Invalid request data.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
 
         success, error_code = ChangePasswordUseCase().execute(
             user,

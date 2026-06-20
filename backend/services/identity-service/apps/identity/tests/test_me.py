@@ -19,8 +19,8 @@ class GetCurrentUserTestCase(TestCase):
 
         # Create a test user with full data
         self.user = User.objects.create(
-            email="09123456789",
-            art_name="Ali Ahmadi",
+            email="ali@example.com",
+            art_name="ali-ahmadi",
             first_name="Ali",
             last_name="Ahmadi",
             is_email_verified=True,
@@ -58,8 +58,8 @@ class GetCurrentUserTestCase(TestCase):
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert str(data["id"]) == str(self.user.id)
-        assert data["email"] == "09123456789"
-        assert data["art_name"] == "Ali Ahmadi"
+        assert data["email"] == "ali@example.com"
+        assert data["art_name"] == "ali-ahmadi"
         assert data["first_name"] == "Ali"
         assert data["last_name"] == "Ahmadi"
         assert data["is_email_verified"] is True
@@ -68,7 +68,7 @@ class GetCurrentUserTestCase(TestCase):
     def test_get_current_user_minimal_data(self):
         """Test getting current user with minimal data."""
         # Create user with minimal data
-        user = User.objects.create(email="09999888777")
+        user = User.objects.create(email="minimal@example.com")
         access_token, _, _ = self.token_service.generate_tokens(user)
 
         response = self.client.get(
@@ -78,8 +78,8 @@ class GetCurrentUserTestCase(TestCase):
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["email"] == "09999888777"
-        assert data["art_name"] is None
+        assert data["email"] == "minimal@example.com"
+        assert data["art_name"] == ""
         assert data["first_name"] is None
         assert data["last_name"] is None
 
@@ -94,8 +94,8 @@ class UpdateCurrentUserTestCase(TestCase):
 
         # Create a test user
         self.user = User.objects.create(
-            email="09123456789",
-            art_name="Old Name",
+            email="ali@example.com",
+            art_name="old-name",
         )
 
     def tearDown(self):
@@ -105,7 +105,7 @@ class UpdateCurrentUserTestCase(TestCase):
         """Test updating current user without token fails."""
         response = self.client.patch(
             self.url,
-            {"art_name": "New Name"},
+            {"art_name": "new-name"},
             format="json",
         )
 
@@ -117,18 +117,18 @@ class UpdateCurrentUserTestCase(TestCase):
 
         response = self.client.patch(
             self.url,
-            {"art_name": "Ali Ahmadi"},
+            {"art_name": "ali-ahmadi"},
             format="json",
             HTTP_AUTHORIZATION=f"Bearer {access_token}",
         )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["art_name"] == "Ali Ahmadi"
+        assert data["art_name"] == "ali-ahmadi"
 
         # Verify in database
         self.user.refresh_from_db()
-        assert self.user.art_name == "Ali Ahmadi"
+        assert self.user.art_name == "ali-ahmadi"
 
     def test_update_current_user_first_and_last_name(self):
         """Test updating first and last name."""
@@ -153,7 +153,7 @@ class UpdateCurrentUserTestCase(TestCase):
         response = self.client.patch(
             self.url,
             {
-                "art_name": "Ali Ahmadi",
+                "art_name": "ali-ahmadi",
                 "first_name": "Ali",
                 "last_name": "Ahmadi",
             },
@@ -163,7 +163,7 @@ class UpdateCurrentUserTestCase(TestCase):
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["art_name"] == "Ali Ahmadi"
+        assert data["art_name"] == "ali-ahmadi"
         assert data["first_name"] == "Ali"
         assert data["last_name"] == "Ahmadi"
 
@@ -198,18 +198,18 @@ class UpdateCurrentUserTestCase(TestCase):
         # Verify other fields unchanged
         self.user.refresh_from_db()
         assert self.user.first_name == "Ahmad"
-        assert self.user.art_name == "Old Name"  # Unchanged
+        assert self.user.art_name == "old-name"  # Unchanged
 
-    def test_update_current_user_cant_change_phone(self):
-        """Test that phone number can't be changed."""
+    def test_update_current_user_cannot_change_email(self):
+        """Test that email cannot be changed through profile update."""
         access_token, _, _ = self.token_service.generate_tokens(self.user)
 
-        # Try to change phone (should be ignored)
+        # Try to change email (should be ignored)
         response = self.client.patch(
             self.url,
             {
-                "art_name": "New Name",
-                "email": "09999999999",  # Should be ignored
+                "art_name": "new-name",
+                "email": "changed@example.com",  # Should be ignored
             },
             format="json",
             HTTP_AUTHORIZATION=f"Bearer {access_token}",
@@ -217,6 +217,6 @@ class UpdateCurrentUserTestCase(TestCase):
 
         assert response.status_code == status.HTTP_200_OK
 
-        # Verify phone unchanged
+        # Verify email unchanged
         self.user.refresh_from_db()
-        assert self.user.email == "09123456789"
+        assert self.user.email == "ali@example.com"

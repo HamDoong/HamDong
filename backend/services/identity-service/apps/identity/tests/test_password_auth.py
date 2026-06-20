@@ -13,7 +13,7 @@ class PasswordAuthenticationTests(TestCase):
         self.client = APIClient()
         self.token_service = TokenService()
         self.otp_store = RedisOtpStore()
-        self.email = "09120000001"
+        self.email = "password.user@example.com"
 
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
@@ -43,8 +43,8 @@ class PasswordAuthenticationTests(TestCase):
         self.assertEqual(response.json()["art_name"], "ali_artist")
 
     def test_duplicate_art_name_fails(self):
-        User.objects.create(email="09120000001", art_name="taken_name")
-        user2 = User.objects.create(email="09120000002")
+        User.objects.create(email="taken@example.com", art_name="taken_name")
+        user2 = User.objects.create(email="second@example.com")
         access_token, _, _ = self.token_service.generate_tokens(user2)
         response = self.client.patch(
             "/api/v1/users/me/",

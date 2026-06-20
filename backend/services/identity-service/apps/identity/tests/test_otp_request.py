@@ -105,8 +105,8 @@ class OtpRequestTestCase(TestCase):
         data = response.json()
         assert data["error"]["code"] == "OTP_IN_COOLDOWN"
 
-    def test_request_otp_without_phone(self):
-        """Test requesting OTP without phone number."""
+    def test_request_otp_without_email(self):
+        """Test requesting OTP without an email address."""
         response = self.client.post(self.url, {}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST

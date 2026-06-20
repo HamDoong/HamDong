@@ -20,7 +20,7 @@ class TokenRefreshTestCase(TestCase):
         self.url = "/api/v1/auth/token/refresh/"
 
         # Create a test user
-        self.user = User.objects.create(email="09123456789")
+        self.user = User.objects.create(email="artist@gmail.com")
 
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
@@ -134,7 +134,7 @@ class LogoutTestCase(TestCase):
         self.url = "/api/v1/auth/logout/"
 
         # Create a test user
-        self.user = User.objects.create(email="09123456789")
+        self.user = User.objects.create(email="artist@gmail.com")
 
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
