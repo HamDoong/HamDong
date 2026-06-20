@@ -9,8 +9,8 @@ import {
   EyeOff,
   Hash,
   Headphones,
+  Mail,
   ShieldCheck,
-  Smartphone,
   Smile,
   UserRound,
   WalletCards,
@@ -52,7 +52,7 @@ const benefitItems: BenefitItem[] = [
   },
 ];
 
-export const phoneDigitOnlyPattern = /[^0-9۰-۹٠-٩]/g;
+export const otpDigitOnlyPattern = /[^0-9۰-۹٠-٩]/g;
 
 const localizedDigitMap: Record<string, string> = {
   '۰': '0',
@@ -79,14 +79,22 @@ const localizedDigitMap: Record<string, string> = {
 
 type LoginMode = 'password' | 'otp';
 
-export function normalizePhoneDigits(value: string) {
+export function normalizeLocalizedDigits(value: string) {
   return value.replace(/[۰-۹٠-٩]/g, (digit) => localizedDigitMap[digit] || digit);
+}
+
+export function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function getLoginErrorMessage(error: unknown) {
   if (isApiError(error)) {
     const body = error.body as {
-      error?: { code?: string; message?: string };
+      error?: { code?: string; message?: string; details?: Record<string, unknown> };
       detail?: string;
     };
     const code = body?.error?.code;
@@ -95,7 +103,8 @@ function getLoginErrorMessage(error: unknown) {
     if ([502, 503, 504].includes(error.status)) return 'سرویس ورود در دسترس نیست. وضعیت API Gateway و identity-service را بررسی کنید.';
 
     if (code === 'INVALID_CREDENTIALS') return 'نام هنری یا رمز عبور اشتباه است.';
-    if (code === 'INVALID_PHONE') return 'شماره موبایل معتبر نیست.';
+    if (code === 'INVALID_EMAIL') return 'ایمیل معتبر نیست.';
+    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل معتبر نیست.';
     if (code === 'INVALID_OTP') return 'کد تایید اشتباه است.';
     if (code === 'OTP_EXPIRED') return 'کد تایید منقضی شده است.';
     if (code === 'OTP_IN_COOLDOWN') return 'برای دریافت کد جدید کمی صبر کنید.';
@@ -134,7 +143,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [artName, setArtName] = useState('');
   const [password, setPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpDebugCode, setOtpDebugCode] = useState('');
@@ -149,8 +158,8 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     setStatusMessage('');
   };
 
-  const normalizedPhoneNumber = normalizePhoneDigits(phoneNumber);
-  const normalizedOtpCode = normalizePhoneDigits(otpCode);
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedOtpCode = normalizeLocalizedDigits(otpCode);
 
   async function handlePasswordLogin() {
     const cleanArtName = artName.trim();
@@ -174,8 +183,8 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   }
 
   async function handleRequestOtp() {
-    if (!/^09\d{9}$/.test(normalizedPhoneNumber)) {
-      setErrorMessage('شماره موبایل را با فرمت 09xxxxxxxxx وارد کنید.');
+    if (!isValidEmail(normalizedEmail)) {
+      setErrorMessage('ایمیل معتبر وارد کنید.');
       return;
     }
 
@@ -183,10 +192,10 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     resetFeedback();
 
     try {
-      const response = await requestLoginOtp(normalizedPhoneNumber);
+      const response = await requestLoginOtp(normalizedEmail);
       setOtpRequested(true);
       setOtpDebugCode(response.debug_otp || '');
-      setStatusMessage('کد تایید برای شماره موبایل ارسال شد.');
+      setStatusMessage('کد تایید برای ایمیل ارسال شد.');
     } catch (error) {
       setErrorMessage(getLoginErrorMessage(error));
     } finally {
@@ -195,8 +204,8 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   }
 
   async function handleOtpLogin() {
-    if (!/^09\d{9}$/.test(normalizedPhoneNumber)) {
-      setErrorMessage('شماره موبایل را با فرمت 09xxxxxxxxx وارد کنید.');
+    if (!isValidEmail(normalizedEmail)) {
+      setErrorMessage('ایمیل معتبر وارد کنید.');
       return;
     }
 
@@ -210,7 +219,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
 
     try {
       await verifyLoginOtp({
-        phone_number: normalizedPhoneNumber,
+        email: normalizedEmail,
         code: normalizedOtpCode,
       });
       onLogin();
@@ -261,7 +270,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
             resetFeedback();
           }}
         >
-          کد پیامکی
+          کد ایمیلی
         </button>
       </div>
 
@@ -328,27 +337,25 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
       ) : (
         <>
           <label className="login-field">
-            <span>شماره موبایل</span>
+            <span>ایمیل</span>
             <div className="login-input-wrap">
               <input
-                type="tel"
-                name="phone"
-                inputMode="numeric"
-                autoComplete="tel"
-                value={phoneNumber}
+                type="email"
+                name="email"
+                autoComplete="email"
+                value={email}
                 onChange={(event) => {
-                  setPhoneNumber(event.target.value.replace(phoneDigitOnlyPattern, ''));
+                  setEmail(event.target.value);
                   setOtpRequested(false);
                   setOtpDebugCode('');
                   resetFeedback();
                 }}
-                pattern="[0-9۰-۹٠-٩]*"
-                placeholder="۰۹۱۲۱۳۳۴۵۶۷"
-                aria-label="شماره موبایل"
+                placeholder="name@example.com"
+                aria-label="ایمیل"
                 disabled={submitting || requestingOtp}
                 required
               />
-              <Smartphone className="login-input-icon" strokeWidth={2.4} />
+              <Mail className="login-input-icon" strokeWidth={2.4} />
             </div>
           </label>
 
@@ -371,7 +378,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
                 autoComplete="one-time-code"
                 value={otpCode}
                 onChange={(event) => {
-                  setOtpCode(event.target.value.replace(phoneDigitOnlyPattern, '').slice(0, 6));
+                  setOtpCode(event.target.value.replace(otpDigitOnlyPattern, '').slice(0, 6));
                   resetFeedback();
                 }}
                 pattern="[0-9۰-۹٠-٩]{6}"

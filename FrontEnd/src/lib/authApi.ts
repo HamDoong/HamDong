@@ -72,16 +72,16 @@ export async function loginWithPassword(payload: { art_name: string; password: s
   return persistAuthTokens(response);
 }
 
-export async function requestLoginOtp(phoneNumber: string) {
+export async function requestLoginOtp(email: string) {
   return identityApiRequest<OtpRequestResponse>('/auth/otp/request/', {
     method: 'POST',
     auth: false,
     skipAuthRefresh: true,
-    body: JSON.stringify({ phone_number: phoneNumber }),
+    body: JSON.stringify({ email }),
   });
 }
 
-export async function verifyLoginOtp(payload: { phone_number: string; code: string }) {
+export async function verifyLoginOtp(payload: { email: string; code: string }) {
   const response = await identityApiRequest<RawAuthResponse>('/auth/otp/verify/', {
     method: 'POST',
     auth: false,

@@ -17,6 +17,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LogoMark } from '../components/BrandLogo';
 
 type FeatureItem = {
   icon: LucideIcon;
@@ -140,12 +141,10 @@ function Logo() {
     <Link
       to="/"
       className="landing-logo flex min-w-0 shrink-0 items-center gap-3"
-      dir="ltr"
+      dir="rtl"
       aria-label="بازگشت به صفحه اصلی همدنگ"
     >
-      <div className="grid h-11 w-11 place-items-center rounded-[14px] bg-primary-gradient text-white shadow-button sm:h-12 sm:w-12 sm:rounded-[16px]">
-        <span className="text-2xl font-extrabold leading-none sm:text-3xl">ه</span>
-      </div>
+      <LogoMark className="h-10 w-10 sm:h-11 sm:w-11" />
       <span
         className="hidden whitespace-nowrap text-2xl font-extrabold tracking-normal text-slate-950 sm:inline"
         dir="rtl"

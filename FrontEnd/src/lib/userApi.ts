@@ -17,3 +17,15 @@ export interface CurrentUser {
 export function getCurrentUser() {
   return identityApiRequest<CurrentUser>('/users/me/');
 }
+
+export async function updateCurrentUserProfile(payload: {
+  display_name?: string;
+  art_name?: string;
+  first_name?: string;
+  last_name?: string;
+}) {
+  return identityApiRequest<CurrentUser>('/users/me/', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}

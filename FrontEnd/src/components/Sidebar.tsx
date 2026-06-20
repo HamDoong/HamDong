@@ -1,21 +1,9 @@
 import { Search, X, type LucideIcon } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 import { primaryNavItems, secondaryNavItems } from '../data/mockData';
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
-}
-
-export function LogoMark({ className = '' }: { className?: string }) {
-  return (
-    <div className={cn('relative h-12 w-12 shrink-0', className)}>
-      <span className="absolute left-1/2 top-0 h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-[#12B76A]" />
-      <span className="absolute right-0 top-3.5 h-3.5 w-3.5 rounded-full bg-[#10B981]" />
-      <span className="absolute left-0 top-3.5 h-3.5 w-3.5 rounded-full bg-[#10B981]" />
-      <span className="absolute bottom-1.5 left-1.5 h-3.5 w-3.5 rounded-full bg-[#16A34A]" />
-      <span className="absolute bottom-1.5 right-1.5 h-3.5 w-3.5 rounded-full bg-[#16A34A]" />
-      <span className="absolute bottom-0 left-1/2 h-4.5 w-4.5 -translate-x-1/2 rounded-full bg-[#0EAF66]" />
-    </div>
-  );
 }
 
 function SidebarSearch() {
@@ -99,18 +87,16 @@ export function Sidebar({
     <aside
       className={cn(
         'flex flex-col bg-white',
-        mobile ? 'h-full w-full' : 'sticky top-0',
+        mobile ? 'h-full w-full' : 'h-screen',
         className,
       )}
     >
-      <div className="flex h-full flex-col overflow-y-auto px-5 py-6 lg:px-6 lg:py-8">
-        <div className="mb-6 flex items-center justify-between gap-3 lg:mb-10">
-          <div className="flex items-center gap-3">
-            <LogoMark className="h-11 w-11 lg:h-12 lg:w-12" />
-            <div className="text-[28px] font-black tracking-[-0.03em] text-text lg:text-[30px]">
-              همدنگ
-            </div>
-          </div>
+      <div className={cn('flex h-full flex-col px-5 py-6 lg:px-6 lg:py-7', mobile ? 'overflow-y-auto' : 'overflow-hidden')}>
+        <div className="mb-6 flex items-center justify-between gap-3 lg:mb-8">
+          <BrandLogo
+            markClassName="h-10 w-10 lg:h-11 lg:w-11"
+            textClassName="text-[26px] tracking-normal lg:text-[28px]"
+          />
 
           {mobile ? (
             <button
@@ -143,7 +129,7 @@ export function Sidebar({
           ))}
         </nav>
 
-        <div className="my-8 h-px bg-border" />
+        <div className="my-5 h-px bg-border" />
 
         <nav className="space-y-2">
           {secondaryNavItems.map((item) => (
@@ -157,9 +143,7 @@ export function Sidebar({
           ))}
         </nav>
 
-        <div className="mt-auto pt-8 text-right text-xs text-slate-400">
-          Hamdong UI v0.3
-        </div>
+        <div className="mt-auto" />
       </div>
     </aside>
   );

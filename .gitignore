@@ -122,6 +122,8 @@ Backend/redis-data/
 FrontEnd/node_modules/
 FrontEnd/dist/
 FrontEnd/.vite/
+FrontEnd/vite.config.js
+FrontEnd/vite.config.d.ts
 # FrontEnd/.env
 # FrontEnd/.env.local
 # FrontEnd/.env.*.local

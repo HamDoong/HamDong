@@ -4,7 +4,7 @@ import {
   Eye,
   EyeOff,
   Hash,
-  Smartphone,
+  Mail,
   UserRound,
 } from 'lucide-react';
 import { isApiError } from '../lib/api';
@@ -16,9 +16,11 @@ import {
 } from '../lib/authApi';
 import {
   AuthShowcase,
+  isValidEmail,
   LoginFooter,
-  normalizePhoneDigits,
-  phoneDigitOnlyPattern,
+  normalizeEmail,
+  normalizeLocalizedDigits,
+  otpDigitOnlyPattern,
 } from './LoginPage';
 import './LoginPage.css';
 
@@ -34,7 +36,7 @@ const artNamePattern = /^[\w\-\u0600-\u06FF]{3,32}$/u;
 function getSignUpErrorMessage(error: unknown) {
   if (isApiError(error)) {
     const body = error.body as {
-      error?: { code?: string; message?: string };
+      error?: { code?: string; message?: string; details?: Record<string, unknown> };
       detail?: string;
     };
     const code = body?.error?.code;
@@ -42,14 +44,15 @@ function getSignUpErrorMessage(error: unknown) {
     if (error.status === 404) return 'مسیر ثبت‌نام در API پیدا نشد. تنظیمات /api/v1 یا API Gateway را بررسی کنید.';
     if ([502, 503, 504].includes(error.status)) return 'سرویس هویت در دسترس نیست. وضعیت API Gateway و identity-service را بررسی کنید.';
 
-    if (code === 'INVALID_PHONE') return 'شماره موبایل معتبر نیست.';
+    if (code === 'INVALID_EMAIL') return 'ایمیل معتبر نیست.';
+    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل معتبر نیست.';
     if (code === 'INVALID_OTP') return 'کد تایید اشتباه است.';
     if (code === 'OTP_EXPIRED') return 'کد تایید منقضی شده است.';
     if (code === 'OTP_IN_COOLDOWN') return 'برای دریافت کد جدید کمی صبر کنید.';
     if (code === 'OTP_RATE_LIMITED') return 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.';
     if (code === 'ART_NAME_ALREADY_EXISTS') return 'این نام هنری قبلاً انتخاب شده است.';
     if (code === 'INVALID_ART_NAME') return 'نام هنری باید ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.';
-    if (code === 'PASSWORD_ALREADY_SET') return 'این شماره قبلاً حساب فعال دارد. از صفحه ورود استفاده کنید.';
+    if (code === 'PASSWORD_ALREADY_SET') return 'این ایمیل قبلاً حساب فعال دارد. از صفحه ورود استفاده کنید.';
     if (code === 'WEAK_PASSWORD') return 'رمز عبور به اندازه کافی قوی نیست.';
     if (code === 'PASSWORD_CONFIRMATION_MISMATCH') return 'رمز عبور و تکرار آن یکسان نیستند.';
     if (body?.error?.message) return body.error.message;
@@ -62,7 +65,7 @@ function getSignUpErrorMessage(error: unknown) {
 function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
   const [step, setStep] = useState<SignUpStep>('account');
   const [artName, setArtName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [password, setPassword] = useState('');
   const [repeatPassword, setRepeatPassword] = useState('');
@@ -79,8 +82,8 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
   const PasswordIcon = passwordVisible ? Eye : EyeOff;
   const RepeatPasswordIcon = repeatPasswordVisible ? Eye : EyeOff;
 
-  const normalizedPhoneNumber = normalizePhoneDigits(phoneNumber);
-  const normalizedOtpCode = normalizePhoneDigits(otpCode);
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedOtpCode = normalizeLocalizedDigits(otpCode);
 
   const resetFeedback = () => {
     setFormError('');
@@ -88,8 +91,8 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
   };
 
   function validateAccountFields() {
-    if (!/^09\d{9}$/.test(normalizedPhoneNumber)) {
-      setFormError('شماره موبایل را با فرمت 09xxxxxxxxx وارد کنید.');
+    if (!isValidEmail(normalizedEmail)) {
+      setFormError('ایمیل معتبر وارد کنید.');
       return false;
     }
 
@@ -124,12 +127,12 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     resetFeedback();
 
     try {
-      const response = await requestLoginOtp(normalizedPhoneNumber);
+      const response = await requestLoginOtp(normalizedEmail);
       setOtpRequested(true);
       setOtpVerified(false);
       setOtpDebugCode(response.debug_otp || '');
       setStep('otp');
-      setStatusMessage('کد تایید برای شماره موبایل ارسال شد.');
+      setStatusMessage('کد تایید برای ایمیل ارسال شد.');
     } catch (error) {
       setFormError(getSignUpErrorMessage(error));
     } finally {
@@ -151,7 +154,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     try {
       if (!otpVerified) {
         await verifyLoginOtp({
-          phone_number: normalizedPhoneNumber,
+          email: normalizedEmail,
           code: normalizedOtpCode,
         });
         setOtpVerified(true);
@@ -163,7 +166,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
       });
 
       setStep('profile');
-      setStatusMessage('شماره موبایل تایید شد. حالا نام کاربری را انتخاب کنید.');
+      setStatusMessage('ایمیل تایید شد. حالا نام کاربری را انتخاب کنید.');
     } catch (error) {
       setFormError(getSignUpErrorMessage(error));
     } finally {
@@ -212,7 +215,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
         </h1>
         <p>
           {step === 'account'
-            ? 'شماره موبایل و رمز عبور را وارد کنید.'
+            ? 'ایمیل و رمز عبور را وارد کنید.'
             : step === 'otp'
               ? 'کد تایید ارسال‌شده را وارد کنید.'
               : 'یک نام کاربری یکتا برای حساب خود انتخاب کنید.'}
@@ -231,28 +234,26 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
         <div className={`signup-slide-track ${step === 'otp' ? 'is-otp' : step === 'profile' ? 'is-profile' : ''}`}>
           <div className="signup-slide" aria-hidden={step !== 'account'}>
             <label className="login-field">
-              <span>شماره موبایل</span>
+              <span>ایمیل</span>
               <div className="login-input-wrap">
                 <input
-                  type="tel"
-                  name="phone"
-                  inputMode="numeric"
-                  autoComplete="tel"
-                  value={phoneNumber}
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  value={email}
                   onChange={(event) => {
-                    setPhoneNumber(event.target.value.replace(phoneDigitOnlyPattern, ''));
+                    setEmail(event.target.value);
                     setOtpRequested(false);
                     setOtpVerified(false);
                     setOtpDebugCode('');
                     resetFeedback();
                   }}
-                  pattern="[0-9۰-۹٠-٩]*"
-                  placeholder="۰۹۱۲۱۳۳۴۵۶۷"
-                  aria-label="شماره موبایل"
+                  placeholder="name@example.com"
+                  aria-label="ایمیل"
                   disabled={step !== 'account' || requestingOtp || submitting}
                   required={step === 'account'}
                 />
-                <Smartphone className="login-input-icon" strokeWidth={2.4} />
+                <Mail className="login-input-icon" strokeWidth={2.4} />
               </div>
             </label>
 
@@ -328,7 +329,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                   autoComplete="one-time-code"
                   value={otpCode}
                   onChange={(event) => {
-                    setOtpCode(event.target.value.replace(phoneDigitOnlyPattern, '').slice(0, 6));
+                    setOtpCode(event.target.value.replace(otpDigitOnlyPattern, '').slice(0, 6));
                     setOtpVerified(false);
                     resetFeedback();
                   }}

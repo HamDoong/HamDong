@@ -4,6 +4,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from 'react-router-dom';
 import { FeedbackProvider, useFeedback } from './components/feedback/FeedbackProvider';
@@ -12,6 +13,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
 import { logoutCurrentUser } from './lib/authApi';
+import { getAccessToken, getRefreshToken } from './lib/api';
 import { listGroupExpenses, type BackendExpense } from './lib/expenseApi';
 import {
   archiveGroup,
@@ -29,17 +31,19 @@ import {
   CreateGroupWizard,
   type CreatedGroupPayload,
 } from './pages/CreateGroupWizard';
+import { DashboardPage } from './pages/DashboardPage';
 import { GroupDetailPage } from './pages/GroupDetailPage';
 import { GroupsPage, type GroupBalanceSummary } from './pages/GroupsPage';
 import { InviteJoinPage } from './pages/InviteJoinPage';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { SignUpPage } from './pages/SignUpPage';
 import { WalletPage } from './pages/WalletPage';
 import type { Group } from './types';
 
-type AppPage = 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications';
+type AppPage = 'dashboard' | 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications' | 'profile';
 type DashboardGroup = Group;
 
 function getExpenseTotal(expense: BackendExpense) {
@@ -177,19 +181,24 @@ function setBrowserPath(path: string) {
 }
 
 function getSidebarActivePage(page: AppPage) {
+  if (page === 'dashboard') return 'dashboard';
   if (page === 'activities') return 'activities';
   if (page === 'wallet') return 'wallet';
+  if (page === 'notifications') return 'notifications';
+  if (page === 'profile') return 'profile';
   return 'groups';
 }
 
-function getPageFromHash(): Extract<AppPage, 'groups' | 'activities' | 'wallet' | 'notifications'> {
+function getPageFromHash(): Extract<AppPage, 'dashboard' | 'groups' | 'activities' | 'wallet' | 'notifications' | 'profile'> {
   const hash = window.location.hash.replace('#', '');
 
+  if (hash === 'groups') return 'groups';
   if (hash === 'activities') return 'activities';
   if (hash === 'wallet') return 'wallet';
   if (hash === 'notifications') return 'notifications';
+  if (hash === 'profile') return 'profile';
 
-  return 'groups';
+  return 'dashboard';
 }
 
 function AppContent() {
@@ -335,11 +344,20 @@ function AppContent() {
       return;
     }
 
+    if (itemId === 'dashboard') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('dashboard');
+      setBrowserPath('/Dashboard');
+      loadInitialData();
+      return;
+    }
+
     if (itemId === 'groups') {
       setSelectedGroupId(null);
       setInviteToken('');
       setPage('groups');
-      setBrowserPath('/Dashboard#');
+      setBrowserPath('/Dashboard#groups');
       loadInitialData();
       return;
     }
@@ -365,6 +383,14 @@ function AppContent() {
       setInviteToken('');
       setPage('notifications');
       setBrowserPath('/Dashboard#notifications');
+      return;
+    }
+
+    if (itemId === 'profile') {
+      setSelectedGroupId(null);
+      setInviteToken('');
+      setPage('profile');
+      setBrowserPath('/Dashboard#profile');
       return;
     }
 
@@ -407,7 +433,7 @@ function AppContent() {
 
       setSelectedGroupId(backendGroup.id);
       setPage('group-detail');
-      setBrowserPath('/Dashboard#');
+      setBrowserPath('/Dashboard#groups');
 
       notify({
         type: 'success',
@@ -427,7 +453,7 @@ function AppContent() {
   const handleOpenGroup = (groupId: string) => {
     setSelectedGroupId(groupId);
     setPage('group-detail');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
   };
 
   const handleOpenInvite = (tokenOrLink: string) => {
@@ -512,14 +538,14 @@ function AppContent() {
     setSelectedGroupId(null);
     setInviteToken('');
     setPage('groups');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
     loadInitialData();
   };
 
   const handleInviteAccepted = async () => {
     setInviteToken('');
     setPage('groups');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
     await loadInitialData();
   };
 
@@ -556,15 +582,36 @@ function AppContent() {
     setGroupBalances((prev) => prev.filter((item) => item.groupId !== groupId));
     setSelectedGroupId(null);
     setPage('groups');
-    setBrowserPath('/Dashboard#');
+    setBrowserPath('/Dashboard#groups');
+  };
+
+  const handleOpenGroupsPage = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('groups');
+    setBrowserPath('/Dashboard#groups');
+  };
+
+  const handleOpenActivitiesPage = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('activities');
+    setBrowserPath('/Dashboard#activities');
+  };
+
+  const handleOpenWalletPage = () => {
+    setSelectedGroupId(null);
+    setInviteToken('');
+    setPage('wallet');
+    setBrowserPath('/Dashboard#wallet');
   };
 
   return (
     <div dir="rtl" className="min-h-screen bg-background text-text">
       <MobileDrawer open={mobileDrawerOpen} onClose={() => setMobileDrawerOpen(false)} activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
-      <div className="mx-auto min-h-screen max-w-[1536px] lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-        <Sidebar className="hidden lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
+      <div className="mx-auto min-h-screen max-w-[1536px] lg:relative lg:pr-[236px]">
+        <Sidebar className="hidden lg:fixed lg:right-[max(0px,calc((100vw-1536px)/2))] lg:top-0 lg:z-30 lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
         <div className="min-w-0">
           <TopBar
@@ -573,6 +620,19 @@ function AppContent() {
             unreadNotificationCount={notificationBadgeCount}
             onOpenNotifications={handleOpenNotifications}
           />
+
+          {page === 'dashboard' ? (
+            <DashboardPage
+              groups={groupItems}
+              groupBalances={groupBalances}
+              balancesLoading={balancesLoading}
+              onCreateGroup={() => setPage('create-group')}
+              onOpenGroups={handleOpenGroupsPage}
+              onOpenGroup={handleOpenGroup}
+              onOpenActivities={handleOpenActivitiesPage}
+              onOpenWallet={handleOpenWalletPage}
+            />
+          ) : null}
 
           {page === 'groups' ? (
             <GroupsPage
@@ -593,6 +653,7 @@ function AppContent() {
           {page === 'notifications' ? (
             <NotificationsPage onUnreadCountChange={setNotificationBadgeCount} />
           ) : null}
+          {page === 'profile' ? <ProfilePage /> : null}
 
           {page === 'create-group' ? (
             <CreateGroupWizard onBack={() => setPage('groups')} onComplete={handleCreateGroupComplete} />
@@ -627,6 +688,17 @@ function AuthPageFrame({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const hasAuthToken = Boolean(getAccessToken() || getRefreshToken());
+
+  if (!hasAuthToken) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  return <>{children}</>;
 }
 
 function AppRoutes() {
@@ -664,10 +736,17 @@ function AppRoutes() {
           </AuthPageFrame>
         }
       />
+      <Route
+        path="/Dashboard/*"
+        element={
+          <ProtectedRoute>
+            <AppContent />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/landing" element={<Navigate to="/" replace />} />
-      <Route path="/Dashboard/*" element={<AppContent />} />
       <Route path="/invites/:token" element={<AppContent />} />
-      <Route path="/groups/*" element={<Navigate to="/Dashboard" replace />} />
+      <Route path="/groups/*" element={<Navigate to="/Dashboard#groups" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

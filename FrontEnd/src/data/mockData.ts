@@ -1,10 +1,10 @@
 import {
   BedDouble,
+  Bell,
   Building2,
   CheckCircle2,
   Home,
   LogOut,
-  Settings,
   Soup,
   TrendingUp,
   User,
@@ -25,14 +25,14 @@ import type {
 
 export const primaryNavItems: NavItem[] = [
   { id: 'dashboard', label: 'داشبورد', icon: Home },
-  { id: 'groups', label: 'گروه‌ها', icon: Users, active: true },
+  { id: 'groups', label: 'گروه‌ها', icon: Users },
   { id: 'activity', label: 'فعالیت‌ها', icon: TrendingUp },
   { id: 'wallet', label: 'کیف پول', icon: Wallet },
-  { id: 'profile', label: 'پروفایل', icon: User },
+  { id: 'notifications', label: 'اعلان‌ها', icon: Bell },
+  { id: 'profile', label: 'حساب کاربری', icon: User },
 ];
 
 export const secondaryNavItems: NavItem[] = [
-  { id: 'settings', label: 'تنظیمات', icon: Settings },
   { id: 'logout', label: 'خروج', icon: LogOut },
 ];
 
