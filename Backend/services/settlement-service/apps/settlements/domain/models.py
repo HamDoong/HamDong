@@ -1,0 +1,616 @@
+import uuid
+
+from django.db import models
+from django.utils import timezone
+
+
+class UserRoleChoices(models.TextChoices):
+    USER = "USER", "User"
+    ADMIN = "ADMIN", "Admin"
+
+
+class GroupTypeChoices(models.TextChoices):
+    EVENT = "EVENT", "Event"
+    TRIP = "TRIP", "Trip"
+    GENERAL = "GENERAL", "General"
+
+
+class GroupStatusChoices(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    ARCHIVED = "ARCHIVED", "Archived"
+    DELETED = "DELETED", "Deleted"
+
+
+class GroupMemberRoleChoices(models.TextChoices):
+    OWNER = "OWNER", "Owner"
+    ADMIN = "ADMIN", "Admin"
+    MEMBER = "MEMBER", "Member"
+
+
+class GroupMemberStatusChoices(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    LEFT = "LEFT", "Left"
+    REMOVED = "REMOVED", "Removed"
+
+
+class CurrencyChoices(models.TextChoices):
+    IRR = "IRR", "Iranian Rial"
+
+
+class ExpenseStatusChoices(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    UPDATED = "UPDATED", "Updated"
+    DELETED = "DELETED", "Deleted"
+
+
+class DebtLedgerEntryTypeChoices(models.TextChoices):
+    EXPENSE_SHARE = "EXPENSE_SHARE", "Expense Share"
+    EXPENSE_REVERSAL = "EXPENSE_REVERSAL", "Expense Reversal"
+    MANUAL_SETTLEMENT = "MANUAL_SETTLEMENT", "Manual Settlement"
+
+
+class DebtLedgerStatusChoices(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    REVERSED = "REVERSED", "Reversed"
+    DELETED = "DELETED", "Deleted"
+
+
+class ManualSettlementStatusChoices(models.TextChoices):
+    PENDING_CONFIRMATION = "PENDING_CONFIRMATION", "Pending Confirmation"
+    CONFIRMED = "CONFIRMED", "Confirmed"
+    REJECTED = "REJECTED", "Rejected"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class SettlementPlanStatusChoices(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
+    ACTIVE = "ACTIVE", "Active"
+    COMPLETED = "COMPLETED", "Completed"
+    CANCELLED = "CANCELLED", "Cancelled"
+    EXPIRED = "EXPIRED", "Expired"
+
+
+class SettlementPlanItemStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    REPORTED = "REPORTED", "Reported"
+    CONFIRMED = "CONFIRMED", "Confirmed"
+    REJECTED = "REJECTED", "Rejected"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class SettlementPlanEventTypeChoices(models.TextChoices):
+    PLAN_GENERATED = "PLAN_GENERATED", "Plan Generated"
+    PLAN_ACTIVATED = "PLAN_ACTIVATED", "Plan Activated"
+    PLAN_CANCELLED = "PLAN_CANCELLED", "Plan Cancelled"
+    PLAN_EXPIRED = "PLAN_EXPIRED", "Plan Expired"
+    ITEM_REPORTED = "ITEM_REPORTED", "Item Reported"
+    ITEM_CONFIRMED = "ITEM_CONFIRMED", "Item Confirmed"
+    ITEM_REJECTED = "ITEM_REJECTED", "Item Rejected"
+    ITEM_CANCELLED = "ITEM_CANCELLED", "Item Cancelled"
+    PLAN_COMPLETED = "PLAN_COMPLETED", "Plan Completed"
+
+
+class ReminderChannelChoices(models.TextChoices):
+    IN_APP = "IN_APP", "In-app"
+    EMAIL = "EMAIL", "Email"
+
+
+class DebtReminderSourceChoices(models.TextChoices):
+    AUTOMATIC = "AUTOMATIC", "Automatic"
+    MANUAL_GROUP_RUN = "MANUAL_GROUP_RUN", "Manual group run"
+    MANUAL_ITEM = "MANUAL_ITEM", "Manual item"
+
+
+class DebtReminderStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    QUEUED = "QUEUED", "Queued"
+    PARTIALLY_SENT = "PARTIALLY_SENT", "Partially sent"
+    SENT = "SENT", "Sent"
+    FAILED = "FAILED", "Failed"
+    CANCELED = "CANCELED", "Canceled"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class DeliveryChannelStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    SENT = "SENT", "Sent"
+    FAILED = "FAILED", "Failed"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class UserProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    identity_user_id = models.UUIDField(unique=True, db_index=True)
+    email = models.CharField(max_length=254)
+    art_name = models.CharField(max_length=255, null=True, blank=True)
+    first_name = models.CharField(max_length=150, null=True, blank=True)
+    last_name = models.CharField(max_length=150, null=True, blank=True)
+    role = models.CharField(
+        max_length=10, choices=UserRoleChoices.choices, default=UserRoleChoices.USER
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_user_projections"
+
+
+class GroupProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(unique=True, db_index=True)
+    title = models.CharField(max_length=255)
+    group_type = models.CharField(
+        max_length=20,
+        choices=GroupTypeChoices.choices,
+        default=GroupTypeChoices.GENERAL,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=GroupStatusChoices.choices,
+        default=GroupStatusChoices.ACTIVE,
+    )
+    created_by_user_id = models.UUIDField()
+    member_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_group_projections"
+
+
+class GroupMemberProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    user_id = models.UUIDField(db_index=True)
+    email = models.CharField(max_length=254)
+    art_name_snapshot = models.CharField(max_length=255, null=True, blank=True)
+    role = models.CharField(
+        max_length=10,
+        choices=GroupMemberRoleChoices.choices,
+        default=GroupMemberRoleChoices.MEMBER,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=GroupMemberStatusChoices.choices,
+        default=GroupMemberStatusChoices.ACTIVE,
+    )
+    joined_at = models.DateTimeField(null=True, blank=True)
+    left_at = models.DateTimeField(null=True, blank=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_group_member_projections"
+        unique_together = (("group_id", "user_id"),)
+        indexes = [models.Index(fields=["group_id"]), models.Index(fields=["user_id"])]
+
+
+class ExpenseProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    expense_id = models.UUIDField(unique=True, db_index=True)
+    group_id = models.UUIDField(db_index=True)
+    created_by_user_id = models.UUIDField()
+    payer_user_id = models.UUIDField(db_index=True)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    base_amount_minor = models.BigIntegerField(default=0)
+    tax_amount_minor = models.BigIntegerField(default=0)
+    service_fee_amount_minor = models.BigIntegerField(default=0)
+    total_amount_minor = models.BigIntegerField(default=0)
+    status = models.CharField(
+        max_length=10,
+        choices=ExpenseStatusChoices.choices,
+        default=ExpenseStatusChoices.ACTIVE,
+    )
+    expense_version = models.PositiveIntegerField(default=1)
+    expense_date = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "settlement_expense_projections"
+
+
+class ExpenseParticipantProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    expense_id = models.UUIDField(db_index=True)
+    group_id = models.UUIDField(db_index=True)
+    user_id = models.UUIDField(db_index=True)
+    base_share_minor = models.BigIntegerField(default=0)
+    tax_share_minor = models.BigIntegerField(default=0)
+    service_fee_share_minor = models.BigIntegerField(default=0)
+    total_share_minor = models.BigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_expense_participant_projections"
+        unique_together = (("expense_id", "user_id"),)
+        indexes = [
+            models.Index(fields=["expense_id"]),
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["user_id"]),
+        ]
+
+
+class DebtLedgerEntry(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    source_expense_id = models.UUIDField(null=True, blank=True, db_index=True)
+    source_expense_version = models.PositiveIntegerField(default=1)
+    debtor_user_id = models.UUIDField(db_index=True)
+    creditor_user_id = models.UUIDField(db_index=True)
+    amount_minor = models.BigIntegerField(default=0)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    entry_type = models.CharField(
+        max_length=20, choices=DebtLedgerEntryTypeChoices.choices
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=DebtLedgerStatusChoices.choices,
+        default=DebtLedgerStatusChoices.ACTIVE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "settlement_debt_ledger_entries"
+        indexes = [
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["source_expense_id"]),
+            models.Index(fields=["debtor_user_id"]),
+            models.Index(fields=["creditor_user_id"]),
+        ]
+
+
+class GroupBalanceSnapshot(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    user_id = models.UUIDField(db_index=True)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    total_paid_minor = models.BigIntegerField(default=0)
+    total_share_minor = models.BigIntegerField(default=0)
+    total_settled_paid_minor = models.BigIntegerField(default=0)
+    total_settled_received_minor = models.BigIntegerField(default=0)
+    net_balance_minor = models.BigIntegerField(default=0)
+    calculated_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_group_balance_snapshots"
+        unique_together = (("group_id", "user_id", "currency"),)
+        indexes = [models.Index(fields=["group_id"]), models.Index(fields=["user_id"])]
+
+
+class ManualSettlement(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    payer_user_id = models.UUIDField(db_index=True)
+    receiver_user_id = models.UUIDField(db_index=True)
+    amount_minor = models.BigIntegerField(default=0)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    description = models.TextField(null=True, blank=True)
+    status = models.CharField(
+        max_length=30,
+        choices=ManualSettlementStatusChoices.choices,
+        default=ManualSettlementStatusChoices.PENDING_CONFIRMATION,
+    )
+    created_by_user_id = models.UUIDField()
+    confirmed_by_user_id = models.UUIDField(null=True, blank=True)
+    rejected_by_user_id = models.UUIDField(null=True, blank=True)
+    cancelled_by_user_id = models.UUIDField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_manual_settlements"
+        indexes = [
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["payer_user_id"]),
+            models.Index(fields=["receiver_user_id"]),
+        ]
+
+
+class ProcessedEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    source_service = models.CharField(max_length=128)
+    processed_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "settlement_processed_events"
+
+
+class OutboxMessageStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    PUBLISHED = "PUBLISHED", "Published"
+    FAILED = "FAILED", "Failed"
+
+
+class ReminderDispatchTypeChoices(models.TextChoices):
+    PAYMENT_REMINDER = "PAYMENT_REMINDER", "Payment reminder"
+    SETTLEMENT_CONFIRMATION_REMINDER = (
+        "SETTLEMENT_CONFIRMATION_REMINDER",
+        "Settlement confirmation reminder",
+    )
+    SETTLEMENT_PLAN_ITEM_REMINDER = (
+        "SETTLEMENT_PLAN_ITEM_REMINDER",
+        "Settlement plan item reminder",
+    )
+
+
+class OutboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True, default=uuid.uuid4)
+    source_service = models.CharField(max_length=128, default="settlement-service")
+    aggregate_type = models.CharField(max_length=64)
+    aggregate_id = models.UUIDField(null=True, blank=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    event_version = models.PositiveIntegerField(default=1)
+    routing_key = models.CharField(max_length=128)
+    exchange = models.CharField(max_length=128, default="hamdong.settlement")
+    correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    causation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(
+        max_length=20,
+        choices=OutboxMessageStatusChoices.choices,
+        default=OutboxMessageStatusChoices.PENDING,
+    )
+    retry_count = models.PositiveIntegerField(default=0)
+    available_at = models.DateTimeField(default=timezone.now, db_index=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_outbox_messages"
+        indexes = [
+            models.Index(fields=["status", "available_at"]),
+            models.Index(fields=["routing_key"]),
+            models.Index(fields=["aggregate_type", "aggregate_id"]),
+        ]
+
+
+
+class GroupReminderSettings(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(unique=True, db_index=True)
+    is_enabled = models.BooleanField(default=True)
+    first_reminder_after_hours = models.PositiveIntegerField(default=24)
+    repeat_interval_hours = models.PositiveIntegerField(default=48)
+    maximum_reminders = models.PositiveIntegerField(default=3)
+    send_in_app = models.BooleanField(default=True)
+    send_email = models.BooleanField(default=True)
+    created_by_user_id = models.UUIDField(null=True, blank=True)
+    updated_by_user_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_group_reminder_settings"
+        indexes = [models.Index(fields=["group_id"])]
+
+
+class DebtReminderRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    settlement_plan_id = models.UUIDField(db_index=True)
+    settlement_plan_item_id = models.UUIDField(db_index=True)
+    recipient_user_id = models.UUIDField(db_index=True)
+    creditor_user_id = models.UUIDField(db_index=True)
+    requested_by_user_id = models.UUIDField(null=True, blank=True)
+    sequence_number = models.PositiveIntegerField(default=1)
+    source = models.CharField(max_length=32, choices=DebtReminderSourceChoices.choices)
+    channels = models.JSONField(default=list)
+    channel_statuses = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=32,
+        choices=DebtReminderStatusChoices.choices,
+        default=DebtReminderStatusChoices.PENDING,
+    )
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    amount_minor = models.BigIntegerField(default=0)
+    source_timestamp = models.DateTimeField(null=True, blank=True)
+    scheduled_at = models.DateTimeField(default=timezone.now, db_index=True)
+    requested_at = models.DateTimeField(default=timezone.now)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    delivery_updated_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
+    dedupe_key = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    created_by_user_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_debt_reminder_requests"
+        indexes = [
+            models.Index(fields=["group_id", "-created_at"]),
+            models.Index(fields=["settlement_plan_item_id", "source", "sequence_number"]),
+            models.Index(fields=["recipient_user_id", "-created_at"]),
+            models.Index(fields=["status", "-scheduled_at"]),
+            models.Index(fields=["source", "-created_at"]),
+            models.Index(fields=["dedupe_key"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["settlement_plan_item_id", "source", "sequence_number"],
+                name="settlement_debt_reminder_unique_sequence",
+            )
+        ]
+
+
+class ReminderDispatchLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reminder_type = models.CharField(
+        max_length=48, choices=ReminderDispatchTypeChoices.choices
+    )
+    group_id = models.UUIDField(db_index=True)
+    settlement_plan_id = models.UUIDField(null=True, blank=True, db_index=True)
+    settlement_plan_item_id = models.UUIDField(null=True, blank=True, db_index=True)
+    manual_settlement_id = models.UUIDField(null=True, blank=True, db_index=True)
+    recipient_user_id = models.UUIDField(db_index=True)
+    recipient_email = models.CharField(max_length=254)
+    source_event_id = models.UUIDField(null=True, blank=True, db_index=True)
+    sent_count = models.PositiveIntegerField(default=0)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    next_allowed_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_reminder_dispatch_logs"
+        indexes = [
+            models.Index(fields=["reminder_type", "group_id"]),
+            models.Index(fields=["recipient_user_id"]),
+            models.Index(fields=["next_allowed_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "reminder_type",
+                    "group_id",
+                    "settlement_plan_id",
+                    "settlement_plan_item_id",
+                    "manual_settlement_id",
+                    "recipient_user_id",
+                ],
+                name="settlement_reminder_unique_target",
+            )
+        ]
+
+
+class SettlementPlan(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=SettlementPlanStatusChoices.choices,
+        default=SettlementPlanStatusChoices.DRAFT,
+    )
+    generated_by_user_id = models.UUIDField()
+    activated_by_user_id = models.UUIDField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    source_balance_calculated_at = models.DateTimeField()
+    total_debt_minor = models.BigIntegerField(default=0)
+    transaction_count = models.PositiveIntegerField(default=0)
+    version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_settlement_plans"
+        indexes = [
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["status"]),
+        ]
+
+
+class SettlementPlanItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    settlement_plan_id = models.UUIDField(db_index=True)
+    group_id = models.UUIDField(db_index=True)
+    payer_user_id = models.UUIDField(db_index=True)
+    receiver_user_id = models.UUIDField(db_index=True)
+    amount_minor = models.BigIntegerField(default=0)
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=SettlementPlanItemStatusChoices.choices,
+        default=SettlementPlanItemStatusChoices.PENDING,
+    )
+    manual_settlement_id = models.UUIDField(null=True, blank=True)
+    order_index = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    reported_at = models.DateTimeField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "settlement_settlement_plan_items"
+        indexes = [
+            models.Index(fields=["settlement_plan_id"]),
+            models.Index(fields=["group_id"]),
+            models.Index(fields=["payer_user_id"]),
+            models.Index(fields=["receiver_user_id"]),
+            models.Index(fields=["status"]),
+        ]
+
+
+class SettlementPlanEventLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    settlement_plan_id = models.UUIDField(db_index=True)
+    settlement_plan_item_id = models.UUIDField(null=True, blank=True, db_index=True)
+    actor_user_id = models.UUIDField(db_index=True)
+    event_type = models.CharField(
+        max_length=30, choices=SettlementPlanEventTypeChoices.choices
+    )
+    metadata = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "settlement_settlement_plan_event_logs"
+        indexes = [
+            models.Index(fields=["settlement_plan_id"]),
+            models.Index(fields=["settlement_plan_item_id"]),
+            models.Index(fields=["actor_user_id"]),
+            models.Index(fields=["event_type"]),
+        ]
+
+
+
+
+class InboxMessageStatusChoices(models.TextChoices):
+    PROCESSED = "PROCESSED", "Processed"
+    FAILED = "FAILED", "Failed"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class InboxMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.UUIDField(unique=True, db_index=True)
+    event_type = models.CharField(max_length=128)
+    source_service = models.CharField(max_length=128)
+    routing_key = models.CharField(max_length=128)
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, choices=InboxMessageStatusChoices.choices, default=InboxMessageStatusChoices.PROCESSED)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_inbox_messages"
+        indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
+
