@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
+from django.db import transaction
+
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
-from apps.identity.domain.events import SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
+from apps.identity.domain.events import PasswordChanged, SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
 from apps.identity.domain.models import User
 from apps.identity.domain.rules import ArtNameRule, EmailRule
 from apps.identity.infrastructure.rabbitmq_publisher import RabbitMqPublisher
@@ -34,6 +36,11 @@ def build_token_response(
             "art_name": user.art_name,
             "first_name": user.first_name,
             "last_name": user.last_name,
+            "display_name": user.display_name,
+            "phone_number": user.phone_number,
+            "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
+            "city": user.city,
+            "bio": user.bio,
             "avatar_url": user.avatar_url,
             "is_email_verified": user.is_email_verified,
             "role": user.role,
@@ -166,27 +173,23 @@ class UpdateProfileUseCase:
     def execute(
         self,
         user: User,
-        first_name: str = None,
-        last_name: str = None,
-        art_name: str = None,
+        **profile_data: Any,
     ) -> Tuple[bool, Optional[User]]:
-        updated_user = self.user_service.update_profile(
-            user,
-            first_name=first_name,
-            last_name=last_name,
-            art_name=art_name,
-        )
-
-        event = UserUpdated(
-            user_id=updated_user.id,
-            email=updated_user.email,
-            art_name=updated_user.art_name,
-            first_name=updated_user.first_name,
-            last_name=updated_user.last_name,
-            role=updated_user.role,
-            is_active=updated_user.is_active,
-        )
-        self.publisher.publish(event.to_dict(), "identity.user.updated")
+        with transaction.atomic():
+            updated_user = self.user_service.update_profile(user, **profile_data)
+            if any(field in profile_data for field in UserService.PROFILE_FIELDS):
+                event = UserUpdated(
+                    user_id=updated_user.id,
+                    email=updated_user.email,
+                    art_name=updated_user.art_name,
+                    first_name=updated_user.first_name,
+                    last_name=updated_user.last_name,
+                    display_name=updated_user.display_name,
+                    avatar_url=updated_user.avatar_url,
+                    role=updated_user.role,
+                    is_active=updated_user.is_active,
+                )
+                self.publisher.publish(event.to_dict(), "identity.user.updated")
         return True, updated_user
 
 
@@ -241,6 +244,7 @@ class PasswordLoginUseCase:
 class ChangePasswordUseCase:
     def __init__(self):
         self.user_service = UserService()
+        self.publisher = RabbitMqPublisher()
 
     def execute(
         self,
@@ -248,11 +252,25 @@ class ChangePasswordUseCase:
         current_password: str,
         new_password: str,
         new_password_confirm: str,
+        *,
+        current_jti: str | None = None,
     ) -> Tuple[bool, Optional[str]]:
         if new_password != new_password_confirm:
             return False, "PASSWORD_CONFIRMATION_MISMATCH"
         try:
-            self.user_service.change_password(user, current_password, new_password)
+            with transaction.atomic():
+                updated_user, revoked_count = self.user_service.change_password(
+                    user,
+                    current_password,
+                    new_password,
+                    current_jti=current_jti,
+                )
+                event = PasswordChanged(
+                    user_id=updated_user.id,
+                    changed_at=updated_user.password_changed_at.isoformat() if updated_user.password_changed_at else "",
+                    other_sessions_revoked=revoked_count > 0,
+                )
+                self.publisher.publish(event.to_dict(), "identity.user.password_changed")
         except ValueError as exc:
             return False, str(exc)
         return True, None

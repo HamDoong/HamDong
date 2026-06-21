@@ -8,6 +8,15 @@ from typing import Optional
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
+_VALID_PRIORITIES = {"LOW", "NORMAL", "HIGH", "URGENT"}
+_DEFAULT_PRIORITY_BY_TYPE = {
+    "OTP": "URGENT",
+    "REMINDER": "HIGH",
+    "INVITE": "NORMAL",
+    "SETTLEMENT": "HIGH",
+    "CUSTOM": "NORMAL",
+}
+
 
 class EmailRule:
     """Validate and mask email addresses."""
@@ -45,6 +54,22 @@ class EmailRule:
         else:
             masked_domain = domain[:1] + "***"
         return f"{masked_local}@{masked_domain}"
+
+
+class NotificationPriorityRule:
+    """Normalize or infer notification priorities centrally."""
+
+    @classmethod
+    def normalize(cls, priority: str | None, *, message_type: str | None = None) -> str:
+        if isinstance(priority, str):
+            normalized_priority = priority.strip().upper()
+            if normalized_priority in _VALID_PRIORITIES:
+                return normalized_priority
+        if isinstance(message_type, str):
+            normalized_type = message_type.strip().upper()
+            if normalized_type in _DEFAULT_PRIORITY_BY_TYPE:
+                return _DEFAULT_PRIORITY_BY_TYPE[normalized_type]
+        return "NORMAL"
 
 
 def sanitize_message_text(message: str) -> str:

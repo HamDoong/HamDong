@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Optional
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.identity.domain.models import OutboxMessage, OutboxMessageStatusChoices, RefreshToken, User
@@ -34,16 +35,32 @@ class UserRepository:
         ).first()
 
     @staticmethod
+    def get_by_phone_number(phone_number: str) -> Optional[User]:
+        return User.objects.filter(
+            phone_number=phone_number,
+            deleted_at__isnull=True,
+        ).first()
+
+    @staticmethod
     def get_by_id(user_id: str) -> Optional[User]:
         return User.objects.filter(id=user_id, deleted_at__isnull=True).first()
 
     @staticmethod
+    def get_active_by_id(user_id: str) -> Optional[User]:
+        return User.objects.filter(id=user_id, deleted_at__isnull=True, is_active=True).first()
+
+    @staticmethod
     def update(user: User, **kwargs) -> User:
+        update_fields = []
         for key, value in kwargs.items():
             if hasattr(user, key):
                 setattr(user, key, value)
+                update_fields.append(key)
+        if not update_fields:
+            return user
         user.version += 1
-        user.save()
+        update_fields.extend(["version", "updated_at"])
+        user.save(update_fields=update_fields)
         return user
 
 
@@ -85,16 +102,25 @@ class RefreshTokenRepository:
     @staticmethod
     def revoke(refresh_token: RefreshToken) -> RefreshToken:
         refresh_token.revoked_at = timezone.now()
-        refresh_token.save()
+        refresh_token.save(update_fields=["revoked_at", "updated_at"])
         return refresh_token
 
     @staticmethod
     def revoke_active_for_user(user: User):
+        now = timezone.now()
         return RefreshToken.objects.filter(
             user=user,
             revoked_at__isnull=True,
-            expires_at__gt=timezone.now(),
-        ).update(revoked_at=timezone.now(), updated_at=timezone.now())
+            expires_at__gt=now,
+        ).update(revoked_at=now, updated_at=now)
+
+    @staticmethod
+    def revoke_other_active_for_user(user: User, current_jti: str | None = None) -> int:
+        now = timezone.now()
+        filters = Q(user=user, revoked_at__isnull=True, expires_at__gt=now)
+        if current_jti:
+            filters &= ~Q(jti=current_jti)
+        return RefreshToken.objects.filter(filters).update(revoked_at=now, updated_at=now)
 
     @staticmethod
     def is_expired(refresh_token: RefreshToken) -> bool:

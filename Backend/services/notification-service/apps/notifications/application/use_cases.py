@@ -1,11 +1,29 @@
 """Use case orchestration for notification-service."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 from django.utils import timezone
 
 from apps.notifications.application.sms_service import EmailService
 from apps.notifications.domain.events import DomainEvent
-from apps.notifications.domain.models import NotificationMessageTypeChoices, NotificationStatusChoices
+from apps.notifications.domain.models import (
+    NotificationMessageTypeChoices,
+    NotificationPriorityChoices,
+    NotificationStatusChoices,
+)
 from apps.notifications.infrastructure.repositories import NotificationRepository, OutboxRepository
+
+
+@dataclass
+class NotificationQuery:
+    is_read: bool | None = None
+    priority: str | None = None
+    notification_type: str | None = None
+    limit: int | None = None
+    cursor: str | None = None
+    page_size: int | None = None
 
 
 class SendTestEmailUseCase:
@@ -36,7 +54,7 @@ class CreateNotificationUseCase:
     def __init__(self):
         self.repository = NotificationRepository
 
-    def execute(self, actor, *, recipient_user_id, channel, notification_type, title, body, metadata):
+    def execute(self, actor, *, recipient_user_id, channel, notification_type, title, body, metadata, priority=None):
         notification = self.repository.create_notification_message(
             recipient_user_id=recipient_user_id,
             recipient_email=None,
@@ -45,6 +63,7 @@ class CreateNotificationUseCase:
             title=title or "",
             body=body,
             metadata=metadata or {},
+            priority=priority,
             recipient=str(recipient_user_id),
             recipient_masked=str(recipient_user_id),
             status=NotificationStatusChoices.PENDING,
@@ -67,8 +86,26 @@ class CreateNotificationUseCase:
 
 
 class ListInboxNotificationsUseCase:
-    def execute(self, user, limit: int = 20):
-        return NotificationRepository.list_for_user(getattr(user, "sub", user.id), limit=limit)
+    def execute(self, user, query: NotificationQuery):
+        user_id = getattr(user, "sub", user.id)
+        filters = {
+            "is_read": query.is_read,
+            "priority": query.priority,
+            "notification_type": query.notification_type,
+        }
+        return NotificationRepository.list_for_user(
+            user_id,
+            filters=filters,
+            limit=query.limit,
+            cursor=query.cursor,
+            page_size=query.page_size,
+        )
+
+
+class CountUnreadNotificationsUseCase:
+    def execute(self, user):
+        user_id = getattr(user, "sub", user.id)
+        return NotificationRepository.unread_counts_for_user(user_id)
 
 
 class GetNotificationDetailUseCase:
@@ -82,8 +119,20 @@ class GetNotificationDetailUseCase:
         return notification
 
 
+class MarkNotificationReadUseCase:
+    def execute(self, user, notification_id):
+        user_id = getattr(user, "sub", user.id)
+        return NotificationRepository.mark_read_for_user(notification_id, user_id)
+
+
+class MarkAllNotificationsReadUseCase:
+    def execute(self, user):
+        user_id = getattr(user, "sub", user.id)
+        return NotificationRepository.mark_all_read_for_user(user_id)
+
+
 class UpdateNotificationUseCase:
-    def execute(self, user, notification, *, title=None, body=None, metadata=None):
+    def execute(self, user, notification, *, title=None, body=None, metadata=None, priority=None):
         if notification.status not in (NotificationStatusChoices.DRAFT, NotificationStatusChoices.PENDING):
             raise ValueError("NOTIFICATION_NOT_EDITABLE")
         user_id = str(getattr(user, "sub", user.id))
@@ -98,6 +147,8 @@ class UpdateNotificationUseCase:
             notification.body = body
         if metadata is not None:
             notification.metadata = metadata
+        if priority is not None:
+            notification.priority = NotificationPriorityChoices(priority)
         notification.updated_at = timezone.now()
         notification.save()
 
@@ -128,8 +179,4 @@ class DeleteNotificationUseCase:
             payload=payload,
             exchange="events",
         )
-
-
-# Compatibility aliases.
-SendTestSmsUseCase = SendTestEmailUseCase
-ProcessOtpSmsUseCase = ProcessOtpEmailUseCase
+        return notification

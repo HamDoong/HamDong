@@ -16,7 +16,6 @@ from apps.identity.domain.models import User
 from apps.identity.infrastructure.key_loader import JwtKeyLoader
 from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
-
 ACCESS_TOKEN_KID = "hamdong-main-key"
 ACCESS_REQUIRED_CLAIMS = ["sub", "email", "role", "type", "jti", "iat", "exp", "iss", "aud"]
 REFRESH_REQUIRED_CLAIMS = ["sub", "type", "jti", "iat", "exp", "iss", "aud"]
@@ -91,11 +90,11 @@ class TokenService:
         token_hash = RefreshTokenRepository.hash_token(token)
         return token, token_hash
 
-    def verify_access_token(self, token: str) -> Optional[Dict[str, Any]]:
+    def verify_access_token_details(self, token: str) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
         try:
             header = jwt.get_unverified_header(token)
             if header.get("alg") != self.algorithm:
-                return None
+                return None, "INVALID_TOKEN"
             payload = jwt.decode(
                 token,
                 self.public_key,
@@ -104,11 +103,17 @@ class TokenService:
                 issuer=self.issuer,
                 options={"require": ACCESS_REQUIRED_CLAIMS},
             )
+        except jwt.ExpiredSignatureError:
+            return None, "TOKEN_EXPIRED"
         except jwt.InvalidTokenError:
-            return None
+            return None, "INVALID_TOKEN"
 
         if payload.get("type") != "access":
-            return None
+            return None, "INVALID_TOKEN_TYPE"
+        return payload, None
+
+    def verify_access_token(self, token: str) -> Optional[Dict[str, Any]]:
+        payload, _ = self.verify_access_token_details(token)
         return payload
 
     def verify_refresh_token(self, token: str) -> Optional[Dict[str, Any]]:

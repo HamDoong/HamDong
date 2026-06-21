@@ -1,8 +1,15 @@
 """Database repositories for notification-service."""
 
+from __future__ import annotations
+
+import base64
+import json
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.notifications.domain.models import (
@@ -11,20 +18,35 @@ from apps.notifications.domain.models import (
     NotificationJob,
     NotificationJobStatusChoices,
     NotificationMessage,
+    NotificationPriorityChoices,
     OutboxMessage,
     OutboxMessageStatusChoices,
     ProviderDeliveryLog,
     SmsTemplate,
 )
+from apps.notifications.domain.rules import NotificationPriorityRule
 
 
 class NotificationRepository:
+    MAX_LIMIT = 100
+
     @staticmethod
     def create_notification_message(**kwargs) -> NotificationMessage:
+        metadata = kwargs.get("metadata") or {}
+        priority = kwargs.pop("priority", None) or metadata.get("priority")
+        kwargs["metadata"] = metadata
+        kwargs["priority"] = NotificationPriorityRule.normalize(priority, message_type=kwargs.get("message_type"))
+        kwargs.setdefault("is_read", False)
+        kwargs.setdefault("read_at", None)
         return NotificationMessage.objects.create(**kwargs)
 
     @staticmethod
     def update_notification_message(notification_message: NotificationMessage, **kwargs) -> NotificationMessage:
+        if "priority" in kwargs:
+            kwargs["priority"] = NotificationPriorityRule.normalize(
+                kwargs.get("priority"),
+                message_type=kwargs.get("message_type", notification_message.message_type),
+            )
         for key, value in kwargs.items():
             setattr(notification_message, key, value)
         notification_message.save()
@@ -35,12 +57,122 @@ class NotificationRepository:
         return NotificationMessage.objects.filter(id=notification_id, is_deleted=False).first()
 
     @staticmethod
-    def list_recent_messages(limit: int = 20):
-        return NotificationMessage.objects.filter(is_deleted=False)[:limit]
+    def get_for_user(notification_id, user_id, *, for_update: bool = False):
+        qs = NotificationMessage.objects.filter(
+            id=notification_id,
+            recipient_user_id=user_id,
+            is_deleted=False,
+        )
+        if for_update:
+            qs = qs.select_for_update()
+        return qs.first()
 
     @staticmethod
-    def list_for_user(user_id, limit: int = 20):
-        return NotificationMessage.objects.filter(recipient_user_id=user_id, is_deleted=False).order_by("-created_at")[:limit]
+    def list_recent_messages(limit: int = 20):
+        safe_limit = min(max(int(limit), 1), NotificationRepository.MAX_LIMIT)
+        return NotificationMessage.objects.filter(is_deleted=False).order_by("-created_at", "-id")[:safe_limit]
+
+    @staticmethod
+    def _base_user_queryset(user_id):
+        return NotificationMessage.objects.filter(
+            recipient_user_id=user_id,
+            is_deleted=False,
+        )
+
+    @staticmethod
+    def encode_cursor(notification: NotificationMessage) -> str:
+        payload = {
+            "created_at": notification.created_at.isoformat(),
+            "id": str(notification.id),
+        }
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii")
+
+    @staticmethod
+    def decode_cursor(cursor: str | None) -> dict | None:
+        if not cursor:
+            return None
+        try:
+            raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+            data = json.loads(raw)
+            return {
+                "created_at": data["created_at"],
+                "id": uuid.UUID(data["id"]),
+            }
+        except Exception as exc:
+            raise ValueError("INVALID_CURSOR") from exc
+
+    @staticmethod
+    def list_for_user(
+        user_id,
+        *,
+        filters: dict | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        page_size: int | None = None,
+    ) -> tuple[list[NotificationMessage], str | None]:
+        qs = NotificationRepository._base_user_queryset(user_id).order_by("-created_at", "-id")
+
+        if filters:
+            if filters.get("is_read") is not None:
+                qs = qs.filter(is_read=filters["is_read"])
+            if filters.get("priority"):
+                qs = qs.filter(priority=filters["priority"])
+            if filters.get("notification_type"):
+                qs = qs.filter(message_type=filters["notification_type"])
+
+        if cursor:
+            cursor_data = NotificationRepository.decode_cursor(cursor)
+            qs = qs.filter(
+                Q(created_at__lt=cursor_data["created_at"])
+                | Q(created_at=cursor_data["created_at"], id__lt=cursor_data["id"])
+            )
+
+        fetch_limit = page_size if page_size is not None else limit
+        safe_limit = min(max(int(fetch_limit or 20), 1), NotificationRepository.MAX_LIMIT)
+        rows = list(qs[: safe_limit + 1])
+        has_more = len(rows) > safe_limit
+        items = rows[:safe_limit]
+        next_cursor = NotificationRepository.encode_cursor(items[-1]) if has_more and items else None
+        return items, next_cursor
+
+    @staticmethod
+    def unread_counts_for_user(user_id) -> dict[str, int]:
+        counts = NotificationRepository._base_user_queryset(user_id).aggregate(
+            unread_count=Count("id", filter=Q(is_read=False)),
+            important_unread_count=Count(
+                "id",
+                filter=Q(is_read=False, priority__in=[NotificationPriorityChoices.HIGH, NotificationPriorityChoices.URGENT]),
+            ),
+        )
+        return {
+            "unread_count": int(counts.get("unread_count") or 0),
+            "important_unread_count": int(counts.get("important_unread_count") or 0),
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def mark_read_for_user(notification_id, user_id):
+        notification = NotificationRepository.get_for_user(notification_id, user_id, for_update=True)
+        if not notification:
+            return None
+        if not notification.is_read:
+            read_at = timezone.now()
+            notification.is_read = True
+            notification.read_at = read_at
+            notification.save(update_fields=["is_read", "read_at", "updated_at"])
+        return notification
+
+    @staticmethod
+    @transaction.atomic
+    def mark_all_read_for_user(user_id) -> tuple[int, timezone.datetime]:
+        read_at = timezone.now()
+        updated_count = NotificationRepository._base_user_queryset(user_id).filter(is_read=False).update(
+            is_read=True,
+            read_at=read_at,
+            updated_at=read_at,
+        )
+        return int(updated_count), read_at
 
     @staticmethod
     def create_delivery_log(**kwargs) -> ProviderDeliveryLog:

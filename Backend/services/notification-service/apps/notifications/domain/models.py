@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -26,6 +27,13 @@ class NotificationStatusChoices(models.TextChoices):
     FAILED = "FAILED", "Failed"
     RETRY_PENDING = "RETRY_PENDING", "Retry pending"
     SKIPPED = "SKIPPED", "Skipped"
+
+
+class NotificationPriorityChoices(models.TextChoices):
+    LOW = "LOW", "Low"
+    NORMAL = "NORMAL", "Normal"
+    HIGH = "HIGH", "High"
+    URGENT = "URGENT", "Urgent"
 
 
 class EmailProviderChoices(models.TextChoices):
@@ -66,6 +74,9 @@ class NotificationMessage(models.Model):
     recipient_masked = models.CharField(max_length=254)
     template_code = models.CharField(max_length=64, null=True, blank=True)
     status = models.CharField(max_length=32, choices=NotificationStatusChoices.choices, default=NotificationStatusChoices.PENDING)
+    priority = models.CharField(max_length=16, choices=NotificationPriorityChoices.choices, default=NotificationPriorityChoices.NORMAL)
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
     provider = models.CharField(max_length=32, choices=EmailProviderChoices.choices, default=EmailProviderChoices.FAKE)
     provider_message_id = models.CharField(max_length=128, null=True, blank=True)
     error_code = models.CharField(max_length=64, null=True, blank=True)
@@ -84,7 +95,18 @@ class NotificationMessage(models.Model):
 
     class Meta:
         db_table = "notification_messages"
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["recipient_user_id", "created_at"], name="notif_recipient_created_idx"),
+            models.Index(fields=["recipient_user_id", "is_read"], name="notif_recipient_read_idx"),
+            models.Index(fields=["recipient_user_id", "priority", "is_read"], name="notif_rec_prio_read_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(is_read=False, read_at__isnull=True) | Q(is_read=True, read_at__isnull=False)),
+                name="notif_read_state_consistent",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.channel}:{self.message_type}:{self.recipient_masked}"
@@ -92,6 +114,14 @@ class NotificationMessage(models.Model):
     @property
     def message(self) -> str:
         return self.body
+
+    def save(self, *args, **kwargs):
+        if self.is_read:
+            if self.read_at is None:
+                self.read_at = timezone.now()
+        else:
+            self.read_at = None
+        super().save(*args, **kwargs)
 
 
 class NotificationJobStatusChoices(models.TextChoices):

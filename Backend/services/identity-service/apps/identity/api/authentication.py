@@ -31,16 +31,29 @@ class JWTAuthentication(BaseAuthentication):
 
         token = parts[1].strip()
         token_service = TokenService()
-        payload = token_service.verify_access_token(token)
+        payload, error_code = token_service.verify_access_token_details(token)
 
         if not payload:
+            if error_code == "TOKEN_EXPIRED":
+                raise exceptions.AuthenticationFailed(
+                    {"code": "TOKEN_EXPIRED", "message": "The provided token has expired."}
+                )
+            if error_code == "INVALID_TOKEN_TYPE":
+                raise exceptions.AuthenticationFailed(
+                    {"code": "INVALID_TOKEN_TYPE", "message": "Access token is required."}
+                )
             raise exceptions.AuthenticationFailed(
                 {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
             )
 
-        if not UserRepository.get_by_id(payload.get("sub")):
+        db_user = UserRepository.get_by_id(payload.get("sub"))
+        if not db_user:
             raise exceptions.AuthenticationFailed(
                 {"code": "INVALID_TOKEN", "message": "The provided token is invalid."}
+            )
+        if not db_user.is_active:
+            raise exceptions.AuthenticationFailed(
+                {"code": "USER_INACTIVE", "message": "The user account is inactive."}
             )
 
         user = AuthenticatedUser(

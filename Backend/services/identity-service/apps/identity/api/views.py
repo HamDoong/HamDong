@@ -1,11 +1,11 @@
-"""API views for identity service."""
+"""API views for identity-service."""
 
 from __future__ import annotations
 
 import logging
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -189,14 +189,6 @@ class RefreshTokenView(APIView):
     def post(self, request):
         serializer = RefreshTokenSerializer(data=request.data)
         if not serializer.is_valid():
-            if "email" in serializer.errors and request.data.get("email"):
-                return _error_response(
-                    "INVALID_EMAIL",
-                    "Invalid email format.",
-                    status.HTTP_400_BAD_REQUEST,
-                    serializer.errors,
-                )
-
             return _error_response(
                 "INVALID_REQUEST",
                 "Invalid request data.",
@@ -225,14 +217,6 @@ class LogoutView(APIView):
     def post(self, request):
         serializer = LogoutSerializer(data=request.data)
         if not serializer.is_valid():
-            if "email" in serializer.errors and request.data.get("email"):
-                return _error_response(
-                    "INVALID_EMAIL",
-                    "Invalid email format.",
-                    status.HTTP_400_BAD_REQUEST,
-                    serializer.errors,
-                )
-
             return _error_response(
                 "INVALID_REQUEST",
                 "Invalid request data.",
@@ -259,14 +243,6 @@ class PasswordSetView(APIView):
 
         serializer = PasswordSetSerializer(data=request.data)
         if not serializer.is_valid():
-            if "email" in serializer.errors and request.data.get("email"):
-                return _error_response(
-                    "INVALID_EMAIL",
-                    "Invalid email format.",
-                    status.HTTP_400_BAD_REQUEST,
-                    serializer.errors,
-                )
-
             return _error_response(
                 "INVALID_REQUEST",
                 "Invalid request data.",
@@ -298,14 +274,6 @@ class PasswordLoginView(APIView):
     def post(self, request):
         serializer = PasswordLoginSerializer(data=request.data)
         if not serializer.is_valid():
-            if "email" in serializer.errors and request.data.get("email"):
-                return _error_response(
-                    "INVALID_EMAIL",
-                    "Invalid email format.",
-                    status.HTTP_400_BAD_REQUEST,
-                    serializer.errors,
-                )
-
             return _error_response(
                 "INVALID_REQUEST",
                 "Invalid request data.",
@@ -330,7 +298,24 @@ class PasswordChangeView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=["Auth"], summary="Change password", request=PasswordChangeSerializer, responses={200: MessageResponseSerializer})
+    @extend_schema(
+        tags=["Auth"],
+        summary="Change password",
+        description="Changes the current password, revokes other refresh-token sessions for the same user, and queues a safe PasswordChanged event.",
+        request=PasswordChangeSerializer,
+        responses={200: MessageResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Password change request",
+                value={
+                    "current_password": "OldPassword123!",
+                    "new_password": "NewPassword123!",
+                    "new_password_confirm": "NewPassword123!",
+                },
+                request_only=True,
+            )
+        ],
+    )
     def post(self, request):
         user = UserRepository.get_by_id(request.user.id)
         if not user:
@@ -338,14 +323,6 @@ class PasswordChangeView(APIView):
 
         serializer = PasswordChangeSerializer(data=request.data)
         if not serializer.is_valid():
-            if "email" in serializer.errors and request.data.get("email"):
-                return _error_response(
-                    "INVALID_EMAIL",
-                    "Invalid email format.",
-                    status.HTTP_400_BAD_REQUEST,
-                    serializer.errors,
-                )
-
             return _error_response(
                 "INVALID_REQUEST",
                 "Invalid request data.",
@@ -358,6 +335,7 @@ class PasswordChangeView(APIView):
             serializer.validated_data["current_password"],
             serializer.validated_data["new_password"],
             serializer.validated_data["new_password_confirm"],
+            current_jti=getattr(request.user, "token_jti", None),
         )
         if not success:
             mapping = {
@@ -368,21 +346,50 @@ class PasswordChangeView(APIView):
             }
             code, message, http_status = mapping[error_code]
             return _error_response(code, message, http_status)
-        return Response({"message": "Password has been changed successfully."}, status=status.HTTP_200_OK)
+        return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
 
 
 class MeView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=["Users"], summary="Get current user profile", responses={200: UserSerializer})
+    @extend_schema(
+        tags=["Users"],
+        summary="Get current user profile",
+        description="Returns the authenticated user's current profile. New private profile fields are returned only from identity-service and are not published in general UserUpdated events.",
+        responses={200: UserSerializer},
+    )
     def get(self, request):
         user = UserRepository.get_by_id(request.user.id)
         if not user:
             return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
         return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
 
-    @extend_schema(tags=["Users"], summary="Update current user profile", request=UpdateUserSerializer, responses={200: UserSerializer})
+    @extend_schema(
+        tags=["Users"],
+        summary="Update current user profile",
+        description=(
+            "Partially updates the authenticated user's editable profile fields. "
+            "Editable fields: art_name, first_name, last_name, display_name, phone_number, "
+            "date_of_birth, city, bio. Read-only or ignored fields such as email, role, "
+            "is_email_verified, avatar_url, and password are not updated."
+        ),
+        request=UpdateUserSerializer,
+        responses={200: UserSerializer},
+        examples=[
+            OpenApiExample(
+                "Patch profile",
+                value={
+                    "display_name": "علی احمدی",
+                    "phone_number": "09123456789",
+                    "date_of_birth": "1998-07-01",
+                    "city": "Tehran",
+                    "bio": "Backend developer",
+                },
+                request_only=True,
+            )
+        ],
+    )
     def patch(self, request):
         user = UserRepository.get_by_id(request.user.id)
         if not user:
@@ -390,22 +397,39 @@ class MeView(APIView):
 
         serializer = UpdateUserSerializer(data=request.data, partial=True)
         if not serializer.is_valid():
-            if serializer.errors.get("art_name") == ["INVALID_ART_NAME"]:
-                return _error_response("INVALID_ART_NAME", "Art name format is invalid.", status.HTTP_400_BAD_REQUEST)
+            error_mappings = {
+                "art_name": ("INVALID_ART_NAME", "Art name format is invalid."),
+                "display_name": ("INVALID_DISPLAY_NAME", "Display name is invalid."),
+                "phone_number": ("INVALID_PHONE_NUMBER", "Phone number is invalid."),
+                "date_of_birth": ("INVALID_DATE_OF_BIRTH", "Date of birth is invalid."),
+                "city": ("INVALID_CITY", "City is invalid."),
+                "bio": ("INVALID_BIO", "Biography is invalid."),
+                "first_name": ("INVALID_FIRST_NAME", "First name is invalid."),
+                "last_name": ("INVALID_LAST_NAME", "Last name is invalid."),
+            }
+            for field_name, (code, message) in error_mappings.items():
+                if field_name in serializer.errors:
+                    return _error_response(code, message, status.HTTP_400_BAD_REQUEST, serializer.errors)
             return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
 
         try:
             _, updated_user = UpdateProfileUseCase().execute(
                 user,
-                art_name=serializer.validated_data.get("art_name"),
-                first_name=serializer.validated_data.get("first_name"),
-                last_name=serializer.validated_data.get("last_name"),
+                **serializer.validated_data,
             )
         except ValueError as exc:
             if str(exc) == "ART_NAME_ALREADY_EXISTS":
                 return _error_response("ART_NAME_ALREADY_EXISTS", "This art name is already taken.", status.HTTP_409_CONFLICT)
+            if str(exc) == "PHONE_NUMBER_ALREADY_EXISTS":
+                return _error_response("PHONE_NUMBER_ALREADY_EXISTS", "This phone number is already in use.", status.HTTP_409_CONFLICT)
             if str(exc) == "INVALID_ART_NAME":
                 return _error_response("INVALID_ART_NAME", "Art name format is invalid.", status.HTTP_400_BAD_REQUEST)
+            if str(exc) == "INVALID_DISPLAY_NAME":
+                return _error_response("INVALID_DISPLAY_NAME", "Display name is invalid.", status.HTTP_400_BAD_REQUEST)
+            if str(exc) == "INVALID_PHONE_NUMBER":
+                return _error_response("INVALID_PHONE_NUMBER", "Phone number is invalid.", status.HTTP_400_BAD_REQUEST)
+            if str(exc) == "INVALID_DATE_OF_BIRTH":
+                return _error_response("INVALID_DATE_OF_BIRTH", "Date of birth is invalid.", status.HTTP_400_BAD_REQUEST)
             raise
 
         return Response(UserSerializer(updated_user).data, status=status.HTTP_200_OK)

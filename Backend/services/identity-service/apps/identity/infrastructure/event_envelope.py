@@ -8,6 +8,28 @@ from uuid import UUID
 from django.conf import settings
 
 
+_SENSITIVE_TERMS = ("password", "token", "secret", "credential", "smtp", "api_key")
+
+
+def _redact_for_log(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _redact_for_log(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_for_log(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_for_log(item) for item in value)
+    if isinstance(value, str) and any(term in value.lower() for term in _SENSITIVE_TERMS):
+        return "[redacted]"
+    return value
+
+
+class SafeLogEnvelope(dict):
+    def __repr__(self) -> str:
+        return repr(_redact_for_log(dict(self)))
+
+    __str__ = __repr__
+
+
 def _coerce_uuid(value: Any) -> str:
     if value in (None, ""):
         return str(uuid.uuid4())
@@ -30,7 +52,7 @@ def build_event_envelope(
 ) -> dict[str, Any]:
     correlation_value = _coerce_uuid(correlation_id)
     causation_value = _coerce_uuid(causation_id or correlation_value)
-    return {
+    return SafeLogEnvelope({
         "event_id": _coerce_uuid(event_id),
         "event_type": event_type,
         "event_version": int(event_version),
@@ -40,7 +62,7 @@ def build_event_envelope(
         "causation_id": causation_value,
         "routing_key": routing_key,
         "data": data or {},
-    }
+    })
 
 
 def validate_event_envelope(payload: dict[str, Any]) -> tuple[bool, str | None]:

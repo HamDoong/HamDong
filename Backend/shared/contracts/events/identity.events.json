@@ -24,6 +24,7 @@
         "art_name",
         "first_name",
         "last_name",
+        "display_name",
         "role",
         "is_active"
       ]
@@ -44,6 +45,15 @@
         "code",
         "purpose",
         "expires_in"
+      ]
+    },
+    {
+      "event_type": "PasswordChanged",
+      "routing_key": "identity.user.password_changed",
+      "payload_keys": [
+        "user_id",
+        "changed_at",
+        "other_sessions_revoked"
       ]
     }
   ]
