@@ -210,7 +210,7 @@ class UpdateCurrentUserTestCase(TestCase):
         assert self.user.city is None
         assert self.user.bio is None
 
-    def test_update_current_user_ignores_read_only_fields(self):
+    def test_update_current_user_ignores_read_only_fields_but_allows_avatar_url(self):
         response = self.client.patch(
             self.url,
             {
@@ -231,7 +231,7 @@ class UpdateCurrentUserTestCase(TestCase):
         assert self.user.role == "USER"
         assert self.user.is_active is True
         assert self.user.is_email_verified is False
-        assert self.user.avatar_url is None
+        assert self.user.avatar_url == "https://example.com/avatar.jpg"
         assert self.user.display_name == "Safe Name"
 
     def test_duplicate_art_name_fails(self):
@@ -297,3 +297,21 @@ class UpdateCurrentUserTestCase(TestCase):
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.json()["error"]["code"] == "INVALID_DATE_OF_BIRTH"
+
+    def test_update_current_user_accepts_persian_bio_with_zero_width_non_joiner(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            "/api/v1/users/me/",
+            {
+                "bio": "دانشجوی مهندسی نرم‌افزار",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 200
+        assert response.data["bio"] == "دانشجوی مهندسی نرم‌افزار"
+
+        self.user.refresh_from_db()
+        assert self.user.bio == "دانشجوی مهندسی نرم‌افزار"
+        

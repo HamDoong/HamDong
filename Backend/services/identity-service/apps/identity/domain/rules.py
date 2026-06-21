@@ -14,7 +14,7 @@ from django.core.validators import validate_email
 _PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _ALLOWED_NAME_PUNCTUATION = {"'", "-", ".", "(", ")"}
 _ALLOWED_BIO_CONTROLS = {"\n", "\r", "\t"}
-
+_ALLOWED_PROFILE_FORMAT_CHARS = {"\u200c"}
 
 class EmailRule:
     """Validate, normalize, and mask email addresses."""
@@ -102,6 +102,8 @@ class ProfileRule:
         for character in value:
             if character == "\x00":
                 return True
+            if character in _ALLOWED_PROFILE_FORMAT_CHARS:
+                continue
             if unicodedata.category(character).startswith("C") and character not in allowed_controls:
                 return True
         return False
