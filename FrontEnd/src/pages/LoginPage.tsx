@@ -21,7 +21,6 @@ import {
   requestLoginOtp,
   verifyLoginOtp,
 } from '../lib/authApi';
-import { ThemeToggle } from '../components/theme/ThemeToggle';
 import './LoginPage.css';
 
 type LoginPageProps = {
@@ -141,6 +140,7 @@ function BenefitList() {
 
 function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   const [mode, setMode] = useState<LoginMode>('password');
+  const [modeHasChanged, setModeHasChanged] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [artName, setArtName] = useState('');
   const [password, setPassword] = useState('');
@@ -161,6 +161,15 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
 
   const normalizedEmail = normalizeEmail(email);
   const normalizedOtpCode = normalizeLocalizedDigits(otpCode);
+
+  function handleModeChange(nextMode: LoginMode) {
+    if (nextMode !== mode) {
+      setModeHasChanged(true);
+      setMode(nextMode);
+    }
+
+    resetFeedback();
+  }
 
   async function handlePasswordLogin() {
     const cleanArtName = artName.trim();
@@ -233,7 +242,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
 
   return (
     <form
-      className="login-card"
+      className={`login-card login-card-${mode}${modeHasChanged ? ' login-card-tab-switching' : ''}`}
       onSubmit={(event) => {
         event.preventDefault();
         if (mode === 'password') {
@@ -255,10 +264,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
           type="button"
           className={mode === 'password' ? 'is-active' : undefined}
           aria-pressed={mode === 'password'}
-          onClick={() => {
-            setMode('password');
-            resetFeedback();
-          }}
+          onClick={() => handleModeChange('password')}
         >
           ورود با رمز
         </button>
@@ -266,10 +272,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
           type="button"
           className={mode === 'otp' ? 'is-active' : undefined}
           aria-pressed={mode === 'otp'}
-          onClick={() => {
-            setMode('otp');
-            resetFeedback();
-          }}
+          onClick={() => handleModeChange('otp')}
         >
           کد ایمیلی
         </button>
@@ -480,7 +483,6 @@ export function AuthShowcase() {
 export function LoginPage({ onLogin, onSignUp }: LoginPageProps) {
   return (
     <main className="login-page" dir="rtl">
-      <ThemeToggle className="auth-theme-toggle" />
       <section className="login-main">
         <AuthShowcase />
 
