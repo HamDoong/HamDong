@@ -1,0 +1,1 @@
+from apps.notifications.infrastructure.rabbitmq_publisher import RabbitMQPublisher

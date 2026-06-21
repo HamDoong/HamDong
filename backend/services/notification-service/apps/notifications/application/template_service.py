@@ -54,6 +54,16 @@ class TemplateService:
                     "Please pay {receiver_name} to complete this settlement step."
                 ),
             ),
+            "DEBT_REMINDER": self.repository.ensure_template(
+                code=settings.EMAIL_TEMPLATE_DEBT_REMINDER,
+                title="HamDong debt reminder",
+                body=(
+                    "HamDong debt reminder\n\n"
+                    "Group: {group_title}\n"
+                    "Amount: {amount} {currency}\n"
+                    "Please settle this payment with {creditor_name} when possible."
+                ),
+            ),
         }
         self.repository.ensure_template(
             code=settings.EMAIL_TEMPLATE_SETTLEMENT_REMINDER,

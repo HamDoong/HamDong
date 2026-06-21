@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hamdong.local/schemas/event_envelope.schema.json",
+  "title": "EventEnvelope",
+  "type": "object",
+  "required": ["event_id", "event_type", "event_version", "occurred_at", "source_service", "data"],
+  "properties": {
+    "event_id": {"type": "string"},
+    "event_type": {"type": "string"},
+    "event_version": {"type": ["integer", "string"]},
+    "occurred_at": {"type": "string"},
+    "source_service": {"type": "string"},
+    "routing_key": {"type": ["string", "null"]},
+    "correlation_id": {"type": ["string", "null"]},
+    "causation_id": {"type": ["string", "null"]},
+    "version": {"type": ["integer", "string", "null"]},
+    "data": {"type": "object"}
+  },
+  "additionalProperties": true
+}

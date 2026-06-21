@@ -4,8 +4,12 @@ from apps.settlements.infrastructure.reminder_scheduler import SettlementReminde
 
 
 class Command(BaseCommand):
-    help = "Queue reminder events for pending settlement work."
+    help = "Queue automatic debt reminder events for eligible settlement plan items."
 
     def handle(self, *args, **options):
-        queued = SettlementReminderScheduler().run()
-        self.stdout.write(self.style.SUCCESS(f"Queued {len(queued)} reminder messages."))
+        result = SettlementReminderScheduler().run()
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Automatic reminders eligible={result['eligible_count']} created={result['created_count']} skipped={result['skipped_count']}"
+            )
+        )

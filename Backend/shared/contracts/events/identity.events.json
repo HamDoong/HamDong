@@ -1,0 +1,50 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "identity-service",
+  "events": [
+    {
+      "event_type": "UserCreated",
+      "routing_key": "identity.user.created",
+      "payload_keys": [
+        "user_id",
+        "email",
+        "art_name",
+        "first_name",
+        "last_name",
+        "role",
+        "is_active"
+      ]
+    },
+    {
+      "event_type": "UserUpdated",
+      "routing_key": "identity.user.updated",
+      "payload_keys": [
+        "user_id",
+        "email",
+        "art_name",
+        "first_name",
+        "last_name",
+        "role",
+        "is_active"
+      ]
+    },
+    {
+      "event_type": "UserLoggedIn",
+      "routing_key": "identity.user.logged_in",
+      "payload_keys": [
+        "user_id",
+        "email"
+      ]
+    },
+    {
+      "event_type": "SendOtpEmailRequested",
+      "routing_key": "identity.otp.requested",
+      "payload_keys": [
+        "email",
+        "code",
+        "purpose",
+        "expires_in"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+from apps.groups.infrastructure.consumers import IdentityUserConsumer

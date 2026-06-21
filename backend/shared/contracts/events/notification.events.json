@@ -39,6 +39,17 @@
         "recipient_email",
         "error"
       ]
+    },
+    {
+      "event_type": "DebtReminderDeliveryUpdated",
+      "routing_key": "notification.debt_reminder.delivery.updated",
+      "payload_keys": [
+        "reminder_id",
+        "status",
+        "channel_statuses",
+        "last_error",
+        "delivery_updated_at"
+      ]
     }
   ]
 }

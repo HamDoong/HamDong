@@ -1,0 +1,1 @@
+from apps.identity.domain.models import *  # noqa

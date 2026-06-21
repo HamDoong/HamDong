@@ -90,6 +90,34 @@ class SettlementPlanEventTypeChoices(models.TextChoices):
     PLAN_COMPLETED = "PLAN_COMPLETED", "Plan Completed"
 
 
+class ReminderChannelChoices(models.TextChoices):
+    IN_APP = "IN_APP", "In-app"
+    EMAIL = "EMAIL", "Email"
+
+
+class DebtReminderSourceChoices(models.TextChoices):
+    AUTOMATIC = "AUTOMATIC", "Automatic"
+    MANUAL_GROUP_RUN = "MANUAL_GROUP_RUN", "Manual group run"
+    MANUAL_ITEM = "MANUAL_ITEM", "Manual item"
+
+
+class DebtReminderStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    QUEUED = "QUEUED", "Queued"
+    PARTIALLY_SENT = "PARTIALLY_SENT", "Partially sent"
+    SENT = "SENT", "Sent"
+    FAILED = "FAILED", "Failed"
+    CANCELED = "CANCELED", "Canceled"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+class DeliveryChannelStatusChoices(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    SENT = "SENT", "Sent"
+    FAILED = "FAILED", "Failed"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
 class UserProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     identity_user_id = models.UUIDField(unique=True, db_index=True)
@@ -363,6 +391,76 @@ class OutboxMessage(models.Model):
         ]
 
 
+
+class GroupReminderSettings(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(unique=True, db_index=True)
+    is_enabled = models.BooleanField(default=True)
+    first_reminder_after_hours = models.PositiveIntegerField(default=24)
+    repeat_interval_hours = models.PositiveIntegerField(default=48)
+    maximum_reminders = models.PositiveIntegerField(default=3)
+    send_in_app = models.BooleanField(default=True)
+    send_email = models.BooleanField(default=True)
+    created_by_user_id = models.UUIDField(null=True, blank=True)
+    updated_by_user_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_group_reminder_settings"
+        indexes = [models.Index(fields=["group_id"])]
+
+
+class DebtReminderRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group_id = models.UUIDField(db_index=True)
+    settlement_plan_id = models.UUIDField(db_index=True)
+    settlement_plan_item_id = models.UUIDField(db_index=True)
+    recipient_user_id = models.UUIDField(db_index=True)
+    creditor_user_id = models.UUIDField(db_index=True)
+    requested_by_user_id = models.UUIDField(null=True, blank=True)
+    sequence_number = models.PositiveIntegerField(default=1)
+    source = models.CharField(max_length=32, choices=DebtReminderSourceChoices.choices)
+    channels = models.JSONField(default=list)
+    channel_statuses = models.JSONField(default=dict, blank=True)
+    status = models.CharField(
+        max_length=32,
+        choices=DebtReminderStatusChoices.choices,
+        default=DebtReminderStatusChoices.PENDING,
+    )
+    currency = models.CharField(
+        max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
+    )
+    amount_minor = models.BigIntegerField(default=0)
+    source_timestamp = models.DateTimeField(null=True, blank=True)
+    scheduled_at = models.DateTimeField(default=timezone.now, db_index=True)
+    requested_at = models.DateTimeField(default=timezone.now)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    delivery_updated_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
+    dedupe_key = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    created_by_user_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_debt_reminder_requests"
+        indexes = [
+            models.Index(fields=["group_id", "-created_at"]),
+            models.Index(fields=["settlement_plan_item_id", "source", "sequence_number"]),
+            models.Index(fields=["recipient_user_id", "-created_at"]),
+            models.Index(fields=["status", "-scheduled_at"]),
+            models.Index(fields=["source", "-created_at"]),
+            models.Index(fields=["dedupe_key"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["settlement_plan_item_id", "source", "sequence_number"],
+                name="settlement_debt_reminder_unique_sequence",
+            )
+        ]
+
+
 class ReminderDispatchLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reminder_type = models.CharField(
@@ -417,6 +515,7 @@ class SettlementPlan(models.Model):
     )
     generated_by_user_id = models.UUIDField()
     activated_by_user_id = models.UUIDField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     source_balance_calculated_at = models.DateTimeField()

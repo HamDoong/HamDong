@@ -1,0 +1,95 @@
+@baseUrl = http://localhost:8080
+
+@accessToken =
+@secondAccessToken =
+@groupId =
+@inviteToken =
+@inviteId =
+@memberId =
+
+### Health endpoint
+GET {{baseUrl}}/api/v1/groups/health/
+
+### Create group with title
+POST {{baseUrl}}/api/v1/groups/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "شام جمعه",
+  "description": "دورهمی دوستانه",
+  "group_type": "EVENT"
+}
+
+### Create group with title_parts
+POST {{baseUrl}}/api/v1/groups/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title_parts": ["سفر", "شمال", "تابستان"],
+  "description": "سفر چندروزه",
+  "group_type": "TRIP"
+}
+
+### List groups
+GET {{baseUrl}}/api/v1/groups/
+Authorization: Bearer {{accessToken}}
+
+### Group detail
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/
+Authorization: Bearer {{accessToken}}
+
+### Update group title_parts
+PATCH {{baseUrl}}/api/v1/groups/{{groupId}}/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title_parts": ["شام", "جمعه", "دوستان"]
+}
+
+### Create invite
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "expires_in_hours": 48,
+  "max_uses": 5
+}
+
+### Get invite detail
+GET {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/
+
+### Accept invite
+POST {{baseUrl}}/api/v1/groups/invites/{{inviteToken}}/accept/
+Authorization: Bearer {{secondAccessToken}}
+
+### List members
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/members/
+Authorization: Bearer {{accessToken}}
+
+### Remove member
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/members/{{memberId}}/remove/
+Authorization: Bearer {{accessToken}}
+
+### Leave group
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/leave/
+Authorization: Bearer {{secondAccessToken}}
+
+### Revoke invite
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/invites/{{inviteId}}/revoke/
+Authorization: Bearer {{accessToken}}
+
+### Archive group
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/archive/
+Authorization: Bearer {{accessToken}}
+
+### Restore group
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/restore/
+Authorization: Bearer {{accessToken}}
+
+### Delete group
+DELETE {{baseUrl}}/api/v1/groups/{{groupId}}/
+Authorization: Bearer {{accessToken}}

@@ -1,0 +1,91 @@
+@baseUrl = http://localhost:8080
+
+@accessToken =
+@receiverAccessToken =
+@groupId =
+@receiverUserId =
+@settlementId =
+@settlementPlanId =
+@settlementPlanItemId =
+
+### Health endpoint
+GET {{baseUrl}}/api/v1/settlements/health/
+
+### Get group balances
+# Wait briefly after expense creation so async projections can catch up.
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/
+Authorization: Bearer {{accessToken}}
+
+### Get my balance
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/balances/me/
+Authorization: Bearer {{accessToken}}
+
+### Get group debts
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/debts/
+Authorization: Bearer {{accessToken}}
+
+### Create manual settlement
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlements/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "receiver_user_id": "{{receiverUserId}}",
+  "amount_minor": 300000,
+  "currency": "IRR",
+  "description": "پرداخت دستی"
+}
+
+### List group settlements
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlements/
+Authorization: Bearer {{accessToken}}
+
+### Confirm settlement
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/confirm/
+Authorization: Bearer {{receiverAccessToken}}
+
+### Reject settlement
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/reject/
+Authorization: Bearer {{receiverAccessToken}}
+
+### Cancel settlement
+POST {{baseUrl}}/api/v1/settlements/{{settlementId}}/cancel/
+Authorization: Bearer {{accessToken}}
+
+### Generate settlement plan
+POST {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/generate/
+Authorization: Bearer {{accessToken}}
+
+### Get latest settlement plan
+GET {{baseUrl}}/api/v1/groups/{{groupId}}/settlement-plan/
+Authorization: Bearer {{accessToken}}
+
+### Activate settlement plan
+POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/activate/
+Authorization: Bearer {{accessToken}}
+
+### Cancel settlement plan
+POST {{baseUrl}}/api/v1/settlement-plans/{{settlementPlanId}}/cancel/
+Authorization: Bearer {{accessToken}}
+
+### Report plan item paid
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/report-paid/
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "description": "Ali transferred his share."
+}
+
+### Confirm plan item
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/confirm/
+Authorization: Bearer {{receiverAccessToken}}
+
+### Reject plan item
+POST {{baseUrl}}/api/v1/settlement-plan-items/{{settlementPlanItemId}}/reject/
+Authorization: Bearer {{receiverAccessToken}}
+Content-Type: application/json
+
+{
+  "reason": "Receiver rejected the payment report."
+}

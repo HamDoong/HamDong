@@ -1,6 +1,7 @@
 import uuid
 from datetime import timedelta
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.settlements.domain.models import (
@@ -12,6 +13,12 @@ from apps.settlements.domain.models import (
     ExpenseProjection,
     ExpenseStatusChoices,
     GroupBalanceSnapshot,
+    GroupReminderSettings,
+    DeliveryChannelStatusChoices,
+    DebtReminderRequest,
+    DebtReminderSourceChoices,
+    DebtReminderStatusChoices,
+    ReminderChannelChoices,
     InboxMessage,
     InboxMessageStatusChoices,
     GroupMemberProjection,
@@ -594,7 +601,8 @@ class SettlementPlanRepository:
     def mark_active(plan: SettlementPlan, activated_by_user_id):
         plan.status = SettlementPlanStatusChoices.ACTIVE
         plan.activated_by_user_id = normalize_uuid(activated_by_user_id)
-        plan.save(update_fields=["status", "activated_by_user_id", "updated_at"])
+        plan.activated_at = timezone.now()
+        plan.save(update_fields=["status", "activated_by_user_id", "activated_at", "updated_at"])
         return plan
 
     @staticmethod
@@ -619,6 +627,10 @@ class SettlementPlanRepository:
 
 
 class SettlementPlanItemRepository:
+    @staticmethod
+    def _base_queryset():
+        return SettlementPlanItem.objects.all()
+
     @staticmethod
     def create(**data):
         return SettlementPlanItem.objects.create(
@@ -651,7 +663,13 @@ class SettlementPlanItemRepository:
     def list_by_group(group_id):
         return SettlementPlanItem.objects.filter(
             group_id=normalize_uuid(group_id)
-        ).order_by("-created_at")
+        ).order_by("-created_at", "-id")
+
+    @staticmethod
+    def list_pending_for_scheduler(limit=100):
+        return SettlementPlanItem.objects.filter(
+            status=SettlementPlanItemStatusChoices.PENDING,
+        ).order_by("created_at", "id")[:limit]
 
     @staticmethod
     def save(item: SettlementPlanItem):
@@ -781,6 +799,157 @@ class OutboxRepository:
         )
         return message
 
+
+
+class GroupReminderSettingsRepository:
+    @staticmethod
+    def defaults(*, group_id, created_by_user_id=None, updated_by_user_id=None):
+        return {
+            "group_id": normalize_uuid(group_id),
+            "is_enabled": True,
+            "first_reminder_after_hours": 24,
+            "repeat_interval_hours": 48,
+            "maximum_reminders": 3,
+            "send_in_app": True,
+            "send_email": True,
+            "created_by_user_id": normalize_uuid(created_by_user_id),
+            "updated_by_user_id": normalize_uuid(updated_by_user_id),
+        }
+
+    @staticmethod
+    def get(group_id):
+        return GroupReminderSettings.objects.filter(group_id=normalize_uuid(group_id)).first()
+
+    @staticmethod
+    def get_or_create(group_id, defaults=None):
+        normalized_group_id = normalize_uuid(group_id)
+        defaults = defaults or GroupReminderSettingsRepository.defaults(group_id=normalized_group_id)
+        try:
+            with transaction.atomic():
+                settings_obj, _ = GroupReminderSettings.objects.get_or_create(
+                    group_id=normalized_group_id,
+                    defaults=defaults,
+                )
+                return settings_obj
+        except IntegrityError:
+            return GroupReminderSettings.objects.get(group_id=normalized_group_id)
+
+    @staticmethod
+    def lock_for_update(group_id):
+        return GroupReminderSettings.objects.select_for_update().filter(
+            group_id=normalize_uuid(group_id)
+        ).first()
+
+    @staticmethod
+    def save(settings_obj: GroupReminderSettings, **changes):
+        for key, value in changes.items():
+            setattr(settings_obj, key, value)
+        settings_obj.save()
+        return settings_obj
+
+
+class DebtReminderRequestRepository:
+    @staticmethod
+    def create(**data):
+        return DebtReminderRequest.objects.create(
+            group_id=normalize_uuid(data.get("group_id")),
+            settlement_plan_id=normalize_uuid(data.get("settlement_plan_id")),
+            settlement_plan_item_id=normalize_uuid(data.get("settlement_plan_item_id")),
+            recipient_user_id=normalize_uuid(data.get("recipient_user_id")),
+            creditor_user_id=normalize_uuid(data.get("creditor_user_id")),
+            requested_by_user_id=normalize_uuid(data.get("requested_by_user_id")),
+            sequence_number=int(data.get("sequence_number", 1)),
+            source=data.get("source"),
+            channels=list(data.get("channels") or []),
+            channel_statuses=data.get("channel_statuses") or {},
+            status=data.get("status", DebtReminderStatusChoices.PENDING),
+            currency=data.get("currency", CurrencyChoices.IRR),
+            amount_minor=int(data.get("amount_minor", 0)),
+            source_timestamp=data.get("source_timestamp"),
+            scheduled_at=data.get("scheduled_at") or timezone.now(),
+            requested_at=data.get("requested_at") or timezone.now(),
+            sent_at=data.get("sent_at"),
+            delivery_updated_at=data.get("delivery_updated_at"),
+            last_error=data.get("last_error"),
+            dedupe_key=data.get("dedupe_key"),
+            created_by_user_id=normalize_uuid(data.get("created_by_user_id") or data.get("requested_by_user_id")),
+        )
+
+    @staticmethod
+    def get(reminder_id):
+        return DebtReminderRequest.objects.filter(id=normalize_uuid(reminder_id)).first()
+
+    @staticmethod
+    def list_for_group(group_id):
+        return DebtReminderRequest.objects.filter(group_id=normalize_uuid(group_id)).order_by("-scheduled_at", "-created_at", "-id")
+
+    @staticmethod
+    def list_for_item(item_id):
+        return DebtReminderRequest.objects.filter(
+            settlement_plan_item_id=normalize_uuid(item_id)
+        ).order_by("-created_at")
+
+    @staticmethod
+    def automatic_count_for_item(item_id):
+        return DebtReminderRequest.objects.filter(
+            settlement_plan_item_id=normalize_uuid(item_id),
+            source=DebtReminderSourceChoices.AUTOMATIC,
+        ).count()
+
+    @staticmethod
+    def next_sequence_for_item(item_id, source):
+        current = DebtReminderRequest.objects.filter(
+            settlement_plan_item_id=normalize_uuid(item_id),
+            source=source,
+        ).order_by("-sequence_number").values_list("sequence_number", flat=True).first()
+        return int(current or 0) + 1
+
+    @staticmethod
+    def latest_for_item(item_id, source=None):
+        qs = DebtReminderRequest.objects.filter(
+            settlement_plan_item_id=normalize_uuid(item_id)
+        )
+        if source:
+            qs = qs.filter(source=source)
+        return qs.order_by("-scheduled_at", "-created_at", "-sequence_number").first()
+
+    @staticmethod
+    def exists_for_sequence(item_id, source, sequence_number):
+        return DebtReminderRequest.objects.filter(
+            settlement_plan_item_id=normalize_uuid(item_id),
+            source=source,
+            sequence_number=int(sequence_number),
+        ).exists()
+
+    @staticmethod
+    def latest_manual_with_cooldown(item_id, requested_by_user_id, after_timestamp):
+        return DebtReminderRequest.objects.filter(
+            settlement_plan_item_id=normalize_uuid(item_id),
+            source=DebtReminderSourceChoices.MANUAL_ITEM,
+            requested_by_user_id=normalize_uuid(requested_by_user_id),
+            requested_at__gte=after_timestamp,
+        ).order_by("-requested_at", "-created_at").first()
+
+    @staticmethod
+    def update_delivery(reminder: DebtReminderRequest, *, status=None, sent_at=None, last_error=None, channel_statuses=None, delivery_updated_at=None):
+        if status is not None:
+            reminder.status = status
+        if sent_at is not None:
+            reminder.sent_at = sent_at
+        if last_error is not None:
+            reminder.last_error = last_error
+        if channel_statuses is not None:
+            reminder.channel_statuses = channel_statuses
+        reminder.delivery_updated_at = delivery_updated_at or timezone.now()
+        reminder.save(update_fields=["status", "sent_at", "last_error", "channel_statuses", "delivery_updated_at", "updated_at"])
+        return reminder
+
+    @staticmethod
+    def save(reminder: DebtReminderRequest, **changes):
+        for key, value in changes.items():
+            setattr(reminder, key, value)
+        reminder.save()
+        return reminder
 
 class ReminderDispatchRepository:
     @staticmethod

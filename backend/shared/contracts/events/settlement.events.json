@@ -200,6 +200,28 @@
         "currency",
         "message_context"
       ]
+    },
+    {
+      "event_type": "DebtReminderRequested",
+      "routing_key": "settlement.debt_reminder.requested",
+      "payload_keys": [
+        "reminder_id",
+        "source",
+        "sequence_number",
+        "group_id",
+        "group_title",
+        "settlement_plan_id",
+        "settlement_plan_item_id",
+        "recipient_user_id",
+        "recipient_email",
+        "creditor_user_id",
+        "creditor_name",
+        "amount_minor",
+        "currency",
+        "send_in_app",
+        "send_email",
+        "requested_by_user_id"
+      ]
     }
   ]
 }

@@ -134,3 +134,73 @@ class SettlementPlanRejectItemSerializer(serializers.Serializer):
 class MessageWithManualSettlementSerializer(serializers.Serializer):
     message = serializers.CharField()
     manual_settlement_id = serializers.UUIDField()
+
+
+class ReminderSettingsSerializer(serializers.Serializer):
+    group_id = serializers.UUIDField()
+    is_enabled = serializers.BooleanField()
+    first_reminder_after_hours = serializers.IntegerField()
+    repeat_interval_hours = serializers.IntegerField()
+    maximum_reminders = serializers.IntegerField()
+    send_in_app = serializers.BooleanField()
+    send_email = serializers.BooleanField()
+    created_at = serializers.DateTimeField(allow_null=True)
+    updated_at = serializers.DateTimeField(allow_null=True)
+
+
+class ReminderSettingsPatchSerializer(serializers.Serializer):
+    is_enabled = serializers.BooleanField(required=False)
+    first_reminder_after_hours = serializers.IntegerField(required=False)
+    repeat_interval_hours = serializers.IntegerField(required=False)
+    maximum_reminders = serializers.IntegerField(required=False)
+    send_in_app = serializers.BooleanField(required=False)
+    send_email = serializers.BooleanField(required=False)
+
+
+class ReminderHistoryItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    group_id = serializers.UUIDField()
+    recipient_user_id = serializers.UUIDField()
+    settlement_plan_item_id = serializers.UUIDField()
+    sequence_number = serializers.IntegerField()
+    source = serializers.CharField()
+    channels = serializers.ListField(child=serializers.CharField())
+    status = serializers.CharField()
+    scheduled_at = serializers.DateTimeField(allow_null=True)
+    requested_at = serializers.DateTimeField(allow_null=True)
+    sent_at = serializers.DateTimeField(allow_null=True)
+    last_error = serializers.CharField(allow_null=True)
+
+
+class ReminderHistoryListSerializer(serializers.Serializer):
+    results = ReminderHistoryItemSerializer(many=True)
+    next_cursor = serializers.CharField(allow_null=True, required=False)
+
+
+class ReminderDetailSerializer(ReminderHistoryItemSerializer):
+    creditor_user_id = serializers.UUIDField()
+    settlement_plan_id = serializers.UUIDField()
+    item_reference = serializers.UUIDField()
+    delivery_summary = serializers.JSONField()
+
+
+class GroupRunReminderResponseSerializer(serializers.Serializer):
+    eligible_count = serializers.IntegerField()
+    created_count = serializers.IntegerField()
+    skipped_count = serializers.IntegerField()
+    skip_reasons = serializers.JSONField(required=False)
+
+
+class GroupRunReminderRequestSerializer(serializers.Serializer):
+    dry_run = serializers.BooleanField(required=False, default=False)
+
+
+class ManualReminderSendSerializer(serializers.Serializer):
+    send_in_app = serializers.BooleanField(required=False)
+    send_email = serializers.BooleanField(required=False)
+
+
+class ManualReminderSendResponseSerializer(serializers.Serializer):
+    reminder_id = serializers.UUIDField()
+    status = serializers.CharField()
+    channels = serializers.ListField(child=serializers.CharField())

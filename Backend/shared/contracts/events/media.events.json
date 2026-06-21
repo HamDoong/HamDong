@@ -1,0 +1,28 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "media-service",
+  "events": [
+    {
+      "event_type": "MediaUploaded",
+      "routing_key": "media.uploaded",
+      "payload_keys": [
+        "media_file_id",
+        "group_id",
+        "related_expense_id",
+        "uploaded_by_user_id",
+        "file_type",
+        "content_type",
+        "size_bytes"
+      ]
+    },
+    {
+      "event_type": "MediaDeleted",
+      "routing_key": "media.deleted",
+      "payload_keys": [
+        "media_file_id",
+        "group_id",
+        "deleted_by_user_id"
+      ]
+    }
+  ]
+}

@@ -97,6 +97,7 @@ class NotificationMessage(models.Model):
 class NotificationJobStatusChoices(models.TextChoices):
     PENDING = "PENDING", "Pending"
     SENDING = "SENDING", "Sending"
+    PARTIALLY_SENT = "PARTIALLY_SENT", "Partially sent"
     SENT = "SENT", "Sent"
     FAILED = "FAILED", "Failed"
     SKIPPED = "SKIPPED", "Skipped"

@@ -1,0 +1,59 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "expense-service",
+  "events": [
+    {
+      "event_type": "ExpenseCreated",
+      "routing_key": "expense.created",
+      "payload_keys": [
+        "expense_id",
+        "group_id",
+        "created_by_user_id",
+        "payer_user_id",
+        "currency",
+        "base_amount_minor",
+        "tax_amount_minor",
+        "service_fee_amount_minor",
+        "total_amount_minor",
+        "participants"
+      ]
+    },
+    {
+      "event_type": "ExpenseUpdated",
+      "routing_key": "expense.updated",
+      "payload_keys": [
+        "expense_id",
+        "group_id",
+        "created_by_user_id",
+        "payer_user_id",
+        "currency",
+        "base_amount_minor",
+        "tax_amount_minor",
+        "service_fee_amount_minor",
+        "total_amount_minor",
+        "participants",
+        "status",
+        "version"
+      ]
+    },
+    {
+      "event_type": "ExpenseDeleted",
+      "routing_key": "expense.deleted",
+      "payload_keys": [
+        "expense_id",
+        "group_id",
+        "deleted_by_user_id",
+        "status"
+      ]
+    },
+    {
+      "event_type": "ExpenseParticipantsChanged",
+      "routing_key": "expense.participants.changed",
+      "payload_keys": [
+        "expense_id",
+        "group_id",
+        "participants"
+      ]
+    }
+  ]
+}

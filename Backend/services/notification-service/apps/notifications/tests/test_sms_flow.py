@@ -1,0 +1,190 @@
+"""Tests for OTP Email delivery flow and persistence."""
+
+import json
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+from django.test import TestCase, override_settings
+
+from apps.notifications.application.sms_service import EmailService
+from apps.notifications.domain.models import (
+    NotificationMessage,
+    NotificationStatusChoices,
+    ProviderDeliveryLog,
+)
+from apps.notifications.infrastructure.providers.base import EmailProviderError
+
+
+class FailingProvider:
+    provider_name = "fake"
+
+    def send_email(
+        self,
+        email: str,
+        subject: str,
+        body: str,
+    ):
+        raise EmailProviderError("Provider failure")
+
+    def send_otp(
+        self,
+        email: str,
+        code: str,
+        expires_in: int,
+        subject: str,
+        body: str,
+    ):
+        raise EmailProviderError("Provider failure")
+
+
+class SmsFlowTests(TestCase):
+    def setUp(self):
+        from apps.notifications.infrastructure import circuit_breakers
+
+        circuit_breakers._EMAIL_BREAKER = None
+
+    def tearDown(self):
+        NotificationMessage.objects.all().delete()
+        ProviderDeliveryLog.objects.all().delete()
+        from apps.notifications.infrastructure import circuit_breakers
+
+        circuit_breakers._EMAIL_BREAKER = None
+
+    @override_settings(EMAIL_PROVIDER="fake")
+    def test_otp_message_is_consumed_and_notification_created(self):
+        service = EmailService()
+        payload = {
+            "event_id": "event-1",
+            "event_type": "SendOtpEmailRequested",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "version": 1,
+            "data": {
+                "email": "artist@example.com",
+                "code": "123456",
+                "purpose": "login",
+                "expires_in": 120,
+            },
+        }
+
+        notification_message = service.handle_otp_command(payload)
+
+        self.assertEqual(notification_message.status, NotificationStatusChoices.SENT)
+        self.assertEqual(notification_message.recipient_masked, "ar***@e***.com")
+        self.assertEqual(NotificationMessage.objects.count(), 1)
+        self.assertEqual(ProviderDeliveryLog.objects.count(), 1)
+
+        log = ProviderDeliveryLog.objects.first()
+        self.assertEqual(log.request_payload_masked["email"], "ar***@e***.com")
+        self.assertEqual(log.request_payload_masked["code"], "******")
+        self.assertNotIn("123456", json.dumps(log.request_payload_masked))
+        self.assertNotIn("123456", json.dumps(log.response_payload))
+
+    @override_settings(EMAIL_PROVIDER="fake", EMAIL_OTP_MAX_RETRIES=0)
+    @patch("apps.notifications.application.sms_service.get_email_provider")
+    def test_notification_message_failed_on_provider_failure(self, provider_mock):
+        service = EmailService()
+        provider_mock.return_value = FailingProvider()
+        payload = {
+            "event_id": "event-2",
+            "event_type": "SendOtpEmailRequested",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "version": 1,
+            "data": {
+                "email": "artist@example.com",
+                "code": "123456",
+                "purpose": "login",
+                "expires_in": 120,
+            },
+        }
+
+        notification_message = service.handle_otp_command(payload)
+
+        self.assertEqual(notification_message.status, NotificationStatusChoices.FAILED)
+        self.assertEqual(notification_message.error_code, "EMAIL_PROVIDER_FAILED")
+        self.assertEqual(ProviderDeliveryLog.objects.count(), 1)
+
+    @override_settings(
+        EMAIL_PROVIDER="fake",
+        EMAIL_CIRCUIT_FAIL_MAX=1,
+        EMAIL_OTP_MAX_RETRIES=1,
+        EMAIL_OTP_RETRY_DELAYS_SECONDS="0",
+    )
+    @patch("apps.notifications.application.sms_service.time.sleep", return_value=None)
+    @patch("apps.notifications.application.sms_service.get_email_provider")
+    def test_circuit_breaker_opens_after_repeated_provider_failures(
+        self, provider_mock, sleep_mock
+    ):
+        service = EmailService()
+        provider_mock.return_value = FailingProvider()
+        from apps.notifications.infrastructure import circuit_breakers
+
+        circuit_breakers._EMAIL_BREAKER = None
+
+        payload = {
+            "event_id": "event-3",
+            "event_type": "SendOtpEmailRequested",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "version": 1,
+            "data": {
+                "email": "artist@example.com",
+                "code": "123456",
+                "purpose": "login",
+                "expires_in": 120,
+            },
+        }
+
+        notification_message = service.handle_otp_command(payload)
+
+        self.assertEqual(notification_message.status, NotificationStatusChoices.FAILED)
+        self.assertEqual(notification_message.error_code, "EMAIL_CIRCUIT_OPEN")
+        self.assertGreaterEqual(ProviderDeliveryLog.objects.count(), 1)
+
+    @override_settings(EMAIL_PROVIDER="fake")
+    def test_expired_message_becomes_skipped(self):
+        service = EmailService()
+        payload = {
+            "event_id": "event-4",
+            "event_type": "SendOtpEmailRequested",
+            "occurred_at": (
+                datetime.now(timezone.utc) - timedelta(minutes=10)
+            ).isoformat(),
+            "version": 1,
+            "data": {
+                "email": "artist@example.com",
+                "code": "123456",
+                "purpose": "login",
+                "expires_in": 1,
+            },
+        }
+
+        notification_message = service.handle_otp_command(payload)
+
+        self.assertEqual(notification_message.status, NotificationStatusChoices.SKIPPED)
+        self.assertEqual(notification_message.error_code, "OTP_EXPIRED")
+        self.assertEqual(ProviderDeliveryLog.objects.count(), 1)
+
+    @override_settings(EMAIL_PROVIDER="fake")
+    def test_raw_otp_is_not_stored_and_email_is_masked(self):
+        service = EmailService()
+        payload = {
+            "event_id": "event-5",
+            "event_type": "SendOtpEmailRequested",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "version": 1,
+            "data": {
+                "email": "artist@example.com",
+                "code": "654321",
+                "purpose": "login",
+                "expires_in": 120,
+            },
+        }
+
+        notification_message = service.handle_otp_command(payload)
+        log = ProviderDeliveryLog.objects.first()
+
+        self.assertEqual(notification_message.recipient_masked, "ar***@e***.com")
+        self.assertNotIn(
+            "654321", json.dumps(notification_message.__dict__, default=str)
+        )
+        self.assertEqual(log.request_payload_masked["email"], "ar***@e***.com")
+        self.assertNotIn("654321", json.dumps(log.request_payload_masked))

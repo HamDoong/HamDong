@@ -9,8 +9,13 @@ from apps.settlements.api.views import (
     GroupBalancesView,
     GroupDebtsView,
     GroupSettlementsView,
+    GroupReminderHistoryView,
+    GroupReminderSettingsView,
     HealthView,
+    ManualItemReminderView,
     MyBalanceView,
+    ReminderDetailView,
+    RunGroupReminderView,
     GenerateSettlementPlanView,
     LatestSettlementPlanView,
     RejectSettlementView,
@@ -35,6 +40,21 @@ urlpatterns = [
         "groups/<uuid:group_id>/settlements/",
         GroupSettlementsView.as_view(),
         name="group_settlements",
+    ),
+    path(
+        "groups/<uuid:group_id>/reminder-settings/",
+        GroupReminderSettingsView.as_view(),
+        name="group_reminder_settings",
+    ),
+    path(
+        "groups/<uuid:group_id>/reminders/",
+        GroupReminderHistoryView.as_view(),
+        name="group_reminder_history",
+    ),
+    path(
+        "groups/<uuid:group_id>/reminders/run/",
+        RunGroupReminderView.as_view(),
+        name="run_group_reminders",
     ),
     path(
         "groups/<uuid:group_id>/settlement-plan/generate/",
@@ -62,6 +82,11 @@ urlpatterns = [
         name="report_settlement_plan_item_paid",
     ),
     path(
+        "settlement-plan-items/<uuid:item_id>/reminders/send/",
+        ManualItemReminderView.as_view(),
+        name="send_manual_item_reminder",
+    ),
+    path(
         "settlement-plan-items/<uuid:item_id>/confirm/",
         ConfirmPlanItemView.as_view(),
         name="confirm_settlement_plan_item",
@@ -70,6 +95,11 @@ urlpatterns = [
         "settlement-plan-items/<uuid:item_id>/reject/",
         RejectPlanItemView.as_view(),
         name="reject_settlement_plan_item",
+    ),
+    path(
+        "reminders/<uuid:reminder_id>/",
+        ReminderDetailView.as_view(),
+        name="reminder_detail",
     ),
     path(
         "settlements/<uuid:settlement_id>/confirm/",
