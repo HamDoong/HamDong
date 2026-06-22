@@ -12,7 +12,7 @@
   overflow: hidden;
   flex-direction: column;
   color: #16213a;
-  background: var(--app-soft-green-background);
+  background: var(--auth-soft-green-background);
 }
 
 .login-page::before,

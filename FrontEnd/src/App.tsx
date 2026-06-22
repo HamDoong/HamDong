@@ -751,7 +751,7 @@ function AppRoutes() {
       <Route
         path="/login"
         element={
-          <AuthPageFrame className="app-auth-background">
+          <AuthPageFrame className="auth-page-background">
             <LoginPage
               onLogin={() => navigate('/Dashboard', { replace: true })}
               onSignUp={() => navigate('/signup')}
@@ -762,7 +762,7 @@ function AppRoutes() {
       <Route
         path="/signup"
         element={
-          <AuthPageFrame className="app-auth-background">
+          <AuthPageFrame className="auth-page-background">
             <SignUpPage
               onLogin={() => navigate('/login')}
               onSignUp={() => navigate('/Dashboard', { replace: true })}
