@@ -6,7 +6,6 @@ import {
   Bell,
   CheckCircle2,
   CreditCard,
-  Gift,
   Home,
   Loader2,
   Mountain,
@@ -403,12 +402,19 @@ function mergeSuggestions(
 function SectionCard({
   children,
   className = '',
+  variant = 'default',
 }: {
   children: ReactNode;
   className?: string;
+  variant?: 'default' | 'quiet';
 }) {
+  const variantClassName =
+    variant === 'quiet'
+      ? 'rounded-[24px] border border-emerald-100/70 bg-white/[0.82] shadow-[0_10px_30px_rgba(15,23,42,0.045)] backdrop-blur'
+      : 'rounded-[24px] border border-emerald-100/80 bg-white/95 shadow-[0_18px_44px_rgba(15,23,42,0.07)] backdrop-blur';
+
   return (
-    <section className={`rounded-3xl border border-border bg-white shadow-soft ${className}`}>
+    <section className={`dashboard-section-card dashboard-section-card--${variant} ${variantClassName} ${className}`}>
       {children}
     </section>
   );
@@ -419,25 +425,32 @@ function SectionHeader({
   actionLabel,
   icon,
   onAction,
+  compact = false,
 }: {
   title: string;
   actionLabel: string;
   icon: ReactNode;
   onAction?: () => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-5 py-4 sm:px-6">
+    <div className={[
+      'dashboard-section-header flex items-center justify-between gap-3',
+      compact
+        ? 'border-b border-emerald-50/80 bg-white/[0.35] px-4 py-3.5 sm:px-5'
+        : 'px-4 py-4 sm:px-5',
+    ].join(' ')}>
       <button
         type="button"
         onClick={onAction}
-        className="inline-flex items-center gap-2 text-xs font-extrabold text-emerald-600 transition hover:text-emerald-700"
+        className="dashboard-section-action inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full px-3 text-xs font-extrabold text-emerald-600 transition hover:bg-emerald-50/60 hover:text-emerald-700"
       >
         {actionLabel}
         <ArrowLeft className="h-4 w-4" />
       </button>
 
       <div className="flex items-center gap-2 text-right">
-        <h2 className="text-lg font-black text-text sm:text-xl">{title}</h2>
+        <h2 className={compact ? 'text-base font-black text-text sm:text-lg' : 'text-lg font-black text-text sm:text-xl'}>{title}</h2>
         {icon}
       </div>
     </div>
@@ -458,8 +471,8 @@ function DashboardSectionState({
   const StateIcon = loading ? Loader2 : Icon;
 
   return (
-    <div className="mx-4 mb-4 rounded-2xl border border-dashed border-border bg-slate-50/80 px-4 py-6 text-center sm:mx-5">
-      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+    <div className="dashboard-empty-state mx-4 mb-4 min-h-[140px] rounded-[20px] border border-dashed border-emerald-100/80 bg-white/[0.55] px-4 py-6 text-center sm:mx-5">
+      <div className="dashboard-empty-state-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[16px] bg-white text-slate-500 shadow-sm">
         <StateIcon className={['h-5 w-5', loading ? 'animate-spin' : ''].join(' ')} />
       </div>
       <div className="text-sm font-black text-slate-700">{title}</div>
@@ -470,29 +483,59 @@ function DashboardSectionState({
   );
 }
 
+type QuickActionTone = 'emerald' | 'sky' | 'amber';
+
+const quickActionToneClasses: Record<QuickActionTone, {
+  button: string;
+  icon: string;
+  title: string;
+}> = {
+  emerald: {
+    button: 'border-emerald-200/80 bg-gradient-to-l from-white via-emerald-50/95 to-emerald-50/85 shadow-[inset_3px_0_0_#10B981,0_0_0_1px_rgba(16,185,129,0.10),0_12px_30px_rgba(15,23,42,0.075)] hover:border-emerald-300 hover:shadow-[inset_3px_0_0_#10B981,0_0_0_1px_rgba(16,185,129,0.16),0_18px_38px_rgba(15,23,42,0.10)]',
+    icon: 'text-emerald-600 group-hover:text-emerald-700',
+    title: 'text-emerald-800',
+  },
+  sky: {
+    button: 'border-sky-200/80 bg-gradient-to-l from-white via-sky-50/95 to-sky-50/85 shadow-[inset_3px_0_0_#0EA5E9,0_0_0_1px_rgba(14,165,233,0.10),0_12px_30px_rgba(15,23,42,0.075)] hover:border-sky-300 hover:shadow-[inset_3px_0_0_#0EA5E9,0_0_0_1px_rgba(14,165,233,0.16),0_18px_38px_rgba(15,23,42,0.10)]',
+    icon: 'text-sky-600 group-hover:text-sky-700',
+    title: 'text-sky-700',
+  },
+  amber: {
+    button: 'border-orange-200/80 bg-gradient-to-l from-white via-orange-50/95 to-orange-50/85 shadow-[inset_3px_0_0_#F97316,0_0_0_1px_rgba(249,115,22,0.10),0_12px_30px_rgba(15,23,42,0.075)] hover:border-orange-300 hover:shadow-[inset_3px_0_0_#F97316,0_0_0_1px_rgba(249,115,22,0.16),0_18px_38px_rgba(15,23,42,0.10)]',
+    icon: 'text-orange-600 group-hover:text-orange-700',
+    title: 'text-orange-700',
+  },
+};
+
 function QuickActionCard({
   icon: Icon,
   title,
   description,
   onClick,
+  tone = 'emerald',
 }: {
   icon: LucideIcon;
   title: string;
   description: string;
   onClick: () => void;
+  tone?: QuickActionTone;
 }) {
+  const toneClasses = quickActionToneClasses[tone];
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-[98px] items-center justify-between gap-4 rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-white px-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]"
+      className={[
+        `dashboard-quick-action dashboard-quick-action--${tone} group flex min-h-[96px] items-center justify-between gap-4 rounded-[22px] border px-5 text-right transition hover:-translate-y-0.5 xl:min-h-0 xl:flex-1`,
+        toneClasses.button,
+      ].join(' ')}
     >
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm transition group-hover:bg-emerald-600 group-hover:text-white">
+      <div className={['dashboard-quick-action-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] transition group-hover:scale-105', toneClasses.icon].join(' ')}>
         <Icon className="h-6 w-6" />
       </div>
       <div className="min-w-0">
-        <div className="flex items-center justify-end gap-2 text-lg font-black text-emerald-800">
-          <Plus className="h-4.5 w-4.5" />
+        <div className={['flex items-center justify-end gap-2 text-base font-black sm:text-lg', toneClasses.title].join(' ')}>
           <span>{title}</span>
         </div>
         <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
@@ -505,78 +548,96 @@ function BalanceHero({
   creditMinor,
   debtMinor,
   loading,
+  activeGroupCount,
+  onOpenWallet,
 }: {
   creditMinor: number;
   debtMinor: number;
   loading?: boolean;
+  activeGroupCount: number;
+  onOpenWallet: () => void;
 }) {
   const netMinor = creditMinor - debtMinor;
   const isPositive = netMinor >= 0;
+  const isBalanced = netMinor === 0;
+  const statusLabel = isBalanced
+    ? 'حساب شما تسویه است'
+    : isPositive
+      ? 'طلبکار هستید'
+      : 'بدهکار هستید';
+  const StatusIcon = isBalanced ? CheckCircle2 : isPositive ? TrendingUp : ArrowDown;
 
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#007A4F] via-[#009A66] to-[#00785B] p-6 text-white shadow-[0_24px_60px_rgba(0,128,89,0.24)] sm:p-8">
-      <div className="pointer-events-none absolute -left-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
-      <div className="pointer-events-none absolute bottom-0 right-1/4 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+    <section className="dashboard-balance-card rounded-[28px] border border-emerald-100/80 bg-white/95 p-4 text-text shadow-[0_22px_58px_rgba(15,23,42,0.10)] backdrop-blur sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={onOpenWallet}
+          className="dashboard-wallet-link inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 text-xs font-black text-emerald-700 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50"
+        >
+          جزئیات کیف پول
+          <ArrowLeft className="h-4 w-4" />
+        </button>
 
-      <div className="relative grid gap-7 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-center">
-        <div className="order-2 flex justify-center lg:order-1">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] sm:h-36 sm:w-36">
-            <WalletCards className="h-16 w-16" strokeWidth={1.7} />
+        <div className="flex items-center gap-3 text-right">
+          <div>
+            <h1 className="text-lg font-black text-text sm:text-xl">وضعیت مالی شما</h1>
+            <p className="mt-1 text-xs font-semibold text-muted sm:text-sm">
+              خلاصه طلب و بدهی در گروه‌های فعال
+            </p>
+          </div>
+          <span className="dashboard-wallet-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-emerald-50 text-emerald-600 shadow-[inset_3px_0_0_#10B981]">
+            <WalletCards className="h-6 w-6" strokeWidth={1.9} />
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="dashboard-balance-main rounded-[24px] bg-gradient-to-br from-[#007A4F] via-[#009A66] to-[#0F766E] p-5 text-white shadow-[0_18px_42px_rgba(0,128,89,0.20)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="dashboard-balance-badge inline-flex min-h-9 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 text-xs font-extrabold text-white/85">
+              <Users className="h-4 w-4" />
+              {activeGroupCount.toLocaleString('fa-IR')} گروه فعال
+            </div>
+            {!loading ? (
+              <span className="dashboard-balance-status inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-2 text-xs font-black text-white">
+                <StatusIcon className="h-4 w-4" />
+                {statusLabel}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-7 text-right">
+            <div className="text-xs font-extrabold text-white/68">مانده کل</div>
+            <div className="mt-2 max-w-full break-words text-[32px] font-black tracking-normal sm:text-[44px]">
+              {loading ? 'در حال محاسبه' : formatMoney(Math.abs(netMinor))}
+            </div>
+            {!loading ? (
+              <p className="mt-2 hidden text-sm font-semibold leading-7 text-white/68 sm:block">
+                {formatMoneyText(Math.abs(netMinor))}
+              </p>
+            ) : null}
           </div>
         </div>
 
-        <div className="order-1 min-w-0 text-right lg:order-2">
-          <div className="mb-5">
-            <h1 className="text-xl font-black sm:text-2xl">وضعیت شما</h1>
-            <p className="mt-2 text-sm font-semibold text-white/80">شما در مجموع</p>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <span className="text-[28px] font-black tracking-normal sm:text-[36px]">
-              {loading ? 'در حال محاسبه' : formatMoney(Math.abs(netMinor))}
+        <div className="grid gap-3">
+          <div className="dashboard-balance-mini dashboard-balance-mini--credit flex min-h-[92px] items-center justify-between gap-4 rounded-[22px] border border-emerald-200/80 bg-gradient-to-l from-white via-emerald-50/70 to-emerald-50/60 px-4 py-3 shadow-[inset_3px_0_0_#10B981,0_0_0_1px_rgba(16,185,129,0.10),0_10px_24px_rgba(15,23,42,0.06)]">
+            <span className="dashboard-balance-mini-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-emerald-600 text-white shadow-[0_10px_22px_rgba(16,185,129,0.22)] ring-1 ring-emerald-500/20">
+              <ArrowDown className="h-5 w-5" strokeWidth={2.4} />
             </span>
-            {!loading ? (
-              <span className="text-xl font-black sm:text-2xl">
-                {isPositive ? 'طلبکار هستید' : 'بدهکار هستید'}
-              </span>
-            ) : null}
-            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/12 text-white">
-              {isPositive ? <TrendingUp className="h-6 w-6" /> : <ArrowDown className="h-6 w-6" />}
-            </span>
-          </div>
-          {!loading ? (
-            <p className="mt-2 text-sm font-semibold leading-7 text-white/75">
-              {formatMoneyText(Math.abs(netMinor))}
-            </p>
-          ) : null}
-
-          <div className="my-6 h-px bg-white/18" />
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/12 text-emerald-100">
-                <ArrowDown className="h-5 w-5" />
-              </span>
-              <div className="text-right">
-                <div className="text-sm text-white/78">طلب شما</div>
-                <div className="mt-1 text-lg font-black">{formatMoney(creditMinor)}</div>
-                <div className="mt-1 max-w-[220px] text-xs font-semibold leading-5 text-white/60">
-                  {formatMoneyText(creditMinor)}
-                </div>
-              </div>
+            <div className="min-w-0 text-right">
+              <div className="text-xs font-extrabold text-emerald-700/80">طلب شما</div>
+              <div className="mt-1 text-xl font-black text-emerald-700">{formatMoney(creditMinor)}</div>
             </div>
+          </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-orange-400/35 text-orange-100">
-                <ArrowUp className="h-5 w-5" />
-              </span>
-              <div className="text-right">
-                <div className="text-sm text-white/78">بدهی شما</div>
-                <div className="mt-1 text-lg font-black">{formatMoney(debtMinor)}</div>
-                <div className="mt-1 max-w-[220px] text-xs font-semibold leading-5 text-white/60">
-                  {formatMoneyText(debtMinor)}
-                </div>
-              </div>
+          <div className="dashboard-balance-mini dashboard-balance-mini--debt flex min-h-[92px] items-center justify-between gap-4 rounded-[22px] border border-orange-200/80 bg-gradient-to-l from-white via-orange-50/70 to-orange-50/60 px-4 py-3 shadow-[inset_3px_0_0_#F97316,0_0_0_1px_rgba(249,115,22,0.10),0_10px_24px_rgba(15,23,42,0.06)]">
+            <span className="dashboard-balance-mini-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-orange-500 text-white shadow-[0_10px_22px_rgba(249,115,22,0.22)] ring-1 ring-orange-500/20">
+              <ArrowUp className="h-5 w-5" strokeWidth={2.4} />
+            </span>
+            <div className="min-w-0 text-right">
+              <div className="text-xs font-extrabold text-orange-700/80">بدهی شما</div>
+              <div className="mt-1 text-xl font-black text-orange-700">{formatMoney(debtMinor)}</div>
             </div>
           </div>
         </div>
@@ -594,24 +655,24 @@ function SettlementRow({ item }: { item: SettlementSuggestion }) {
     : 'bg-emerald-50 text-emerald-600';
 
   return (
-    <div className="grid grid-cols-[minmax(128px,176px)_32px_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:px-5">
-      <div className="text-left">
+    <div className="dashboard-list-row grid gap-3 border-b border-emerald-50/90 px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_32px_minmax(116px,160px)] sm:items-center sm:px-5">
+      <div className="order-2 text-right sm:order-3 sm:text-left">
         <div className={`text-base font-black ${amountClassName}`}>{formatMoney(item.amount)}</div>
-        <div className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">
+        <div className="mt-1 hidden text-[11px] font-semibold leading-5 text-slate-500 sm:block">
           {formatMoneyText(item.amount)}
         </div>
       </div>
 
-      <div className={`flex justify-center ${arrowClassName}`}>
+      <div className={`order-3 hidden justify-center sm:order-2 sm:flex ${arrowClassName}`}>
         <ArrowLeft className="h-5 w-5" />
       </div>
 
-      <div className="flex min-w-0 items-center justify-end gap-3">
+      <div className="order-1 flex min-w-0 items-center justify-end gap-3">
         <div className="min-w-0 text-right">
-          <div className="truncate text-sm font-black text-text">{item.name}</div>
-          <div className="mt-1 truncate text-xs text-muted">{item.description}</div>
+          <div className="text-sm font-black leading-6 text-text sm:truncate">{item.name}</div>
+          <div className="mt-1 text-xs leading-5 text-muted sm:truncate">{item.description}</div>
         </div>
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-sm font-black ${avatarClassName}`}>
+        <div className={`dashboard-row-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-sm font-black ${avatarClassName}`}>
           {item.avatarText}
         </div>
       </div>
@@ -623,15 +684,16 @@ function EventRow({ event }: { event: DashboardEvent }) {
   const Icon = event.icon;
 
   return (
-    <div className="grid grid-cols-[76px_minmax(0,1fr)_48px] items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:px-5">
-      <div className="text-left text-xs font-semibold text-slate-500">
-        <div>{event.time}</div>
-        <div className="mt-1 leading-5 text-slate-400">{event.timeText}</div>
+    <div className="dashboard-list-row grid grid-cols-[minmax(0,1fr)_44px] gap-3 border-b border-emerald-50/90 px-4 py-3.5 last:border-b-0 sm:grid-cols-[88px_minmax(0,1fr)_44px] sm:items-center sm:px-5">
+      <div className="order-3 col-span-2 text-right text-xs font-semibold text-slate-500 sm:order-1 sm:col-span-1 sm:text-left">
+        <span>{event.time}</span>
+        <span className="mx-2 text-slate-300 sm:hidden">•</span>
+        <span className="mt-1 leading-5 text-slate-400 sm:block">{event.timeText}</span>
       </div>
-      <p className="min-w-0 truncate text-right text-sm font-semibold text-slate-700">
+      <p className="order-1 min-w-0 text-right text-sm font-semibold leading-6 text-slate-600 sm:order-2 sm:truncate">
         {event.title}
       </p>
-      <div className={`flex h-10 w-10 items-center justify-center rounded-full ${event.toneClassName}`}>
+      <div className={`dashboard-event-icon order-2 flex h-10 w-10 items-center justify-center rounded-full sm:order-3 ${event.toneClassName}`}>
         <Icon className="h-5 w-5" />
       </div>
     </div>
@@ -648,7 +710,7 @@ function GroupArtwork({ type }: { type: Group['illustration'] }) {
         : 'from-orange-100 via-amber-50 to-rose-100 text-orange-700';
 
   return (
-    <div className={`relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br ${background}`}>
+    <div className={`dashboard-group-artwork dashboard-group-artwork--${type} relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br sm:h-20 sm:w-20 ${background}`}>
       <div className="absolute inset-x-0 bottom-0 h-6 bg-white/35" />
       <Icon className="relative h-9 w-9" strokeWidth={1.8} />
     </div>
@@ -680,7 +742,7 @@ function DashboardGroupCard({
     <button
       type="button"
       onClick={() => onOpen(id)}
-      className="grid min-h-[142px] grid-cols-[minmax(0,1fr)_92px] items-center gap-4 rounded-2xl border border-border bg-white px-5 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]"
+      className="dashboard-group-card grid min-h-[144px] grid-cols-[minmax(0,1fr)_76px] items-center gap-4 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:grid-cols-[minmax(0,1fr)_88px] sm:px-5"
     >
       <div className="min-w-0">
         <h3 className="truncate text-lg font-black text-text">{title}</h3>
@@ -688,13 +750,13 @@ function DashboardGroupCard({
         {memberCountText ? (
           <p className="mt-1 text-xs font-semibold text-slate-400">{memberCountText}</p>
         ) : null}
-        <p className={['mt-4 text-xs font-bold', tone === 'positive' ? 'text-emerald-600' : 'text-rose-500'].join(' ')}>
+        <p className={['dashboard-status-pill mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-bold', tone === 'positive' ? 'dashboard-status-pill--positive bg-emerald-50 text-emerald-600' : 'dashboard-status-pill--negative bg-rose-50 text-rose-500'].join(' ')}>
           {statusLabel}
         </p>
         <div className={['mt-1 text-xl font-black tracking-normal', tone === 'positive' ? 'text-emerald-600' : 'text-rose-500'].join(' ')}>
           {formatSignedMoney(amount)}
         </div>
-        <p className={['mt-1 text-xs font-semibold leading-5', tone === 'positive' ? 'text-emerald-700/70' : 'text-rose-500/70'].join(' ')}>
+        <p className={['mt-1 hidden text-xs font-semibold leading-5 sm:block', tone === 'positive' ? 'text-emerald-700/70' : 'text-rose-500/70'].join(' ')}>
           {formatSignedMoneyText(amount)}
         </p>
       </div>
@@ -945,46 +1007,54 @@ export function DashboardPage({
   return (
     <main className="px-6 py-5 sm:px-8 sm:py-7 lg:px-10 xl:px-14 2xl:px-16">
       <div className="mx-auto max-w-[1160px] space-y-4 sm:space-y-5">
-        <section className="grid gap-4 lg:grid-cols-3">
-          <QuickActionCard
-            icon={WalletCards}
-            title="هزینه جدید"
-            description="ثبت هزینه و تقسیم"
-            onClick={onOpenActivities}
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-stretch">
+          <BalanceHero
+            creditMinor={totals.creditMinor}
+            debtMinor={totals.debtMinor}
+            loading={balancesLoading}
+            activeGroupCount={activeGroups.length}
+            onOpenWallet={onOpenWallet}
           />
-          <QuickActionCard
-            icon={UserPlus}
-            title="گروه جدید"
-            description="ایجاد فضای گروهی"
-            onClick={onCreateGroup}
-          />
-          <QuickActionCard
-            icon={CreditCard}
-            title="تسویه حساب"
-            description="مشاهده تسویه‌های پیشنهادی"
-            onClick={onOpenWallet}
-          />
+
+          <section className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <QuickActionCard
+              icon={WalletCards}
+              title="هزینه جدید"
+              description="ثبت و تقسیم هزینه"
+              onClick={onOpenActivities}
+              tone="emerald"
+            />
+            <QuickActionCard
+              icon={UserPlus}
+              title="گروه جدید"
+              description="ساخت فضای مشترک"
+              onClick={onCreateGroup}
+              tone="sky"
+            />
+            <QuickActionCard
+              icon={CreditCard}
+              title="تسویه حساب"
+              description="پرداخت‌ها و دریافت‌ها"
+              onClick={onOpenWallet}
+              tone="amber"
+            />
+          </section>
         </section>
 
-        <BalanceHero
-          creditMinor={totals.creditMinor}
-          debtMinor={totals.debtMinor}
-          loading={balancesLoading}
-        />
-
-        <section className="grid gap-4 xl:grid-cols-2">
-          <SectionCard className="overflow-hidden">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,0.96fr)_minmax(0,1.04fr)]">
+          <SectionCard variant="quiet" className="overflow-hidden">
             <SectionHeader
               title="تسویه‌های پیشنهادی"
               actionLabel="مشاهده همه"
-              icon={<ReceiptText className="h-5 w-5 text-slate-700" />}
+              icon={<ReceiptText className="h-5 w-5 text-slate-500" />}
               onAction={onOpenWallet}
+              compact
             />
             {settlementsLoading ? (
               <DashboardSectionState
                 icon={ReceiptText}
                 title="در حال دریافت تسویه‌ها"
-                description="آخرین settlement-plan و وضعیت حساب گروه‌ها خوانده می‌شود."
+                description="آخرین وضعیت پرداخت‌ها و بدهی گروه‌ها در حال آماده‌سازی است."
                 loading
               />
             ) : null}
@@ -992,14 +1062,14 @@ export function DashboardPage({
               <DashboardSectionState
                 icon={AlertCircle}
                 title={settlementsError}
-                description="اتصال به settlement-service را بررسی کنید."
+                description="اتصال سرویس‌ها را بررسی کنید و دوباره تلاش کنید."
               />
             ) : null}
             {!settlementsLoading && !settlementsError && settlementSuggestions.length === 0 ? (
               <DashboardSectionState
                 icon={ReceiptText}
                 title="تسویه پیشنهادی ندارید"
-                description="بعد از ثبت هزینه یا تولید settlement-plan، پیشنهادهای پرداخت اینجا نمایش داده می‌شود."
+                description="بعد از ثبت هزینه یا محاسبه تسویه، پیشنهادهای پرداخت اینجا نمایش داده می‌شود."
               />
             ) : null}
             {!settlementsLoading && !settlementsError && settlementSuggestions.length > 0 ? (
@@ -1009,28 +1079,21 @@ export function DashboardPage({
                 ))}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={onOpenWallet}
-              className="flex h-12 w-full items-center justify-center gap-2 border-t border-border text-sm font-black text-emerald-600 transition hover:bg-emerald-50/45"
-            >
-              مشاهده همه تسویه‌ها
-              <ArrowLeft className="h-4 w-4" />
-            </button>
           </SectionCard>
 
-          <SectionCard className="overflow-hidden">
+          <SectionCard variant="quiet" className="overflow-hidden">
             <SectionHeader
-              title="اقدامات و رویدادها"
+              title="رویدادهای اخیر"
               actionLabel="مشاهده همه"
-              icon={<Bell className="h-5 w-5 text-slate-700" />}
+              icon={<Bell className="h-5 w-5 text-slate-500" />}
               onAction={onOpenActivities}
+              compact
             />
             {eventsLoading ? (
               <DashboardSectionState
                 icon={Bell}
                 title="در حال دریافت رویدادها"
-                description="اعلان‌ها و آخرین هزینه‌های گروه‌ها از بک‌اند خوانده می‌شوند."
+                description="اعلان‌ها و آخرین هزینه‌های گروه‌ها در حال آماده‌سازی است."
                 loading
               />
             ) : null}
@@ -1038,7 +1101,7 @@ export function DashboardPage({
               <DashboardSectionState
                 icon={AlertCircle}
                 title={eventsError}
-                description="اتصال notification-service یا expense-service را بررسی کنید."
+                description="اتصال سرویس‌ها را بررسی کنید و دوباره تلاش کنید."
               />
             ) : null}
             {!eventsLoading && !eventsError && dashboardEvents.length === 0 ? (
@@ -1058,12 +1121,12 @@ export function DashboardPage({
           </SectionCard>
         </section>
 
-        <SectionCard className="p-5 sm:p-6">
-          <div className="mb-5 flex items-center justify-between gap-4">
+        <SectionCard variant="quiet" className="p-4 sm:p-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
               onClick={onOpenGroups}
-              className="text-xs font-extrabold text-emerald-600 transition hover:text-emerald-700"
+              className="dashboard-section-action inline-flex min-h-9 items-center rounded-full px-3 text-xs font-extrabold text-emerald-600 transition hover:bg-emerald-50/60 hover:text-emerald-700"
             >
               مشاهده همه گروه‌ها
             </button>
@@ -1074,20 +1137,20 @@ export function DashboardPage({
           </div>
 
           {groupsLoading ? (
-            <div className="rounded-2xl border border-dashed border-border bg-slate-50/80 p-6 text-center text-sm font-bold text-muted">
+            <div className="dashboard-panel-state rounded-2xl border border-dashed border-border bg-slate-50/80 p-6 text-center text-sm font-bold text-muted">
               <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-slate-500" />
-              در حال دریافت گروه‌ها از بک‌اند...
+              در حال دریافت گروه‌ها...
             </div>
           ) : null}
 
           {!groupsLoading && groupsError ? (
-            <div className="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
+            <div className="dashboard-panel-error rounded-2xl border border-rose-100 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
               {groupsError}
             </div>
           ) : null}
 
           {!groupsLoading && !groupsError && groupCards.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 p-7 text-center">
+            <div className="dashboard-panel-empty rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 p-7 text-center">
               <Users className="mx-auto mb-3 h-7 w-7 text-emerald-600" />
               <h3 className="text-base font-black text-text">هنوز گروه فعالی ندارید</h3>
               <p className="mx-auto mt-2 max-w-[360px] text-sm leading-7 text-muted">
@@ -1122,22 +1185,6 @@ export function DashboardPage({
             </div>
           ) : null}
         </SectionCard>
-
-        <section className="grid gap-4 lg:hidden">
-          <div className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-5 text-right shadow-soft">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
-                <Gift className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-black text-emerald-900">همدنگ را به دوستانتان معرفی کنید</h2>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  با دعوت از دوستان، مدیریت هزینه‌ها آسان‌تر می‌شود.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </main>
   );

@@ -12,10 +12,7 @@
   overflow: hidden;
   flex-direction: column;
   color: #16213a;
-  background:
-    linear-gradient(135deg, #ffffff 0%, #f6fffb 42%, #eafaf3 100%);
-  background-size: 180% 180%;
-  animation: auth-gradient-drift 18s ease-in-out infinite alternate;
+  background: var(--app-soft-green-background);
 }
 
 .login-page::before,
@@ -32,7 +29,7 @@
   width: 32rem;
   height: 32rem;
   border-radius: 999px;
-  background: rgba(0, 168, 107, 0.11);
+  background: rgba(0, 168, 107, 0.075);
   animation: auth-ambient-one 16s ease-in-out infinite alternate;
 }
 
@@ -42,7 +39,7 @@
   width: 31rem;
   height: 31rem;
   border-radius: 999px;
-  background: rgba(0, 168, 107, 0.16);
+  background: rgba(0, 168, 107, 0.095);
   animation: auth-ambient-two 18s ease-in-out infinite alternate;
 }
 

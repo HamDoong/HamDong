@@ -626,7 +626,7 @@ function AppContent() {
   };
 
   return (
-    <div dir="rtl" className="min-h-screen bg-background text-text">
+    <div dir="rtl" className="app-auth-background min-h-screen text-text">
       <MobileDrawer open={mobileDrawerOpen} onClose={() => setMobileDrawerOpen(false)} activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
       <div className="mx-auto min-h-screen max-w-[1536px] lg:relative lg:pr-[236px]">
@@ -710,9 +710,15 @@ export default function App() {
   );
 }
 
-function AuthPageFrame({ children }: { children: ReactNode }) {
+function AuthPageFrame({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div dir="rtl" className="min-h-screen bg-background text-text">
+    <div dir="rtl" className={`min-h-screen text-text ${className}`.trim()}>
       {children}
     </div>
   );
@@ -737,7 +743,7 @@ function AppRoutes() {
       <Route
         path="/"
         element={
-          <AuthPageFrame>
+          <AuthPageFrame className="bg-background">
             <LandingPage />
           </AuthPageFrame>
         }
@@ -745,7 +751,7 @@ function AppRoutes() {
       <Route
         path="/login"
         element={
-          <AuthPageFrame>
+          <AuthPageFrame className="app-auth-background">
             <LoginPage
               onLogin={() => navigate('/Dashboard', { replace: true })}
               onSignUp={() => navigate('/signup')}
@@ -756,7 +762,7 @@ function AppRoutes() {
       <Route
         path="/signup"
         element={
-          <AuthPageFrame>
+          <AuthPageFrame className="app-auth-background">
             <SignUpPage
               onLogin={() => navigate('/login')}
               onSignUp={() => navigate('/Dashboard', { replace: true })}
