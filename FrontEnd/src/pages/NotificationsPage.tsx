@@ -1,40 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bell,
-  CheckCircle2,
-  Clock3,
-  MessageCircle,
+  Check,
+  CheckCheck,
+  Mail,
   RefreshCw,
   Search,
-  Send,
-  Smartphone,
-  XCircle,
 } from 'lucide-react';
 import {
   getNotificationMessages,
-  sendTestSms,
+  markNotificationMessageAsRead,
   type BackendNotificationMessage,
 } from '../lib/notificationApi';
 import { useFeedback } from '../components/feedback/FeedbackProvider';
 import {
   getFriendlyNotificationBody,
+  getFriendlyNotificationCode,
   getFriendlyNotificationTitle,
-  humanizeMachineLabel,
 } from '../lib/userMessages';
 
 interface NotificationsPageProps {
   onUnreadCountChange?: (count: number) => void;
 }
 
-type StatusFilter = 'all' | 'PENDING' | 'SENT' | 'FAILED' | 'DELIVERED';
+type ViewFilter = 'all' | 'read';
 
-const statusTabs: Array<{ value: StatusFilter; label: string }> = [
+const viewTabs: Array<{ value: ViewFilter; label: string }> = [
   { value: 'all', label: 'همه' },
-  { value: 'PENDING', label: 'در انتظار' },
-  { value: 'SENT', label: 'ارسال شده' },
-  { value: 'DELIVERED', label: 'تحویل شده' },
-  { value: 'FAILED', label: 'ناموفق' },
+  { value: 'read', label: 'خوانده‌شده‌ها' },
 ];
+
+const READ_STORAGE_KEY = 'hamdong.read-notification-ids';
 
 function formatDate(value?: string | null) {
   if (!value) return 'زمان نامشخص';
@@ -51,201 +47,149 @@ function formatDate(value?: string | null) {
   }
 }
 
-function getStatusLabel(status?: string) {
-  const value = (status || '').toUpperCase();
+function loadPersistedReadIds() {
+  if (typeof window === 'undefined') return new Set<string>();
 
-  if (value === 'PENDING') return 'در انتظار';
-  if (value === 'SENT') return 'ارسال شده';
-  if (value === 'DELIVERED') return 'تحویل شده';
-  if (value === 'FAILED') return 'ناموفق';
-  if (value === 'CANCELED') return 'لغو شده';
+  try {
+    const raw = window.localStorage.getItem(READ_STORAGE_KEY);
+    if (!raw) return new Set<string>();
 
-  return humanizeMachineLabel(status, 'نامشخص');
-}
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set<string>();
 
-function getStatusStyle(status?: string) {
-  const value = (status || '').toUpperCase();
-
-  if (value === 'FAILED') {
-    return {
-      icon: <XCircle className="h-4.5 w-4.5" />,
-      badge: 'bg-rose-50 text-rose-600 ring-rose-100',
-      iconBox: 'bg-rose-50 text-rose-600',
-    };
+    return new Set(parsed.filter((value): value is string => typeof value === 'string'));
+  } catch {
+    return new Set<string>();
   }
+}
 
-  if (value === 'PENDING') {
-    return {
-      icon: <Clock3 className="h-4.5 w-4.5" />,
-      badge: 'bg-amber-50 text-amber-700 ring-amber-100',
-      iconBox: 'bg-amber-50 text-amber-600',
-    };
+function persistReadIds(ids: Set<string>) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // local persistence is only a fallback for local UX
   }
-
-  if (value === 'SENT' || value === 'DELIVERED') {
-    return {
-      icon: <CheckCircle2 className="h-4.5 w-4.5" />,
-      badge: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
-      iconBox: 'bg-emerald-50 text-emerald-600',
-    };
-  }
-
-  return {
-    icon: <Bell className="h-4.5 w-4.5" />,
-    badge: 'bg-slate-50 text-slate-600 ring-slate-100',
-    iconBox: 'bg-slate-50 text-slate-500',
-  };
 }
 
-function getMessageTitle(item: BackendNotificationMessage) {
-  return getFriendlyNotificationTitle(item);
+function isMessageRead(item: BackendNotificationMessage, localReadIds: Set<string>) {
+  return Boolean(item.is_read || item.read_at || localReadIds.has(item.id));
 }
 
-function stringifyMessageValue(value: unknown): string {
-  if (!value) return '';
-
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value === 'number') {
-    return String(value);
-  }
-
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-
-    const preferredKeys = [
-      'message',
-      'body',
-      'text',
-      'content',
-      'otp',
-      'code',
-      'verification_code',
-      'template',
-    ];
-
-    for (const key of preferredKeys) {
-      const nestedValue = record[key];
-
-      if (typeof nestedValue === 'string' || typeof nestedValue === 'number') {
-        if (key === 'otp' || key === 'code' || key === 'verification_code') {
-          return `کد تایید: ${nestedValue}`;
-        }
-
-        return String(nestedValue);
-      }
-    }
-
-    try {
-      return JSON.stringify(record);
-    } catch {
-      return '';
-    }
-  }
-
-  return '';
+function getUnreadCount(
+  items: BackendNotificationMessage[],
+  localReadIds: Set<string>,
+) {
+  return items.filter((item) => !isMessageRead(item, localReadIds)).length;
 }
 
-function getMessageBody(item: BackendNotificationMessage) {
-  return getFriendlyNotificationBody({
-    ...item,
-    template_context: stringifyMessageValue(item.template_context),
-    metadata: stringifyMessageValue(item.metadata),
-  });
+function getChannelLabel(channel?: string | null) {
+  const value = (channel || '').toLowerCase();
+
+  if (value === 'email') return 'ایمیل';
+  if (value === 'in_app' || value === 'push') return 'اعلان';
+  return 'پیام';
 }
 
-function getSearchText(item: BackendNotificationMessage) {
-  return [
-    item.id,
-    item.channel,
-    item.notification_type,
-    item.message_type,
-    item.title,
-    item.recipient_masked,
-    item.recipient,
-    item.template_code,
-    item.status,
-    item.provider,
-    item.provider_message_id,
-    item.error_code,
-    item.error_message,
-    item.message,
-    item.body,
-    item.text,
-    item.content,
-    item.rendered_message,
-    stringifyMessageValue(item.template_context),
-    stringifyMessageValue(item.metadata),
-    stringifyMessageValue(item.data),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
+function getChannelIcon(channel?: string | null) {
+  const value = (channel || '').toLowerCase();
+  return value === 'email' ? <Mail className="h-5 w-5" /> : <Bell className="h-5 w-5" />;
 }
 
-function getPendingOrFailedCount(items: BackendNotificationMessage[]) {
-  return items.filter((item) => {
-    const status = (item.status || '').toUpperCase();
-    return status === 'PENDING' || status === 'FAILED';
-  }).length;
+interface NotificationItemProps {
+  item: BackendNotificationMessage;
+  read: boolean;
+  marking: boolean;
+  onMarkAsRead: (item: BackendNotificationMessage) => void;
 }
 
-function NotificationItem({ item }: { item: BackendNotificationMessage }) {
-  const status = item.status || 'UNKNOWN';
-  const style = getStatusStyle(status);
-  const body = getMessageBody(item);
+function NotificationItem({
+  item,
+  read,
+  marking,
+  onMarkAsRead,
+}: NotificationItemProps) {
+  const code = getFriendlyNotificationCode(item);
+  const body = getFriendlyNotificationBody(item);
 
   return (
-    <article className="rounded-3xl border border-border bg-white px-4 py-4 shadow-soft transition hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:px-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <article
+      className={[
+        'overflow-hidden rounded-[28px] border p-5 shadow-soft transition sm:p-6',
+        read
+          ? 'border-border bg-white dark:bg-white/[0.03]'
+          : 'border-emerald-500/20 bg-[linear-gradient(180deg,rgba(16,185,129,0.08),rgba(255,255,255,0))] dark:bg-[linear-gradient(180deg,rgba(16,185,129,0.08),rgba(255,255,255,0.03))]',
+      ].join(' ')}
+    >
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-4 text-right">
           <div
             className={[
-              'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
-              style.iconBox,
+              'flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl',
+              read
+                ? 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300'
+                : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
             ].join(' ')}
           >
-            {(item.channel || '').toLowerCase() === 'sms' ? (
-              <Smartphone className="h-5 w-5" />
-            ) : (
-              <MessageCircle className="h-5 w-5" />
-            )}
+            {getChannelIcon(item.channel)}
           </div>
 
           <div className="min-w-0">
-            <h3 className="text-base font-extrabold text-text">
-              {getMessageTitle(item)}
-            </h3>
+            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+              <h3 className="text-lg font-extrabold text-text">
+                {getFriendlyNotificationTitle(item)}
+              </h3>
 
-            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600 dark:bg-white/5 dark:text-slate-300">
+                {getChannelLabel(item.channel)}
+              </span>
+
+              <span
+                className={[
+                  'inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold',
+                  read
+                    ? 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                ].join(' ')}
+              >
+                {read ? <CheckCheck className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                {read ? 'خوانده‌شده' : 'جدید'}
+              </span>
+            </div>
+
+            <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-8 text-slate-600 dark:text-slate-300">
               {body}
             </p>
 
-            <div className="mt-3 flex flex-wrap items-center justify-start gap-x-4 gap-y-1 text-xs text-slate-500 sm:justify-end">
-              <span>{item.recipient_masked || item.recipient || 'گیرنده نامشخص'}</span>
-              <span>{humanizeMachineLabel(item.provider, 'سامانه ارسال')}</span>
-              <span>{formatDate(item.sent_at || item.last_attempt_at || item.created_at)}</span>
+            {code ? (
+              <div className="mt-4 inline-flex min-h-12 items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-right dark:bg-emerald-500/10">
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  کد تایید
+                </span>
+                <span className="font-mono text-base font-extrabold tracking-[0.35em] text-emerald-700 dark:text-emerald-200">
+                  {code}
+                </span>
+              </div>
+            ) : null}
+
+            <div className="mt-4 text-xs font-medium text-slate-500 dark:text-slate-400">
+              {formatDate(item.sent_at || item.last_attempt_at || item.created_at)}
             </div>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end">
-          <span
-            className={[
-              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1',
-              style.badge,
-            ].join(' ')}
-          >
-            {style.icon}
-            {getStatusLabel(status)}
-          </span>
-
-          {item.retry_count ? (
-            <span className="rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
-              تلاش: {item.retry_count.toLocaleString('fa-IR')}
-            </span>
+        <div className="flex shrink-0 items-center gap-2 self-end lg:self-start">
+          {!read ? (
+            <button
+              type="button"
+              onClick={() => onMarkAsRead(item)}
+              disabled={marking}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Check className="h-4 w-4" />
+              {marking ? 'در حال ثبت...' : 'خواندم'}
+            </button>
           ) : null}
         </div>
       </div>
@@ -253,11 +197,20 @@ function NotificationItem({ item }: { item: BackendNotificationMessage }) {
   );
 }
 
-function SummaryPill({ label, value }: { label: string; value: number }) {
+function EmptyState({ filter }: { filter: ViewFilter }) {
   return (
-    <div className="rounded-2xl border border-border bg-slate-50 px-4 py-3 text-right">
-      <div className="text-xs font-semibold text-muted">{label}</div>
-      <div className="mt-1 text-xl font-extrabold text-text">{value.toLocaleString('fa-IR')}</div>
+    <div className="rounded-[28px] border border-dashed border-emerald-200 bg-emerald-50/40 p-10 text-center shadow-soft dark:border-emerald-500/20 dark:bg-emerald-500/10">
+      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-emerald-600 shadow-sm dark:bg-white/[0.06] dark:text-emerald-300">
+        <Bell className="h-7 w-7" />
+      </div>
+      <h2 className="text-xl font-extrabold text-text">
+        {filter === 'read' ? 'پیام خوانده‌شده‌ای پیدا نشد' : 'پیامی برای نمایش نیست'}
+      </h2>
+      <p className="mt-2 text-sm leading-7 text-muted">
+        {filter === 'read'
+          ? 'هر پیامی را که بخوانی، اینجا نگه می‌داریم تا بعداً دوباره به آن سر بزنی.'
+          : 'کدهای تایید، یادآوری پرداخت، دریافتی‌ها و پیام‌های مرتبط با هزینه‌ها اینجا نمایش داده می‌شوند.'}
+      </p>
     </div>
   );
 }
@@ -268,32 +221,56 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
   const [messages, setMessages] = useState<BackendNotificationMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [search, setSearch] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [testMessage, setTestMessage] = useState('سلام از همدنگ');
-  const [sending, setSending] = useState(false);
+  const [markingIds, setMarkingIds] = useState<string[]>([]);
+  const [localReadIds, setLocalReadIds] = useState<Set<string>>(() => loadPersistedReadIds());
 
-  const counts = useMemo(() => {
-    const pending = messages.filter((item) => (item.status || '').toUpperCase() === 'PENDING').length;
-    const failed = messages.filter((item) => (item.status || '').toUpperCase() === 'FAILED').length;
-    const sent = messages.filter((item) => ['SENT', 'DELIVERED'].includes((item.status || '').toUpperCase())).length;
-
-    return { pending, failed, sent };
-  }, [messages]);
+  const allCount = messages.length;
+  const readCount = useMemo(
+    () => messages.filter((item) => isMessageRead(item, localReadIds)).length,
+    [localReadIds, messages],
+  );
+  const unreadCount = useMemo(
+    () => getUnreadCount(messages, localReadIds),
+    [localReadIds, messages],
+  );
 
   const filteredMessages = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return messages.filter((item) => {
-      if (statusFilter !== 'all' && (item.status || '').toUpperCase() !== statusFilter) {
+      const read = isMessageRead(item, localReadIds);
+
+      if (viewFilter === 'read' && !read) {
         return false;
       }
 
       if (!query) return true;
-      return getSearchText(item).includes(query);
+
+      const haystack = [
+        item.title,
+        getFriendlyNotificationTitle(item),
+        getFriendlyNotificationBody(item),
+        getFriendlyNotificationCode(item),
+        item.message,
+        item.body,
+        item.text,
+        item.content,
+        item.rendered_message,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(query);
     });
-  }, [messages, search, statusFilter]);
+  }, [localReadIds, messages, search, viewFilter]);
+
+  useEffect(() => {
+    persistReadIds(localReadIds);
+    onUnreadCountChange?.(unreadCount);
+  }, [localReadIds, onUnreadCountChange, unreadCount]);
 
   async function loadMessages() {
     try {
@@ -301,15 +278,64 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
       setError(null);
 
       const data = await getNotificationMessages();
-      setMessages(data);
-      onUnreadCountChange?.(getPendingOrFailedCount(data));
+      setMessages(
+        data.map((item) =>
+          localReadIds.has(item.id)
+            ? {
+                ...item,
+                is_read: true,
+                read_at: item.read_at || new Date().toISOString(),
+              }
+            : item,
+        ),
+      );
     } catch (err) {
       console.error(err);
-      setError('فعلاً پیام‌ها نمایش داده نمی‌شوند. دوباره تلاش کن.');
+      setError('فعلاً پیام‌ها در دسترس نیستند. کمی بعد دوباره تلاش کن.');
       setMessages([]);
       onUnreadCountChange?.(0);
+
+      notify({
+        type: 'error',
+        title: 'پیام‌ها بارگذاری نشدند',
+        description: 'لطفاً چند لحظه بعد دوباره تلاش کن.',
+      });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleMarkAsRead(item: BackendNotificationMessage) {
+    if (isMessageRead(item, localReadIds)) {
+      return;
+    }
+
+    setMarkingIds((current) => [...current, item.id]);
+
+    setLocalReadIds((current) => {
+      const next = new Set(current);
+      next.add(item.id);
+      return next;
+    });
+
+    setMessages((current) =>
+      current.map((entry) =>
+        entry.id === item.id
+          ? {
+              ...entry,
+              is_read: true,
+              read_at: entry.read_at || new Date().toISOString(),
+            }
+          : entry,
+      ),
+    );
+
+    try {
+      await markNotificationMessageAsRead(item.id);
+    } catch (error) {
+      console.warn('Could not persist notification read state. Keeping local read state.', error);
+    } finally {
+      setMarkingIds((current) => current.filter((id) => id !== item.id));
     }
   }
 
@@ -318,53 +344,21 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleSendTestSms() {
-    if (!phoneNumber.trim() || !testMessage.trim()) {
-      notify({
-        type: 'error',
-        title: 'شماره و متن پیام را وارد کن',
-      });
-      return;
-    }
-
-    try {
-      setSending(true);
-
-      const result = await sendTestSms({
-        phone_number: phoneNumber,
-        message: testMessage,
-      });
-
-      notify({
-        type: 'success',
-        title: 'درخواست پیامک ارسال شد',
-        description: 'پیام تست برای ارسال ثبت شد.',
-      });
-
-      setPhoneNumber('');
-      await loadMessages();
-    } catch (err) {
-      console.error(err);
-      notify({
-        type: 'error',
-        title: 'ارسال پیامک ناموفق بود',
-      });
-    } finally {
-      setSending(false);
-    }
-  }
-
   return (
     <main className="px-4 py-6 sm:px-6 xl:px-8">
       <div className="mx-auto max-w-[1180px] space-y-6">
-        <section className="rounded-3xl border border-border bg-white p-6 shadow-soft">
+        <section className="overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(135deg,rgba(15,23,42,0.02),rgba(16,185,129,0.08))] p-6 shadow-soft dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(16,185,129,0.08))]">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="text-right">
-              <h1 className="text-[32px] font-extrabold tracking-[-0.03em] text-text">
-                اعلان‌ها
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                <Bell className="h-6 w-6" />
+              </div>
+
+              <h1 className="mt-4 text-[32px] font-extrabold tracking-[-0.03em] text-text">
+                پیام‌ها و اعلان‌ها
               </h1>
-              <p className="mt-2 text-sm leading-7 text-muted">
-                آخرین پیامک‌ها و وضعیت ارسال پیام‌های سیستم را اینجا ببین.
+              <p className="mt-2 max-w-2xl text-sm leading-7 text-muted">
+                کدهای تایید، یادآوری پرداخت، دریافتی‌ها و پیام‌های مرتبط با هزینه‌ها را اینجا ببین و بعد از بررسی، آن‌ها را به‌عنوان خوانده‌شده علامت بزن.
               </p>
             </div>
 
@@ -372,7 +366,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
               type="button"
               onClick={loadMessages}
               disabled={loading}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white/[0.03] dark:text-slate-200 dark:hover:bg-white/[0.05]"
             >
               <RefreshCw className="h-4 w-4" />
               {loading ? 'در حال بروزرسانی...' : 'بروزرسانی'}
@@ -380,122 +374,90 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="space-y-5">
-            <div className="rounded-3xl border border-border bg-white p-5 shadow-soft">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <SummaryPill label="همه پیام‌ها" value={messages.length} />
-                <SummaryPill label="ارسال‌شده" value={counts.sent} />
-                <SummaryPill label="نیازمند بررسی" value={counts.pending + counts.failed} />
+        <section className="space-y-5">
+          <div className="rounded-[28px] border border-border bg-white p-5 shadow-soft dark:bg-white/[0.03]">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,220px)_1fr] lg:items-center">
+              <div className="rounded-3xl border border-emerald-500/15 bg-emerald-500/5 px-5 py-4 text-right dark:bg-emerald-500/10">
+                <div className="text-xs font-semibold text-muted">همه پیام‌ها</div>
+                <div className="mt-2 text-3xl font-extrabold text-text">
+                  {allCount.toLocaleString('fa-IR')}
+                </div>
+                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {unreadCount.toLocaleString('fa-IR')} پیام جدید
+                </div>
               </div>
 
-              <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
-                <div className="relative min-w-0 flex-1">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {viewTabs.map((tab) => {
+                    const count = tab.value === 'all' ? allCount : readCount;
+
+                    return (
+                      <button
+                        key={tab.value}
+                        type="button"
+                        onClick={() => setViewFilter(tab.value)}
+                        className={[
+                          'inline-flex h-11 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-bold transition',
+                          viewFilter === tab.value
+                            ? 'bg-emerald-600 text-white shadow-[0_10px_22px_rgba(16,185,129,0.20)]'
+                            : 'border border-border bg-white text-slate-600 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.05]',
+                        ].join(' ')}
+                      >
+                        <span>{tab.label}</span>
+                        <span
+                          className={[
+                            'inline-flex min-w-7 items-center justify-center rounded-full px-2 py-0.5 text-[11px]',
+                            viewFilter === tab.value
+                              ? 'bg-white/15 text-white'
+                              : 'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300',
+                          ].join(' ')}
+                        >
+                          {count.toLocaleString('fa-IR')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="relative min-w-0">
                   <Search className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="جستجو در پیام‌ها، شماره یا خطا..."
-                    className="h-12 w-full rounded-2xl border border-border bg-white pr-11 pl-4 text-right text-sm outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    placeholder="جستجو در عنوان یا متن پیام..."
+                    className="h-12 w-full rounded-2xl border border-border bg-white pr-11 pl-4 text-right text-sm outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 dark:bg-white/[0.03]"
                   />
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {statusTabs.map((tab) => (
-                    <button
-                      key={tab.value}
-                      type="button"
-                      onClick={() => setStatusFilter(tab.value)}
-                      className={[
-                        'h-10 rounded-2xl px-4 text-sm font-bold transition',
-                        statusFilter === tab.value
-                          ? 'bg-emerald-600 text-white shadow-[0_10px_22px_rgba(16,185,129,0.20)]'
-                          : 'border border-border bg-white text-slate-600 hover:bg-slate-50',
-                      ].join(' ')}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
               </div>
-            </div>
-
-            {error ? (
-              <div className="rounded-3xl border border-rose-100 bg-rose-50 p-5 text-center text-sm font-bold text-rose-600">
-                {error}
-              </div>
-            ) : null}
-
-            {loading ? (
-              <div className="rounded-3xl border border-border bg-white p-8 text-center text-sm text-muted shadow-soft">
-                در حال دریافت پیام‌ها...
-              </div>
-            ) : null}
-
-            {!loading && filteredMessages.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-emerald-200 bg-emerald-50/40 p-10 text-center shadow-soft">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-emerald-600 shadow-sm">
-                  <Bell className="h-7 w-7" />
-                </div>
-                <h2 className="text-xl font-extrabold text-text">اعلانی برای نمایش نیست</h2>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  بعد از ارسال OTP، یادآوری یا پیامک تست، پیام‌ها اینجا نمایش داده می‌شوند.
-                </p>
-              </div>
-            ) : null}
-
-            <div className="space-y-3">
-              {filteredMessages.map((item) => (
-                <NotificationItem key={item.id} item={item} />
-              ))}
             </div>
           </div>
 
-          <aside className="rounded-3xl border border-border bg-white p-6 shadow-soft xl:sticky xl:top-[118px] xl:h-fit">
-            <div className="mb-5 flex items-center justify-between">
-              <div className="text-right">
-                <h2 className="text-xl font-extrabold text-text">ارسال پیام تست</h2>
-                <p className="mt-1 text-sm leading-7 text-muted">
-                  یک SMS ساده برای بررسی سرویس بفرست.
-                </p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                <Send className="h-5 w-5" />
-              </div>
+          {error ? (
+            <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-5 text-center text-sm font-bold text-rose-600 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+              {error}
             </div>
+          ) : null}
 
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-bold text-text">شماره موبایل</label>
-                <input
-                  dir="ltr"
-                  value={phoneNumber}
-                  onChange={(event) => setPhoneNumber(event.target.value)}
-                  placeholder="09123456789"
-                  className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-bold text-text">متن پیام</label>
-                <textarea
-                  value={testMessage}
-                  onChange={(event) => setTestMessage(event.target.value)}
-                  className="min-h-[96px] w-full resize-none rounded-2xl border border-border bg-white px-4 py-3 text-right text-sm leading-7 outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSendTestSms}
-                disabled={sending}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(0,168,107,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Send className="h-4.5 w-4.5" />
-                {sending ? 'در حال ارسال...' : 'ارسال پیام'}
-              </button>
+          {loading ? (
+            <div className="rounded-[28px] border border-border bg-white p-8 text-center text-sm text-muted shadow-soft dark:bg-white/[0.03]">
+              در حال دریافت پیام‌ها...
             </div>
-          </aside>
+          ) : null}
+
+          {!loading && filteredMessages.length === 0 ? <EmptyState filter={viewFilter} /> : null}
+
+          <div className="space-y-4">
+            {filteredMessages.map((item) => (
+              <NotificationItem
+                key={item.id}
+                item={item}
+                read={isMessageRead(item, localReadIds)}
+                marking={markingIds.includes(item.id)}
+                onMarkAsRead={handleMarkAsRead}
+              />
+            ))}
+          </div>
         </section>
       </div>
     </main>
