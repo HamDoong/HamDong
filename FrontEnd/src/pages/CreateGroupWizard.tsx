@@ -150,7 +150,7 @@ function SummaryCard({ values, memberCount }: { values: GroupInfoValues; memberC
 
       <div className="mt-10 rounded-[20px] border border-emerald-100 bg-emerald-50/50 p-4">
         <div className="mb-3 flex items-center gap-2 text-emerald-600"><Info className="h-4.5 w-4.5" /><span className="text-sm font-semibold">اطلاع‌رسانی</span></div>
-        <p className="text-sm leading-7 text-slate-600">
+        <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
           این مرحله فقط اطلاعات گروه را ثبت می‌کند. هزینه‌ها و لینک دعوت بعد از ورود به صفحه جزئیات گروه مدیریت می‌شوند.
         </p>
       </div>
@@ -215,7 +215,7 @@ function AddMembersStep({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="rounded-[24px] border border-border bg-white p-5">
+        <div className="rounded-[24px] border border-border bg-white p-5 dark:bg-slate-950/70">
           <div className="mb-5 flex items-center justify-between">
             <h3 className="text-[22px] font-bold text-text">افراد انتخاب شده</h3>
             <span className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-full bg-emerald-50 px-2 text-sm font-bold text-emerald-600">
@@ -231,29 +231,29 @@ function AddMembersStep({
             ) : null}
 
             {selectedMembers.map((member) => (
-              <div key={member.id} className="flex items-center justify-between rounded-[18px] border border-border bg-white px-4 py-3">
+              <div key={member.id} className="flex items-center justify-between rounded-[18px] border border-border bg-white px-4 py-3 dark:bg-slate-900/80">
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar label={member.avatar} className={member.avatarClass} />
                   <div className="min-w-0 text-right"><div className="truncate text-base font-semibold text-text">{member.name}</div><div className="text-xs text-muted">{member.phone}</div></div>
                 </div>
-                <button type="button" onClick={() => onRemoveMember(member.id)} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-rose-500"><X className="h-4.5 w-4.5" /></button>
+                <button type="button" onClick={() => onRemoveMember(member.id)} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-rose-500 dark:hover:bg-slate-800"><X className="h-4.5 w-4.5" /></button>
               </div>
             ))}
 
             {manualPhones.map((phone) => (
               <div key={phone} className="flex items-center justify-between rounded-[18px] border border-emerald-100 bg-emerald-50/60 px-4 py-3">
                 <div className="text-right"><div className="text-base font-semibold text-text">شماره پیشنهادی برای دعوت</div><div className="text-xs text-muted">{phone}</div></div>
-                <button type="button" onClick={() => onRemoveManualPhone(phone)} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-rose-500"><X className="h-4.5 w-4.5" /></button>
+                <button type="button" onClick={() => onRemoveManualPhone(phone)} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-white hover:text-rose-500 dark:hover:bg-slate-900"><X className="h-4.5 w-4.5" /></button>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="rounded-[24px] border border-border bg-white p-5">
+        <div className="rounded-[24px] border border-border bg-white p-5 dark:bg-slate-950/70">
           <div className="mb-5">
             <div className="relative">
               <Search className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-              <input dir="rtl" value={searchValue} onChange={(event) => onSearchChange(event.target.value)} placeholder="جستجو با نام یا شماره موبایل..." className="h-12 w-full rounded-[16px] border border-border bg-white pr-11 pl-4 text-sm text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" />
+              <input dir="rtl" value={searchValue} onChange={(event) => onSearchChange(event.target.value)} placeholder="جستجو با نام یا شماره موبایل..." className="h-12 w-full rounded-[16px] border border-border bg-white pr-11 pl-4 text-sm text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 dark:bg-slate-900/80 dark:text-slate-100 dark:placeholder:text-slate-500" />
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -262,7 +262,7 @@ function AddMembersStep({
                 { id: 'friends', label: 'اعضای قبلی', count: counts.friends },
                 { id: 'frequent', label: 'پرتکرار', count: counts.frequent },
               ].map((item) => (
-                <button key={item.id} type="button" onClick={() => onFilterChange(item.id as ContactFilter)} className={cn('inline-flex h-9 items-center gap-2 rounded-full border px-4 text-xs font-semibold transition', filter === item.id ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-border bg-white text-slate-600 hover:border-emerald-300')}>
+                <button key={item.id} type="button" onClick={() => onFilterChange(item.id as ContactFilter)} className={cn('inline-flex h-9 items-center gap-2 rounded-full border px-4 text-xs font-semibold transition', filter === item.id ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'border-border bg-white text-slate-600 hover:border-emerald-300 dark:bg-slate-900/80 dark:text-slate-300')}>
                   {item.label}
                   <span>{item.count.toLocaleString('fa-IR')}</span>
                 </button>
@@ -276,13 +276,13 @@ function AddMembersStep({
               <button type="button" onClick={onAddManualPhone} className="inline-flex h-11 shrink-0 items-center justify-center rounded-[14px] bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700">افزودن</button>
               <input dir="ltr" value={manualPhone} onChange={(event) => onManualPhoneChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onAddManualPhone(); }} placeholder="0912..." className="h-11 min-w-0 flex-1 rounded-[14px] border border-border bg-white px-4 text-left text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" />
             </div>
-            <p className="mt-3 text-xs leading-6 text-slate-500">
+            <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">
               این شماره‌ها فعلاً عضو واقعی گروه نمی‌شوند. بعد از ساخت گروه، لینک دعوت را از صفحه جزئیات بساز و برای آن‌ها بفرست.
             </p>
           </div>
 
           {contactsLoading ? (
-            <div className="rounded-[20px] border border-border bg-slate-50 p-8 text-center text-sm text-muted">در حال دریافت اعضای واقعی...</div>
+            <div className="rounded-[20px] border border-border bg-slate-50 p-8 text-center text-sm text-muted dark:bg-slate-900/70">در حال دریافت اعضای واقعی...</div>
           ) : null}
 
           {!contactsLoading && contactsList.length === 0 ? (
@@ -300,7 +300,7 @@ function AddMembersStep({
                     <Avatar label={contact.avatar} className={contact.avatarClass} />
                     <div className="min-w-0"><div className="truncate text-base font-semibold text-text">{contact.name}</div><div className="text-xs text-muted">{contact.phone}</div></div>
                   </div>
-                  <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border', selected ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-border text-transparent')}>
+                  <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border', selected ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-border text-transparent dark:bg-slate-900/60')}>
                     <Check className="h-4 w-4" />
                   </div>
                 </button>
@@ -308,7 +308,7 @@ function AddMembersStep({
             })}
           </div>
 
-          <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-slate-600">
+          <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
             <UserPlus className="h-4.5 w-4.5 text-slate-400" />
             {selectedMembers.length + manualPhones.length} نفر برای دعوت بعدی انتخاب شده‌اند
           </div>
@@ -395,13 +395,13 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
   };
 
   return (
-    <main className="px-4 py-6 sm:px-6 xl:px-8">
+    <main className="create-group-wizard-page px-4 py-6 sm:px-6 xl:px-8">
       <div className="mx-auto grid max-w-[1280px] gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         <section className="card-surface order-1 overflow-hidden">
           <div className="border-b border-border/80 px-5 py-6 sm:px-8">
             <div className="flex items-center justify-between gap-4">
               <h1 className="text-[32px] font-extrabold tracking-[-0.03em] text-text">تشکیل گروه جدید</h1>
-              <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-slate-600 transition hover:text-text"><ArrowLeft className="h-5 w-5" /><span className="text-sm font-semibold">بازگشت</span></button>
+              <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-slate-600 transition hover:text-text dark:text-slate-300"><ArrowLeft className="h-5 w-5" /><span className="text-sm font-semibold">بازگشت</span></button>
             </div>
             <div className="mt-8"><CreateGroupStepper currentStep={currentStep} steps={steps} /></div>
           </div>
@@ -419,7 +419,7 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
           <div className="border-t border-border/80 px-5 py-5 sm:px-8">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex flex-col gap-3 sm:flex-row">
-                {currentStep > 1 ? <button type="button" onClick={() => goToStep(1)} className="inline-flex h-12 items-center justify-center rounded-[16px] border border-border bg-white px-6 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">مرحله قبل</button> : null}
+                {currentStep > 1 ? <button type="button" onClick={() => goToStep(1)} className="inline-flex h-12 items-center justify-center rounded-[16px] border border-border bg-white px-6 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800">مرحله قبل</button> : null}
                 {currentStep < 2 ? (
                   <button type="button" onClick={() => goToStep(2)} className="inline-flex h-12 items-center justify-center gap-2 rounded-[16px] bg-gradient-to-l from-[#00915F] to-[#00A86B] px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.22)] transition hover:-translate-y-0.5">مرحله بعدی<ChevronLeft className="h-4.5 w-4.5" /></button>
                 ) : (

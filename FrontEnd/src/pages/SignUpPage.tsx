@@ -22,6 +22,7 @@ import {
   normalizeLocalizedDigits,
   otpDigitOnlyPattern,
 } from './LoginPage';
+import { ThemeToggle } from '../components/theme/ThemeToggle';
 import './LoginPage.css';
 
 type SignUpPageProps = {
@@ -428,6 +429,9 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 export function SignUpPage({ onLogin, onSignUp }: SignUpPageProps) {
   return (
     <main className="login-page" dir="rtl">
+      <div className="auth-page-theme-toggle">
+        <ThemeToggle className="h-11 w-11 rounded-full sm:h-12 sm:w-12" />
+      </div>
       <section className="login-main">
         <AuthShowcase />
 

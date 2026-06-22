@@ -17,7 +17,7 @@ export function CreateGroupStepper({
   steps,
 }: CreateGroupStepperProps) {
   return (
-    <div className="mx-auto w-full max-w-[560px]" dir="rtl">
+    <div className="create-group-stepper mx-auto w-full max-w-[560px]" dir="rtl">
       <div className="flex items-start justify-center">
         {steps.map((step, index) => {
           const isCompleted = step.id < currentStep;
@@ -32,8 +32,8 @@ export function CreateGroupStepper({
                   className={cn(
                     'relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold transition-all duration-300',
                     isDone
-                      ? 'border-emerald-500 bg-emerald-500 text-white shadow-[0_8px_20px_rgba(0,168,107,0.18)]'
-                      : 'border-slate-200 bg-white text-slate-500',
+                      ? 'border-emerald-500 bg-emerald-500 text-white shadow-[0_8px_20px_rgba(0,168,107,0.18)] dark:border-emerald-500 dark:bg-emerald-500 dark:text-white'
+                      : 'border-slate-200 bg-white text-slate-500 dark:border-border dark:bg-slate-900/80 dark:text-slate-300',
                   )}
                 >
                   {step.id}
@@ -42,7 +42,7 @@ export function CreateGroupStepper({
                 <span
                   className={cn(
                     'mt-3 text-sm font-semibold leading-6 transition-colors duration-300 sm:text-base',
-                    isDone ? 'text-emerald-600' : 'text-slate-500',
+                    isDone ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400',
                   )}
                 >
                   {step.label}
@@ -54,7 +54,7 @@ export function CreateGroupStepper({
                   <div
                     className={cn(
                       'border-t-2 border-dashed transition-colors duration-300',
-                      isConnectorDone ? 'border-emerald-500' : 'border-slate-200',
+                      isConnectorDone ? 'border-emerald-500 dark:border-emerald-500' : 'border-slate-200 dark:border-border',
                     )}
                   />
                 </div>

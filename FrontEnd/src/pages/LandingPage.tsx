@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { LogoMark } from '../components/BrandLogo';
+import { ThemeToggle } from '../components/theme/ThemeToggle';
 
 type FeatureItem = {
   icon: LucideIcon;
@@ -416,6 +417,7 @@ export function LandingPage() {
         </nav>
 
         <div className="landing-actions flex items-center gap-3">
+          <ThemeToggle className="landing-theme-toggle h-10 w-10 rounded-[18px] border-white/80 bg-white/[0.78] text-slate-700 shadow-[0_14px_34px_rgba(15,23,42,0.08)] backdrop-blur sm:h-12 sm:w-12" />
           <Link
             to="/login"
             className="landing-login-button inline-flex h-10 items-center whitespace-nowrap px-4 text-xs font-extrabold shadow-[0_14px_34px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500/40 sm:h-12 sm:px-6 sm:text-sm"
