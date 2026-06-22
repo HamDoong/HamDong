@@ -16,6 +16,11 @@ import {
   type BackendNotificationMessage,
 } from '../lib/notificationApi';
 import { useFeedback } from '../components/feedback/FeedbackProvider';
+import {
+  getFriendlyNotificationBody,
+  getFriendlyNotificationTitle,
+  humanizeMachineLabel,
+} from '../lib/userMessages';
 
 interface NotificationsPageProps {
   onUnreadCountChange?: (count: number) => void;
@@ -55,7 +60,7 @@ function getStatusLabel(status?: string) {
   if (value === 'FAILED') return 'ناموفق';
   if (value === 'CANCELED') return 'لغو شده';
 
-  return status || 'نامشخص';
+  return humanizeMachineLabel(status, 'نامشخص');
 }
 
 function getStatusStyle(status?: string) {
@@ -93,12 +98,7 @@ function getStatusStyle(status?: string) {
 }
 
 function getMessageTitle(item: BackendNotificationMessage) {
-  if (item.title) return item.title;
-  if (item.template_code) return item.template_code;
-  if (item.notification_type) return item.notification_type;
-  if (item.message_type) return item.message_type;
-  if (item.channel) return `پیام ${item.channel}`;
-  return 'پیام نوتیفیکیشن';
+  return getFriendlyNotificationTitle(item);
 }
 
 function stringifyMessageValue(value: unknown): string {
@@ -149,29 +149,11 @@ function stringifyMessageValue(value: unknown): string {
 }
 
 function getMessageBody(item: BackendNotificationMessage) {
-  const candidates = [
-    item.message,
-    item.body,
-    item.text,
-    item.content,
-    item.rendered_message,
-    item.template_context,
-    item.metadata,
-    item.error_message,
-  ];
-
-  for (const candidate of candidates) {
-    const value = stringifyMessageValue(candidate);
-
-    if (value.trim()) {
-      return value;
-    }
-  }
-
-  if (item.error_code) return `خطا: ${item.error_code}`;
-  if (item.message_type) return `نوع پیام: ${item.message_type}`;
-
-  return 'متن پیام در پاسخ بک‌اند خالی است.';
+  return getFriendlyNotificationBody({
+    ...item,
+    template_context: stringifyMessageValue(item.template_context),
+    metadata: stringifyMessageValue(item.metadata),
+  });
 }
 
 function getSearchText(item: BackendNotificationMessage) {
@@ -243,7 +225,7 @@ function NotificationItem({ item }: { item: BackendNotificationMessage }) {
 
             <div className="mt-3 flex flex-wrap items-center justify-start gap-x-4 gap-y-1 text-xs text-slate-500 sm:justify-end">
               <span>{item.recipient_masked || item.recipient || 'گیرنده نامشخص'}</span>
-              <span>{item.provider || 'Provider نامشخص'}</span>
+              <span>{humanizeMachineLabel(item.provider, 'سامانه ارسال')}</span>
               <span>{formatDate(item.sent_at || item.last_attempt_at || item.created_at)}</span>
             </div>
           </div>
@@ -323,7 +305,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
       onUnreadCountChange?.(getPendingOrFailedCount(data));
     } catch (err) {
       console.error(err);
-      setError('پیام‌ها دریافت نشدند. اتصال notification-service را بررسی کن.');
+      setError('فعلاً پیام‌ها نمایش داده نمی‌شوند. دوباره تلاش کن.');
       setMessages([]);
       onUnreadCountChange?.(0);
     } finally {
@@ -356,7 +338,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
       notify({
         type: 'success',
         title: 'درخواست پیامک ارسال شد',
-        description: result.message_id ? `شناسه پیام: ${result.message_id}` : result.status,
+        description: 'پیام تست برای ارسال ثبت شد.',
       });
 
       setPhoneNumber('');

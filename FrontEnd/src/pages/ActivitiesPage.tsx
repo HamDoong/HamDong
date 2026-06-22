@@ -33,6 +33,7 @@ import {
   type BackendGroupMember,
 } from '../lib/groupApi';
 import { getCurrentUser } from '../lib/userApi';
+import { humanizeMachineLabel } from '../lib/userMessages';
 
 type ActivityFilter = 'all' | 'received' | 'paid' | 'settled';
 type ModalMode = 'create' | 'edit';
@@ -186,8 +187,11 @@ function getSelectedGroupValue(group: BackendGroup) {
 }
 
 function getApiErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  return 'Unknown API error';
+  if (error instanceof Error && error.message) {
+    return 'درخواست بعضی از گروه‌ها کامل نشد.';
+  }
+
+  return 'درخواست بعضی از گروه‌ها کامل نشد.';
 }
 
 function getExpenseKind(expense: BackendExpense, currentUserId?: string | null) {
@@ -240,7 +244,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       </div>
       <h2 className="text-xl font-bold text-text">هنوز فعالیتی ثبت نشده</h2>
       <p className="mt-2 text-sm leading-7 text-muted">
-        اولین هزینه گروهی را ثبت کن تا تاریخچه فعالیت‌ها از بک‌اند نمایش داده شود.
+        اولین هزینه گروهی را ثبت کن تا تاریخچه فعالیت‌ها اینجا نمایش داده شود.
       </p>
       <button
         type="button"
@@ -325,7 +329,7 @@ export function ActivitiesPage() {
       setCurrentUserId(currentUser?.id ? String(currentUser.id) : null);
     } catch (loadError) {
       console.error(loadError);
-      setError('خطا در دریافت گروه‌ها از بک‌اند');
+      setError('فعلاً گروه‌ها نمایش داده نمی‌شوند. دوباره تلاش کن.');
     } finally {
       setLoadingGroups(false);
     }
@@ -402,7 +406,7 @@ export function ActivitiesPage() {
       );
     } catch (loadError) {
       console.error(loadError);
-      setError('خطا در دریافت فعالیت‌ها از بک‌اند');
+      setError('فعلاً فعالیت‌ها نمایش داده نمی‌شوند. دوباره تلاش کن.');
     } finally {
       setLoadingExpenses(false);
     }
@@ -637,7 +641,7 @@ export function ActivitiesPage() {
       showToast({
         tone: 'error',
         title: 'ثبت هزینه ناموفق بود',
-        message: 'Response درخواست را در Network بررسی کن.',
+        message: 'لطفاً دوباره تلاش کن. اگر مشکل ادامه داشت، چند لحظه بعد امتحان کن.',
       });
     } finally {
       setSubmitting(false);
@@ -667,7 +671,7 @@ export function ActivitiesPage() {
           <div className="text-right">
             <h1 className="text-[32px] font-extrabold tracking-[-0.03em] text-text">فعالیت‌ها</h1>
             <p className="mt-2 text-sm leading-7 text-muted">
-              هزینه‌های گروهی از expense-service دریافت می‌شوند؛ بعداً می‌توانیم تراکنش‌ها و تسویه‌ها را هم اضافه کنیم.
+              همه هزینه‌های ثبت‌شده در گروه‌ها را اینجا می‌بینی و می‌توانی آن‌ها را مدیریت کنی.
             </p>
           </div>
 
@@ -797,7 +801,7 @@ export function ActivitiesPage() {
             {loadingGroups || loadingExpenses ? (
               <div className="flex min-h-[240px] items-center justify-center rounded-3xl border border-border bg-white p-8 text-muted shadow-soft">
                 <Loader2 className="ml-2 h-5 w-5 animate-spin" />
-                در حال دریافت فعالیت‌ها از بک‌اند...
+                در حال دریافت فعالیت‌ها...
               </div>
             ) : null}
 
@@ -910,7 +914,7 @@ export function ActivitiesPage() {
                 <h2 className="text-2xl font-extrabold text-text">
                   {modalMode === 'create' ? 'ثبت هزینه جدید' : 'ویرایش هزینه'}
                 </h2>
-                <p className="mt-2 text-sm text-muted">فرم مطابق قرارداد amount_minor در expense-service ارسال می‌شود.</p>
+                <p className="mt-2 text-sm text-muted">اطلاعات هزینه را وارد کن تا بین اعضای انتخاب‌شده تقسیم شود.</p>
               </div>
               <button
                 type="button"
@@ -979,13 +983,13 @@ export function ActivitiesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-text">مبلغ پایه</label>
+                  <label className="mb-2 block text-sm font-semibold text-text">مبلغ هزینه</label>
                   <input
                     dir="ltr"
                     inputMode="numeric"
                     value={form.baseAmountMinor}
                     onChange={(event) => setForm((prev) => ({ ...prev, baseAmountMinor: event.target.value }))}
-                    placeholder="900000"
+                    placeholder="مثلاً ۹۰۰٬۰۰۰"
                     className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                   />
                 </div>
@@ -1090,7 +1094,7 @@ export function ActivitiesPage() {
                                 [userId]: event.target.value,
                               },
                             }))}
-                            placeholder="سهم پایه"
+                            placeholder="سهم این نفر"
                             className="mt-3 h-10 w-full rounded-xl border border-border bg-white px-3 text-left text-xs outline-none focus:border-emerald-500/50"
                           />
                         ) : null}
@@ -1101,12 +1105,12 @@ export function ActivitiesPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-text">لینک رسید / فایل رسید</label>
+                <label className="mb-2 block text-sm font-semibold text-text">رسید هزینه</label>
                 <input
                   dir="ltr"
                   value={form.receiptUrl}
                   onChange={(event) => setForm((prev) => ({ ...prev, receiptUrl: event.target.value }))}
-                  placeholder="https://..."
+                  placeholder="لینک رسید را وارد کن"
                   className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                 />
               </div>
@@ -1140,7 +1144,7 @@ export function ActivitiesPage() {
             <div className="mb-5 flex items-start justify-between gap-4">
               <div className="text-right">
                 <h2 className="text-2xl font-extrabold text-text">جزئیات هزینه</h2>
-                <p className="mt-2 text-sm text-muted">خوانده شده از GET /api/v1/expenses/{'{expense_id}'}/</p>
+                <p className="mt-2 text-sm text-muted">جزئیات کامل این هزینه را اینجا می‌بینی.</p>
               </div>
               <button
                 type="button"
@@ -1167,7 +1171,7 @@ export function ActivitiesPage() {
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-2xl border border-border p-4">
-                    <span className="text-xs text-muted">مبلغ پایه</span>
+                    <span className="text-xs text-muted">مبلغ هزینه</span>
                     <div className="mt-2 font-extrabold text-text">{formatMoney(detailExpense.base_amount_minor)}</div>
                   </div>
                   <div className="rounded-2xl border border-border p-4">
@@ -1176,11 +1180,11 @@ export function ActivitiesPage() {
                   </div>
                   <div className="rounded-2xl border border-border p-4">
                     <span className="text-xs text-muted">روش تقسیم</span>
-                    <div className="mt-2 font-extrabold text-text">{detailExpense.split_method || '—'}</div>
+                    <div className="mt-2 font-extrabold text-text">{humanizeMachineLabel(detailExpense.split_method, "نامشخص")}</div>
                   </div>
                   <div className="rounded-2xl border border-border p-4">
                     <span className="text-xs text-muted">وضعیت</span>
-                    <div className="mt-2 font-extrabold text-text">{detailExpense.status || '—'}</div>
+                    <div className="mt-2 font-extrabold text-text">{humanizeMachineLabel(detailExpense.status, "نامشخص")}</div>
                   </div>
                 </div>
 

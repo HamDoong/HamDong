@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isApiError } from '../lib/api';
+import { getFriendlyNotificationBody } from '../lib/userMessages';
 import { listGroupExpenses, type BackendExpense } from '../lib/expenseApi';
 import {
   getNotificationMessages,
@@ -254,19 +255,10 @@ function getNotificationBody(item: BackendNotificationMessage) {
         ? item.data.message
         : '';
 
-  return (
-    item.title ||
-    item.body ||
-    item.message ||
-    item.text ||
-    item.content ||
-    item.rendered_message ||
-    metadataMessage ||
-    item.error_message ||
-    item.notification_type ||
-    item.message_type ||
-    'اعلان جدید'
-  );
+  return getFriendlyNotificationBody({
+    ...item,
+    metadata: metadataMessage || item.metadata,
+  });
 }
 
 function getNotificationIcon(item: BackendNotificationMessage): LucideIcon {
@@ -925,7 +917,7 @@ export function DashboardPage({
         setSettlementSuggestions(mergedSuggestions);
         setSettlementsError(
           hasUnexpectedError && mergedSuggestions.length === 0
-            ? 'تسویه‌های پیشنهادی دریافت نشدند.'
+            ? 'فعلاً پیشنهادهای پرداخت در دسترس نیستند.'
             : null,
         );
       } finally {
@@ -1062,7 +1054,7 @@ export function DashboardPage({
               <DashboardSectionState
                 icon={AlertCircle}
                 title={settlementsError}
-                description="اتصال سرویس‌ها را بررسی کنید و دوباره تلاش کنید."
+                description="فعلاً این بخش آماده نمایش نیست. کمی بعد دوباره سر بزن."
               />
             ) : null}
             {!settlementsLoading && !settlementsError && settlementSuggestions.length === 0 ? (
@@ -1101,7 +1093,7 @@ export function DashboardPage({
               <DashboardSectionState
                 icon={AlertCircle}
                 title={eventsError}
-                description="اتصال سرویس‌ها را بررسی کنید و دوباره تلاش کنید."
+                description="فعلاً این بخش آماده نمایش نیست. کمی بعد دوباره سر بزن."
               />
             ) : null}
             {!eventsLoading && !eventsError && dashboardEvents.length === 0 ? (

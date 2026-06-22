@@ -16,6 +16,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { isApiError } from '../lib/api';
+import { getFriendlyApiErrorMessage } from '../lib/userMessages';
 import {
   loginWithPassword,
   requestLoginOtp,
@@ -95,26 +96,28 @@ export function isValidEmail(value: string) {
 function getLoginErrorMessage(error: unknown) {
   if (isApiError(error)) {
     const body = error.body as {
-      error?: { code?: string; message?: string; details?: Record<string, unknown> };
-      detail?: string;
+      error?: { code?: string; details?: Record<string, unknown> };
     };
     const code = body?.error?.code;
 
-    if (error.status === 404) return 'مسیر ورود در API پیدا نشد. تنظیمات /api/v1 یا API Gateway را بررسی کنید.';
-    if ([502, 503, 504].includes(error.status)) return 'سرویس ورود در دسترس نیست. وضعیت API Gateway و identity-service را بررسی کنید.';
+    if (code === 'INVALID_CREDENTIALS') return 'نام کاربری یا رمز عبور درست نیست.';
+    if (code === 'INVALID_EMAIL') return 'ایمیل را درست وارد کن.';
+    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل را درست وارد کن.';
 
-    if (code === 'INVALID_CREDENTIALS') return 'نام هنری یا رمز عبور اشتباه است.';
-    if (code === 'INVALID_EMAIL') return 'ایمیل معتبر نیست.';
-    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل معتبر نیست.';
-    if (code === 'INVALID_OTP') return 'کد تایید اشتباه است.';
-    if (code === 'OTP_EXPIRED') return 'کد تایید منقضی شده است.';
-    if (code === 'OTP_IN_COOLDOWN') return 'برای دریافت کد جدید کمی صبر کنید.';
-    if (code === 'OTP_RATE_LIMITED') return 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.';
-    if (body?.error?.message) return body.error.message;
-    if (body?.detail) return body.detail;
+    return getFriendlyApiErrorMessage(error, {
+      defaultMessage: 'ورود انجام نشد. دوباره تلاش کن.',
+      invalidMessage: 'اطلاعات ورود کامل یا درست نیست.',
+      unavailableMessage: 'فعلاً ورود در دسترس نیست. کمی بعد دوباره تلاش کن.',
+      codeMap: {
+        INVALID_OTP: 'کد تایید اشتباه است.',
+        OTP_EXPIRED: 'زمان این کد تمام شده است. یک کد جدید بگیر.',
+        OTP_IN_COOLDOWN: 'برای دریافت کد جدید کمی صبر کن.',
+        OTP_RATE_LIMITED: 'درخواست‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
+      },
+    });
   }
 
-  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
+  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کن.';
 }
 
 function BenefitList() {
@@ -148,7 +151,6 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
-  const [otpDebugCode, setOtpDebugCode] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -205,8 +207,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     try {
       const response = await requestLoginOtp(normalizedEmail);
       setOtpRequested(true);
-      setOtpDebugCode(response.debug_otp || '');
-      setStatusMessage('کد تایید برای ایمیل ارسال شد.');
+      setStatusMessage('کد تایید به ایمیلت ارسال شد.')
     } catch (error) {
       setErrorMessage(getLoginErrorMessage(error));
     } finally {
@@ -352,7 +353,6 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
                 onChange={(event) => {
                   setEmail(event.target.value);
                   setOtpRequested(false);
-                  setOtpDebugCode('');
                   resetFeedback();
                 }}
                 placeholder="name@example.com"
@@ -407,7 +407,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
       {statusMessage ? (
         <p className="login-form-message login-form-message-success">
           {statusMessage}
-          {otpDebugCode ? <span>کد تست: {otpDebugCode}</span> : null}
+          
         </p>
       ) : null}
 

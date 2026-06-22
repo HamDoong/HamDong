@@ -250,7 +250,7 @@ function AppContent() {
       setGroupItems(backendGroups.map((group) => mapBackendGroupToDashboardGroup(group)));
     } catch (error) {
       console.error(error);
-      setGroupsError('خطا در دریافت گروه‌ها از بک‌اند');
+      setGroupsError('فعلاً گروه‌ها بارگذاری نشدند. دوباره تلاش کن.');
     } finally {
       setLoadingGroups(false);
     }
@@ -416,7 +416,7 @@ function AppContent() {
     notify({
       type: 'info',
       title: 'این بخش هنوز آماده نشده',
-      description: 'فعلاً صفحه گروه‌ها، فعالیت‌ها و کیف پول برای UI فعال هستند.',
+      description: 'این بخش هنوز در حال تکمیل است و به‌زودی اضافه می‌شود.',
     });
   };
 
@@ -464,7 +464,7 @@ function AppContent() {
       notify({
         type: 'error',
         title: 'ایجاد گروه ناموفق بود',
-        description: 'Network و Console را بررسی کن.',
+        description: 'گروه ساخته نشد. دوباره تلاش کن.',
       });
     }
   };
@@ -548,7 +548,7 @@ function AppContent() {
       notify({
         type: 'error',
         title: 'حذف گروه ناموفق بود',
-        description: 'Network و Console را بررسی کن.',
+        description: 'گروه ساخته نشد. دوباره تلاش کن.',
       });
     }
   };
