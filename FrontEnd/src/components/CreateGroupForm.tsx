@@ -1,4 +1,4 @@
-import { CloudUpload, PlusCircle, UserPlus, UserRound, Users } from 'lucide-react';
+import { CloudUpload, UserPlus, UserRound, Users } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 
@@ -20,7 +20,7 @@ export function CreateGroupForm({ onStartWizard }: CreateGroupFormProps) {
         <div className="min-w-0 space-y-6 text-right">
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">
-              نام گروه <span className="text-rose-500">*</span>
+              نام گروه
             </label>
             <input type="text" className="form-input" placeholder="مثال: سفر شمال" />
           </div>
@@ -71,7 +71,7 @@ export function CreateGroupForm({ onStartWizard }: CreateGroupFormProps) {
 
             <h3 className="text-[22px] font-bold leading-tight text-text">افزودن اعضا</h3>
             <p className="mt-3 max-w-[220px] text-sm leading-7 text-muted">
-              اعضای گروه را از شماره تلفن یا مخاطبین خود اضافه کنید.
+              اعضای گروه را از مخاطبین و اعضای قبلی خود انتخاب کنید.
             </p>
 
             <Button
@@ -81,22 +81,6 @@ export function CreateGroupForm({ onStartWizard }: CreateGroupFormProps) {
               <UserRound className="h-4 w-4 text-slate-500" />
               انتخاب از مخاطبین
             </Button>
-
-            <div className="my-5 flex w-full items-center gap-3">
-              <div className="h-px flex-1 bg-border" />
-              <span className="text-sm text-slate-400">یا</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-
-            <div className="relative w-full">
-              <input className="form-input pr-4 pl-12" placeholder="شماره موبایل را وارد کنید" />
-              <button
-                type="button"
-                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-emerald-600"
-              >
-                <PlusCircle className="h-4 w-4" />
-              </button>
-            </div>
           </div>
         </Card>
       </div>
