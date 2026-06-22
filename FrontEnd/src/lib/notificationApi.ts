@@ -1,4 +1,4 @@
-import { apiRequest } from './api';
+import { apiRequest, isApiError } from './api';
 
 export type NotificationMessageStatus =
   | 'PENDING'
@@ -10,12 +10,18 @@ export type NotificationMessageStatus =
 
 export interface BackendNotificationMessage {
   id: string;
+  recipient_user_id?: string;
   channel?: string;
+  notification_type?: string;
   message_type?: string;
+  title?: string;
   recipient_masked?: string;
   recipient?: string;
   template_code?: string;
   status?: NotificationMessageStatus;
+  priority?: string;
+  is_read?: boolean;
+  read_at?: string | null;
   provider?: string;
   provider_message_id?: string;
   error_code?: string;
@@ -32,6 +38,7 @@ export interface BackendNotificationMessage {
   rendered_message?: string;
   template_context?: string | Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  data?: Record<string, unknown>;
 }
 
 export interface SendTestSmsInput {
@@ -58,6 +65,7 @@ export interface NotificationMessagesParams {
   search?: string;
   status?: string;
   channel?: string;
+  limit?: number;
 }
 
 function unwrapList<T>(data: T[] | PaginatedResponse<T>) {
@@ -65,11 +73,21 @@ function unwrapList<T>(data: T[] | PaginatedResponse<T>) {
   return data.results || data.data || [];
 }
 
+function getLimit(params: NotificationMessagesParams = {}) {
+  return Math.min(Math.max(params.limit || 100, 1), 100);
+}
+
+function shouldFallbackToDebugMessages(error: unknown) {
+  return isApiError(error) && [404, 405, 502, 503, 504].includes(error.status);
+}
+
 function getSearchHaystack(item: BackendNotificationMessage) {
   return [
     item.id,
     item.channel,
+    item.notification_type,
     item.message_type,
+    item.title,
     item.recipient_masked,
     item.recipient,
     item.template_code,
@@ -87,6 +105,7 @@ function getSearchHaystack(item: BackendNotificationMessage) {
       ? item.template_context
       : JSON.stringify(item.template_context || ''),
     JSON.stringify(item.metadata || ''),
+    JSON.stringify(item.data || ''),
   ]
     .filter(Boolean)
     .join(' ')
@@ -123,11 +142,24 @@ function filterClientSide(
 export async function getNotificationMessages(
   params: NotificationMessagesParams = {},
 ) {
-  const data = await apiRequest<
-    BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>
-  >('/notifications/messages/');
+  const limit = getLimit(params);
+  let data: BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>;
 
-  return filterClientSide(unwrapList(data), params);
+  try {
+    data = await apiRequest<
+      BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>
+    >(`/notifications/?limit=${limit}`);
+  } catch (error) {
+    if (!shouldFallbackToDebugMessages(error)) {
+      throw error;
+    }
+
+    data = await apiRequest<
+      BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>
+    >(`/notifications/messages/?limit=${limit}`);
+  }
+
+  return filterClientSide(unwrapList(data), params).slice(0, limit);
 }
 
 export async function getPendingNotificationCount() {

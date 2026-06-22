@@ -2055,5 +2055,5 @@ html.dark .login-wallet-asset {
   .login-wallet-asset,
   .login-settled-badge {
     transform: translateX(-50%);
-  }
+ }
 }

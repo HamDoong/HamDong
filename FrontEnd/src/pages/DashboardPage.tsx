@@ -8,6 +8,7 @@ import {
   CreditCard,
   Gift,
   Home,
+  Loader2,
   Mountain,
   Plus,
   ReceiptText,
@@ -18,7 +19,18 @@ import {
   WalletCards,
   type LucideIcon,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { isApiError } from '../lib/api';
+import { listGroupExpenses, type BackendExpense } from '../lib/expenseApi';
+import {
+  getNotificationMessages,
+  type BackendNotificationMessage,
+} from '../lib/notificationApi';
+import {
+  getSettlementPlan,
+  type SettlementPlanItem,
+} from '../lib/settlementApi';
+import { getCurrentUser } from '../lib/userApi';
 import type { Group } from '../types';
 import type { GroupBalanceSummary } from './GroupsPage';
 
@@ -26,6 +38,8 @@ interface DashboardPageProps {
   groups: Group[];
   groupBalances?: GroupBalanceSummary[];
   balancesLoading?: boolean;
+  groupsLoading?: boolean;
+  groupsError?: string | null;
   onCreateGroup: () => void;
   onOpenGroups: () => void;
   onOpenGroup: (groupId: string) => void;
@@ -34,120 +48,24 @@ interface DashboardPageProps {
 }
 
 interface SettlementSuggestion {
-  id: number;
+  id: string;
   name: string;
   description: string;
   amount: number;
-  avatar: string;
+  tone: Group['tone'];
+  avatarText: string;
+  groupId?: string;
 }
 
 interface DashboardEvent {
-  id: number;
+  id: string;
   title: string;
   time: string;
   timeText: string;
   icon: LucideIcon;
   toneClassName: string;
+  createdAt: number;
 }
-
-interface FallbackGroup {
-  id: string;
-  title: string;
-  membersLabel: string;
-  statusLabel: string;
-  amount: number;
-  tone: Group['tone'];
-  illustration: Group['illustration'];
-}
-
-const settlementSuggestions: SettlementSuggestion[] = [
-  {
-    id: 1,
-    name: 'علی رضایی',
-    description: 'باید به شما پرداخت کند',
-    amount: 2450000,
-    avatar: '/landing/avatar-ali.png',
-  },
-  {
-    id: 2,
-    name: 'سارا احمدی',
-    description: 'باید به شما پرداخت کند',
-    amount: 1800000,
-    avatar: '/landing/avatar-sara.png',
-  },
-  {
-    id: 3,
-    name: 'شام دوستانه',
-    description: '۵ عضو',
-    amount: 1230000,
-    avatar: '/landing/high-five.png',
-  },
-];
-
-const dashboardEvents: DashboardEvent[] = [
-  {
-    id: 1,
-    title: 'سارا احمدی هنوز سهم «شام دوستانه» را پرداخت نکرده',
-    time: '۱۰ دقیقه پیش',
-    timeText: 'ده دقیقه پیش',
-    icon: AlertCircle,
-    toneClassName: 'bg-rose-50 text-rose-500',
-  },
-  {
-    id: 2,
-    title: 'علی رضایی هزینه رستوران ایتالیایی را ثبت کرد',
-    time: '۳ ساعت پیش',
-    timeText: 'سه ساعت پیش',
-    icon: WalletCards,
-    toneClassName: 'bg-emerald-50 text-emerald-600',
-  },
-  {
-    id: 3,
-    title: 'پرداخت شما از «شام سه‌شنبه» تایید شد',
-    time: '۵ ساعت پیش',
-    timeText: 'پنج ساعت پیش',
-    icon: CheckCircle2,
-    toneClassName: 'bg-emerald-50 text-emerald-600',
-  },
-  {
-    id: 4,
-    title: '۲ روز تا سررسید پرداخت «سفر شمال» باقی مانده است',
-    time: '۱ روز پیش',
-    timeText: 'یک روز پیش',
-    icon: CreditCard,
-    toneClassName: 'bg-amber-50 text-amber-500',
-  },
-];
-
-const fallbackGroups: FallbackGroup[] = [
-  {
-    id: 'home',
-    title: 'خانه',
-    membersLabel: '۴ عضو',
-    statusLabel: 'شما بدهکار هستید',
-    amount: -3000000,
-    tone: 'negative',
-    illustration: 'home',
-  },
-  {
-    id: 'trip',
-    title: 'سفر شمال',
-    membersLabel: '۶ عضو',
-    statusLabel: 'شما طلبکار هستید',
-    amount: 12450000,
-    tone: 'positive',
-    illustration: 'trip',
-  },
-  {
-    id: 'dinner',
-    title: 'شام دوستانه',
-    membersLabel: '۵ عضو',
-    statusLabel: 'شما طلبکار هستید',
-    amount: 1230000,
-    tone: 'positive',
-    illustration: 'cafe',
-  },
-];
 
 function formatMoney(amount: number) {
   return `${Math.abs(Math.round(amount)).toLocaleString('fa-IR')} تومان`;
@@ -244,6 +162,244 @@ function getMemberCountText(label: string) {
   return `${numberToPersianWords(Number(match[1]))} عضو`;
 }
 
+function getPersonName(...values: Array<string | null | undefined>) {
+  return values.find((value) => value && value.trim())?.trim() || 'عضو گروه';
+}
+
+function getAvatarText(value: string) {
+  return value.trim().slice(0, 1) || '؟';
+}
+
+function isArchivedGroup(group: Group) {
+  return group.status === 'ARCHIVED';
+}
+
+function getGroupId(group: Group) {
+  return String(group.id);
+}
+
+function getGroupById(groups: Group[]) {
+  return new Map(groups.map((group) => [getGroupId(group), group]));
+}
+
+function getDateTimestamp(value?: string | null) {
+  if (!value) return 0;
+
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function formatRelativeTime(value?: string | null) {
+  const timestamp = getDateTimestamp(value);
+
+  if (!timestamp) return 'زمان نامشخص';
+
+  const diffMs = timestamp - Date.now();
+  const absDiff = Math.abs(diffMs);
+  const formatter = new Intl.RelativeTimeFormat('fa-IR', { numeric: 'auto' });
+
+  if (absDiff < 60 * 1000) {
+    return formatter.format(Math.round(diffMs / 1000), 'second');
+  }
+
+  if (absDiff < 60 * 60 * 1000) {
+    return formatter.format(Math.round(diffMs / (60 * 1000)), 'minute');
+  }
+
+  if (absDiff < 24 * 60 * 60 * 1000) {
+    return formatter.format(Math.round(diffMs / (60 * 60 * 1000)), 'hour');
+  }
+
+  if (absDiff < 7 * 24 * 60 * 60 * 1000) {
+    return formatter.format(Math.round(diffMs / (24 * 60 * 60 * 1000)), 'day');
+  }
+
+  if (absDiff < 30 * 24 * 60 * 60 * 1000) {
+    return formatter.format(Math.round(diffMs / (7 * 24 * 60 * 60 * 1000)), 'week');
+  }
+
+  if (absDiff < 365 * 24 * 60 * 60 * 1000) {
+    return formatter.format(Math.round(diffMs / (30 * 24 * 60 * 60 * 1000)), 'month');
+  }
+
+  return formatter.format(Math.round(diffMs / (365 * 24 * 60 * 60 * 1000)), 'year');
+}
+
+function formatEventDate(value?: string | null) {
+  const timestamp = getDateTimestamp(value);
+
+  if (!timestamp) return 'بدون زمان';
+
+  return new Intl.DateTimeFormat('fa-IR', {
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+function getExpenseTotal(expense: BackendExpense) {
+  return (
+    expense.total_amount_minor ??
+    (expense.base_amount_minor || 0) +
+      (expense.tax_amount_minor || 0) +
+      (expense.service_fee_amount_minor || 0)
+  );
+}
+
+function getNotificationBody(item: BackendNotificationMessage) {
+  const metadataMessage =
+    typeof item.metadata?.message === 'string'
+      ? item.metadata.message
+      : typeof item.data?.message === 'string'
+        ? item.data.message
+        : '';
+
+  return (
+    item.title ||
+    item.body ||
+    item.message ||
+    item.text ||
+    item.content ||
+    item.rendered_message ||
+    metadataMessage ||
+    item.error_message ||
+    item.notification_type ||
+    item.message_type ||
+    'اعلان جدید'
+  );
+}
+
+function getNotificationIcon(item: BackendNotificationMessage): LucideIcon {
+  const status = (item.status || '').toUpperCase();
+  const type = (item.notification_type || item.message_type || '').toUpperCase();
+
+  if (status === 'FAILED') return AlertCircle;
+  if (type === 'SETTLEMENT' || type === 'REMINDER') return CreditCard;
+  if (type === 'INVITE') return UserPlus;
+  if (status === 'SENT' || status === 'DELIVERED') return CheckCircle2;
+
+  return Bell;
+}
+
+function getNotificationToneClassName(item: BackendNotificationMessage) {
+  const status = (item.status || '').toUpperCase();
+  const priority = (item.priority || '').toUpperCase();
+
+  if (status === 'FAILED' || priority === 'URGENT') return 'bg-rose-50 text-rose-500';
+  if (status === 'PENDING' || status === 'SENDING' || priority === 'HIGH') return 'bg-amber-50 text-amber-500';
+  if (status === 'SENT' || status === 'DELIVERED') return 'bg-emerald-50 text-emerald-600';
+
+  return 'bg-slate-50 text-slate-600';
+}
+
+function notificationToEvent(item: BackendNotificationMessage): DashboardEvent {
+  const date = item.created_at || item.sent_at || item.last_attempt_at || item.read_at;
+
+  return {
+    id: `notification-${item.id}`,
+    title: getNotificationBody(item),
+    time: formatRelativeTime(date),
+    timeText: formatEventDate(date),
+    icon: getNotificationIcon(item),
+    toneClassName: getNotificationToneClassName(item),
+    createdAt: getDateTimestamp(date),
+  };
+}
+
+function expenseToEvent(
+  expense: BackendExpense,
+  group: Group,
+  currentUserId: string | null,
+): DashboardEvent {
+  const date = expense.expense_date || expense.created_at || expense.updated_at;
+  const total = getExpenseTotal(expense);
+  const isMine = currentUserId && expense.payer_user_id === currentUserId;
+  const title = isMine
+    ? `شما هزینه «${expense.title}» را در «${group.name}» ثبت کردید`
+    : `هزینه «${expense.title}» در «${group.name}» ثبت شد`;
+
+  return {
+    id: `expense-${expense.id}`,
+    title: total > 0 ? `${title} - ${formatMoney(total)}` : title,
+    time: formatRelativeTime(date),
+    timeText: formatEventDate(date),
+    icon: WalletCards,
+    toneClassName: 'bg-emerald-50 text-emerald-600',
+    createdAt: getDateTimestamp(date),
+  };
+}
+
+function isOpenPlanItem(item: SettlementPlanItem) {
+  const status = (item.status || '').toUpperCase();
+  return status !== 'CONFIRMED' && status !== 'CANCELLED' && status !== 'COMPLETED';
+}
+
+function planItemToSuggestion(
+  item: SettlementPlanItem,
+  group: Group,
+  currentUserId: string | null,
+): SettlementSuggestion | null {
+  if (!isOpenPlanItem(item)) return null;
+
+  const payerName = getPersonName(item.payer_display_name, item.payer_art_name);
+  const receiverName = getPersonName(item.receiver_display_name, item.receiver_art_name);
+  const isPayer = currentUserId ? item.payer_user_id === currentUserId : false;
+  const isReceiver = currentUserId ? item.receiver_user_id === currentUserId : false;
+
+  if (currentUserId && !isPayer && !isReceiver) return null;
+
+  const name = isPayer ? receiverName : isReceiver ? payerName : `${payerName} به ${receiverName}`;
+  const description = isPayer
+    ? `پرداخت پیشنهادی در گروه «${group.name}»`
+    : isReceiver
+      ? `دریافت پیشنهادی در گروه «${group.name}»`
+      : `تسویه پیشنهادی گروه «${group.name}»`;
+
+  return {
+    id: `plan-${item.id}`,
+    name,
+    description,
+    amount: item.amount_minor,
+    tone: isPayer ? 'negative' : 'positive',
+    avatarText: getAvatarText(name),
+    groupId: getGroupId(group),
+  };
+}
+
+function balanceToSuggestion(
+  balance: GroupBalanceSummary,
+  group?: Group,
+): SettlementSuggestion | null {
+  if (balance.status === 'ARCHIVED' || balance.netMinor === 0) return null;
+
+  const name = group?.name || balance.groupName;
+  const isDebt = balance.netMinor < 0;
+
+  return {
+    id: `balance-${balance.groupId}`,
+    name,
+    description: isDebt
+      ? 'برای تسویه این گروه پرداخت لازم دارید'
+      : 'در این گروه طلبکار هستید',
+    amount: Math.abs(balance.netMinor),
+    tone: isDebt ? 'negative' : 'positive',
+    avatarText: getAvatarText(name),
+    groupId: balance.groupId,
+  };
+}
+
+function mergeSuggestions(
+  planSuggestions: SettlementSuggestion[],
+  balanceSuggestions: SettlementSuggestion[],
+) {
+  const seen = new Set(planSuggestions.map((item) => item.groupId).filter(Boolean));
+
+  return [...planSuggestions, ...balanceSuggestions.filter((item) => !seen.has(item.groupId))]
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3);
+}
+
 function SectionCard({
   children,
   className = '',
@@ -284,6 +440,32 @@ function SectionHeader({
         <h2 className="text-lg font-black text-text sm:text-xl">{title}</h2>
         {icon}
       </div>
+    </div>
+  );
+}
+
+function DashboardSectionState({
+  icon: Icon,
+  title,
+  description,
+  loading = false,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+  loading?: boolean;
+}) {
+  const StateIcon = loading ? Loader2 : Icon;
+
+  return (
+    <div className="mx-4 mb-4 rounded-2xl border border-dashed border-border bg-slate-50/80 px-4 py-6 text-center sm:mx-5">
+      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+        <StateIcon className={['h-5 w-5', loading ? 'animate-spin' : ''].join(' ')} />
+      </div>
+      <div className="text-sm font-black text-slate-700">{title}</div>
+      {description ? (
+        <p className="mx-auto mt-2 max-w-[320px] text-xs leading-6 text-muted">{description}</p>
+      ) : null}
     </div>
   );
 }
@@ -404,18 +586,23 @@ function BalanceHero({
 }
 
 function SettlementRow({ item }: { item: SettlementSuggestion }) {
-  const descriptionNumberText = getMemberCountText(item.description);
+  const isDebt = item.tone === 'negative';
+  const amountClassName = isDebt ? 'text-rose-500' : 'text-emerald-600';
+  const arrowClassName = isDebt ? 'text-rose-500' : 'text-emerald-600';
+  const avatarClassName = isDebt
+    ? 'bg-rose-50 text-rose-500'
+    : 'bg-emerald-50 text-emerald-600';
 
   return (
     <div className="grid grid-cols-[minmax(128px,176px)_32px_minmax(0,1fr)] items-center gap-3 border-b border-border px-4 py-3 last:border-b-0 sm:px-5">
       <div className="text-left">
-        <div className="text-base font-black text-emerald-600">{formatMoney(item.amount)}</div>
+        <div className={`text-base font-black ${amountClassName}`}>{formatMoney(item.amount)}</div>
         <div className="mt-1 text-[11px] font-semibold leading-5 text-slate-500">
           {formatMoneyText(item.amount)}
         </div>
       </div>
 
-      <div className="flex justify-center text-emerald-600">
+      <div className={`flex justify-center ${arrowClassName}`}>
         <ArrowLeft className="h-5 w-5" />
       </div>
 
@@ -423,17 +610,10 @@ function SettlementRow({ item }: { item: SettlementSuggestion }) {
         <div className="min-w-0 text-right">
           <div className="truncate text-sm font-black text-text">{item.name}</div>
           <div className="mt-1 truncate text-xs text-muted">{item.description}</div>
-          {descriptionNumberText ? (
-            <div className="mt-1 truncate text-[11px] font-semibold text-slate-400">
-              {descriptionNumberText}
-            </div>
-          ) : null}
         </div>
-        <img
-          src={item.avatar}
-          alt=""
-          className="h-11 w-11 shrink-0 rounded-full border border-border object-cover"
-        />
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-sm font-black ${avatarClassName}`}>
+          {item.avatarText}
+        </div>
       </div>
     </div>
   );
@@ -528,8 +708,8 @@ function getDashboardTotals(groupBalances: GroupBalanceSummary[] = []) {
 
   if (activeBalances.length === 0) {
     return {
-      creditMinor: 12450000,
-      debtMinor: 3230000,
+      creditMinor: 0,
+      debtMinor: 0,
     };
   }
 
@@ -550,12 +730,8 @@ function getDashboardTotals(groupBalances: GroupBalanceSummary[] = []) {
 }
 
 function getGroupCards(groups: Group[], groupBalances: GroupBalanceSummary[] = []) {
-  const activeGroups = groups.filter((group) => group.status !== 'ARCHIVED').slice(0, 3);
+  const activeGroups = groups.filter((group) => !isArchivedGroup(group)).slice(0, 3);
   const balanceMap = new Map(groupBalances.map((item) => [String(item.groupId), item]));
-
-  if (activeGroups.length === 0) {
-    return fallbackGroups;
-  }
 
   return activeGroups.map((group) => {
     const balance = balanceMap.get(String(group.id));
@@ -578,14 +754,193 @@ export function DashboardPage({
   groups,
   groupBalances = [],
   balancesLoading = false,
+  groupsLoading = false,
+  groupsError = null,
   onCreateGroup,
   onOpenGroups,
   onOpenGroup,
   onOpenActivities,
   onOpenWallet,
 }: DashboardPageProps) {
-  const totals = getDashboardTotals(groupBalances);
-  const groupCards = getGroupCards(groups, groupBalances);
+  const activeGroups = useMemo(
+    () => groups.filter((group) => !isArchivedGroup(group)),
+    [groups],
+  );
+  const groupMap = useMemo(() => getGroupById(groups), [groups]);
+  const totals = useMemo(() => getDashboardTotals(groupBalances), [groupBalances]);
+  const groupCards = useMemo(
+    () => getGroupCards(groups, groupBalances),
+    [groups, groupBalances],
+  );
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserReady, setCurrentUserReady] = useState(false);
+  const [settlementSuggestions, setSettlementSuggestions] = useState<SettlementSuggestion[]>([]);
+  const [settlementsLoading, setSettlementsLoading] = useState(false);
+  const [settlementsError, setSettlementsError] = useState<string | null>(null);
+  const [dashboardEvents, setDashboardEvents] = useState<DashboardEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCurrentUser() {
+      try {
+        const user = await getCurrentUser();
+
+        if (!cancelled) {
+          setCurrentUserId(user.id ? String(user.id) : null);
+        }
+      } catch (error) {
+        console.warn('Could not load current user for dashboard fetches.', error);
+
+        if (!cancelled) {
+          setCurrentUserId(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCurrentUserReady(true);
+        }
+      }
+    }
+
+    loadCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserReady) return;
+
+    let cancelled = false;
+
+    async function loadSettlementSuggestions() {
+      const balanceSuggestions = groupBalances
+        .map((balance) => balanceToSuggestion(balance, groupMap.get(balance.groupId)))
+        .filter((item): item is SettlementSuggestion => Boolean(item));
+
+      if (activeGroups.length === 0) {
+        setSettlementSuggestions(balanceSuggestions.slice(0, 3));
+        setSettlementsLoading(false);
+        setSettlementsError(null);
+        return;
+      }
+
+      try {
+        setSettlementsLoading(true);
+        setSettlementsError(null);
+
+        const results = await Promise.allSettled(
+          activeGroups.map(async (group) => {
+            const plan = await getSettlementPlan(getGroupId(group));
+            return (plan.items || [])
+              .map((item) => planItemToSuggestion(item, group, currentUserId))
+              .filter((item): item is SettlementSuggestion => Boolean(item));
+          }),
+        );
+
+        if (cancelled) return;
+
+        const planSuggestions: SettlementSuggestion[] = [];
+        let hasUnexpectedError = false;
+
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            planSuggestions.push(...result.value);
+            return;
+          }
+
+          if (!isApiError(result.reason) || result.reason.status !== 404) {
+            hasUnexpectedError = true;
+            console.warn('Dashboard settlement-plan request failed.', result.reason);
+          }
+        });
+
+        const mergedSuggestions = mergeSuggestions(planSuggestions, balanceSuggestions);
+        setSettlementSuggestions(mergedSuggestions);
+        setSettlementsError(
+          hasUnexpectedError && mergedSuggestions.length === 0
+            ? 'تسویه‌های پیشنهادی دریافت نشدند.'
+            : null,
+        );
+      } finally {
+        if (!cancelled) {
+          setSettlementsLoading(false);
+        }
+      }
+    }
+
+    loadSettlementSuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGroups, currentUserId, currentUserReady, groupBalances, groupMap]);
+
+  useEffect(() => {
+    if (!currentUserReady) return;
+
+    let cancelled = false;
+
+    async function loadDashboardEvents() {
+      try {
+        setEventsLoading(true);
+        setEventsError(null);
+
+        let notificationsFailed = false;
+        const notificationEvents = await getNotificationMessages({ limit: 6 })
+          .then((items) => items.map(notificationToEvent))
+          .catch((error) => {
+            notificationsFailed = true;
+            console.warn('Dashboard notification request failed.', error);
+            return [] as DashboardEvent[];
+          });
+
+        const expenseResults = await Promise.allSettled(
+          activeGroups.map(async (group) => {
+            const expenses = await listGroupExpenses(getGroupId(group), { page_size: 5 });
+
+            return expenses
+              .filter((expense) => expense.status !== 'DELETED' && expense.status !== 'CANCELLED')
+              .map((expense) => expenseToEvent(expense, group, currentUserId));
+          }),
+        );
+
+        if (cancelled) return;
+
+        const expenseEvents = expenseResults.flatMap((result) => {
+          if (result.status === 'fulfilled') return result.value;
+
+          console.warn('Dashboard expense request failed.', result.reason);
+          return [];
+        });
+
+        const nextEvents = [...notificationEvents, ...expenseEvents]
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 4);
+
+        setDashboardEvents(nextEvents);
+        setEventsError(
+          notificationsFailed && nextEvents.length === 0
+            ? 'رویدادهای اخیر دریافت نشدند.'
+            : null,
+        );
+      } finally {
+        if (!cancelled) {
+          setEventsLoading(false);
+        }
+      }
+    }
+
+    loadDashboardEvents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGroups, currentUserId, currentUserReady]);
 
   return (
     <main className="px-6 py-5 sm:px-8 sm:py-7 lg:px-10 xl:px-14 2xl:px-16">
@@ -625,11 +980,35 @@ export function DashboardPage({
               icon={<ReceiptText className="h-5 w-5 text-slate-700" />}
               onAction={onOpenWallet}
             />
-            <div>
-              {settlementSuggestions.map((item) => (
-                <SettlementRow key={item.id} item={item} />
-              ))}
-            </div>
+            {settlementsLoading ? (
+              <DashboardSectionState
+                icon={ReceiptText}
+                title="در حال دریافت تسویه‌ها"
+                description="آخرین settlement-plan و وضعیت حساب گروه‌ها خوانده می‌شود."
+                loading
+              />
+            ) : null}
+            {!settlementsLoading && settlementsError ? (
+              <DashboardSectionState
+                icon={AlertCircle}
+                title={settlementsError}
+                description="اتصال به settlement-service را بررسی کنید."
+              />
+            ) : null}
+            {!settlementsLoading && !settlementsError && settlementSuggestions.length === 0 ? (
+              <DashboardSectionState
+                icon={ReceiptText}
+                title="تسویه پیشنهادی ندارید"
+                description="بعد از ثبت هزینه یا تولید settlement-plan، پیشنهادهای پرداخت اینجا نمایش داده می‌شود."
+              />
+            ) : null}
+            {!settlementsLoading && !settlementsError && settlementSuggestions.length > 0 ? (
+              <div>
+                {settlementSuggestions.map((item) => (
+                  <SettlementRow key={item.id} item={item} />
+                ))}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={onOpenWallet}
@@ -647,11 +1026,35 @@ export function DashboardPage({
               icon={<Bell className="h-5 w-5 text-slate-700" />}
               onAction={onOpenActivities}
             />
-            <div>
-              {dashboardEvents.map((event) => (
-                <EventRow key={event.id} event={event} />
-              ))}
-            </div>
+            {eventsLoading ? (
+              <DashboardSectionState
+                icon={Bell}
+                title="در حال دریافت رویدادها"
+                description="اعلان‌ها و آخرین هزینه‌های گروه‌ها از بک‌اند خوانده می‌شوند."
+                loading
+              />
+            ) : null}
+            {!eventsLoading && eventsError ? (
+              <DashboardSectionState
+                icon={AlertCircle}
+                title={eventsError}
+                description="اتصال notification-service یا expense-service را بررسی کنید."
+              />
+            ) : null}
+            {!eventsLoading && !eventsError && dashboardEvents.length === 0 ? (
+              <DashboardSectionState
+                icon={Bell}
+                title="رویدادی برای نمایش نیست"
+                description="بعد از ثبت هزینه، تسویه یا اعلان جدید، آخرین رویدادها اینجا می‌آیند."
+              />
+            ) : null}
+            {!eventsLoading && !eventsError && dashboardEvents.length > 0 ? (
+              <div>
+                {dashboardEvents.map((event) => (
+                  <EventRow key={event.id} event={event} />
+                ))}
+              </div>
+            ) : null}
           </SectionCard>
         </section>
 
@@ -670,21 +1073,54 @@ export function DashboardPage({
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            {groupCards.map((group) => (
-              <DashboardGroupCard
-                key={group.id}
-                id={group.id}
-                title={group.title}
-                membersLabel={group.membersLabel}
-                statusLabel={group.statusLabel}
-                amount={group.amount}
-                tone={group.tone}
-                illustration={group.illustration}
-                onOpen={onOpenGroup}
-              />
-            ))}
-          </div>
+          {groupsLoading ? (
+            <div className="rounded-2xl border border-dashed border-border bg-slate-50/80 p-6 text-center text-sm font-bold text-muted">
+              <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-slate-500" />
+              در حال دریافت گروه‌ها از بک‌اند...
+            </div>
+          ) : null}
+
+          {!groupsLoading && groupsError ? (
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
+              {groupsError}
+            </div>
+          ) : null}
+
+          {!groupsLoading && !groupsError && groupCards.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 p-7 text-center">
+              <Users className="mx-auto mb-3 h-7 w-7 text-emerald-600" />
+              <h3 className="text-base font-black text-text">هنوز گروه فعالی ندارید</h3>
+              <p className="mx-auto mt-2 max-w-[360px] text-sm leading-7 text-muted">
+                اولین گروه را بسازید تا وضعیت حساب، هزینه‌ها و تسویه‌های مربوط به آن در داشبورد نمایش داده شود.
+              </p>
+              <button
+                type="button"
+                onClick={onCreateGroup}
+                className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-bold text-white transition hover:bg-emerald-700"
+              >
+                <Plus className="h-4 w-4" />
+                ساخت گروه جدید
+              </button>
+            </div>
+          ) : null}
+
+          {!groupsLoading && !groupsError && groupCards.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {groupCards.map((group) => (
+                <DashboardGroupCard
+                  key={group.id}
+                  id={group.id}
+                  title={group.title}
+                  membersLabel={group.membersLabel}
+                  statusLabel={group.statusLabel}
+                  amount={group.amount}
+                  tone={group.tone}
+                  illustration={group.illustration}
+                  onOpen={onOpenGroup}
+                />
+              ))}
+            </div>
+          ) : null}
         </SectionCard>
 
         <section className="grid gap-4 lg:hidden">

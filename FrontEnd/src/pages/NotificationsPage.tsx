@@ -93,7 +93,9 @@ function getStatusStyle(status?: string) {
 }
 
 function getMessageTitle(item: BackendNotificationMessage) {
+  if (item.title) return item.title;
   if (item.template_code) return item.template_code;
+  if (item.notification_type) return item.notification_type;
   if (item.message_type) return item.message_type;
   if (item.channel) return `پیام ${item.channel}`;
   return 'پیام نوتیفیکیشن';
@@ -176,7 +178,9 @@ function getSearchText(item: BackendNotificationMessage) {
   return [
     item.id,
     item.channel,
+    item.notification_type,
     item.message_type,
+    item.title,
     item.recipient_masked,
     item.recipient,
     item.template_code,
@@ -192,6 +196,7 @@ function getSearchText(item: BackendNotificationMessage) {
     item.rendered_message,
     stringifyMessageValue(item.template_context),
     stringifyMessageValue(item.metadata),
+    stringifyMessageValue(item.data),
   ]
     .filter(Boolean)
     .join(' ')

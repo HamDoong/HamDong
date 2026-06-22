@@ -645,6 +645,8 @@ function AppContent() {
               groups={groupItems}
               groupBalances={groupBalances}
               balancesLoading={balancesLoading}
+              groupsLoading={loadingGroups}
+              groupsError={groupsError}
               onCreateGroup={() => setPage('create-group')}
               onOpenGroups={handleOpenGroupsPage}
               onOpenGroup={handleOpenGroup}
@@ -668,7 +670,12 @@ function AppContent() {
           ) : null}
 
           {page === 'activities' ? <ActivitiesPage /> : null}
-          {page === 'wallet' ? <WalletPage /> : null}
+          {page === 'wallet' ? (
+            <WalletPage
+              onOpenActivities={handleOpenActivitiesPage}
+              onOpenGroups={handleOpenGroupsPage}
+            />
+          ) : null}
           {page === 'notifications' ? (
             <NotificationsPage onUnreadCountChange={setNotificationBadgeCount} />
           ) : null}
