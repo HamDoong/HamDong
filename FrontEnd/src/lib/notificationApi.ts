@@ -17,6 +17,9 @@ export interface BackendNotificationMessage {
   title?: string;
   recipient_masked?: string;
   recipient?: string;
+  recipient_email?: string;
+  recipient_phone?: string;
+  subject?: string;
   template_code?: string;
   status?: NotificationMessageStatus;
   priority?: string;
@@ -41,6 +44,8 @@ export interface BackendNotificationMessage {
   data?: string | Record<string, unknown>;
 }
 
+export type BackendNotification = BackendNotificationMessage;
+
 interface PaginatedResponse<T> {
   count?: number;
   next?: string | null;
@@ -61,6 +66,45 @@ export interface NotificationMessagesParams {
   status?: string;
   channel?: string;
   limit?: number;
+}
+
+export interface NotificationMutationPayload {
+  title?: string;
+  subject?: string;
+  message?: string;
+  body?: string;
+  text?: string;
+  content?: string;
+  channel?: string;
+  notification_type?: string;
+  message_type?: string;
+  recipient?: string;
+  recipient_user_id?: string;
+  recipient_email?: string;
+  recipient_phone?: string;
+  priority?: string;
+  template_code?: string;
+  template_context?: string | Record<string, unknown>;
+  metadata?: string | Record<string, unknown>;
+  data?: string | Record<string, unknown>;
+}
+
+export interface NotificationTestPayload {
+  email?: string;
+  recipient_email?: string;
+  recipient?: string;
+  phone?: string;
+  phone_number?: string;
+  recipient_phone?: string;
+  subject?: string;
+  title?: string;
+  message?: string;
+  body?: string;
+  text?: string;
+  content?: string;
+  template_code?: string;
+  metadata?: string | Record<string, unknown>;
+  data?: string | Record<string, unknown>;
 }
 
 function unwrapList<T>(data: T[] | PaginatedResponse<T>) {
@@ -93,8 +137,11 @@ function getSearchHaystack(item: BackendNotificationMessage) {
     item.notification_type,
     item.message_type,
     item.title,
+    item.subject,
     item.recipient_masked,
     item.recipient,
+    item.recipient_email,
+    item.recipient_phone,
     item.template_code,
     item.status,
     item.message,
@@ -149,7 +196,10 @@ function buildMessageKey(item: BackendNotificationMessage) {
     item.notification_type,
     item.message_type,
     item.title,
+    item.subject,
     item.recipient,
+    item.recipient_email,
+    item.recipient_phone,
     item.recipient_masked,
     item.template_code,
     item.created_at,
@@ -189,6 +239,9 @@ function mergeNotificationItems(items: BackendNotificationMessage[]) {
       rendered_message: item.rendered_message || existing.rendered_message,
       recipient_masked: item.recipient_masked || existing.recipient_masked,
       recipient: item.recipient || existing.recipient,
+      recipient_email: item.recipient_email || existing.recipient_email,
+      recipient_phone: item.recipient_phone || existing.recipient_phone,
+      subject: item.subject || existing.subject,
       status: item.status || existing.status,
       sent_at: item.sent_at || existing.sent_at,
       created_at: item.created_at || existing.created_at,
@@ -200,6 +253,58 @@ function mergeNotificationItems(items: BackendNotificationMessage[]) {
 
 async function fetchNotificationsFromPath(path: string) {
   return apiRequest<BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>>(path);
+}
+
+function normalizeNotificationList(
+  data: BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>,
+  params: NotificationMessagesParams = {},
+) {
+  return filterClientSide(mergeNotificationItems(unwrapList(data)), params).slice(0, getLimit(params));
+}
+
+function sanitizePayloadValue(value: unknown) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+function sanitizePayload(payload: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(payload)
+      .map(([key, value]) => [key, sanitizePayloadValue(value)])
+      .filter(([, value]) => value !== undefined),
+  );
+}
+
+export async function getNotifications(
+  params: NotificationMessagesParams = {},
+) {
+  const limit = getLimit(params);
+  const response = await fetchNotificationsFromPath(`/notifications/?limit=${limit}`);
+  return normalizeNotificationList(response, params);
 }
 
 export async function getNotificationMessages(
@@ -224,6 +329,32 @@ export async function getNotificationMessages(
   return filterClientSide(mergeNotificationItems(successfulResults), params).slice(0, limit);
 }
 
+export async function getNotificationDetail(notificationId: string) {
+  return apiRequest<BackendNotification>(`/notifications/${String(notificationId).trim()}/`);
+}
+
+export async function createNotification(payload: NotificationMutationPayload) {
+  return apiRequest<BackendNotification>('/notifications/', {
+    method: 'POST',
+    body: JSON.stringify(sanitizePayload(payload as Record<string, unknown>)),
+  });
+}
+
+export async function updateNotification(
+  notificationId: string,
+  payload: NotificationMutationPayload,
+) {
+  return apiRequest<BackendNotification>(`/notifications/${String(notificationId).trim()}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(sanitizePayload(payload as Record<string, unknown>)),
+  });
+}
+
+export async function deleteNotification(notificationId: string) {
+  return apiRequest<void>(`/notifications/${String(notificationId).trim()}/`, {
+    method: 'DELETE',
+  });
+}
 
 export async function markNotificationMessageAsRead(notificationId: string) {
   const normalizedId = String(notificationId || '').trim();
@@ -259,6 +390,26 @@ export async function markNotificationMessageAsRead(notificationId: string) {
   }
 
   throw lastError ?? new Error('Unable to mark notification as read');
+}
+
+export async function markAllNotificationsAsRead() {
+  return apiRequest('/notifications/read-all/', {
+    method: 'POST',
+  });
+}
+
+export async function sendNotificationEmailTest(payload: NotificationTestPayload) {
+  return apiRequest('/notifications/email/test/', {
+    method: 'POST',
+    body: JSON.stringify(sanitizePayload(payload as Record<string, unknown>)),
+  });
+}
+
+export async function sendNotificationSmsTest(payload: NotificationTestPayload) {
+  return apiRequest('/notifications/sms/test/', {
+    method: 'POST',
+    body: JSON.stringify(sanitizePayload(payload as Record<string, unknown>)),
+  });
 }
 
 export async function getPendingNotificationCount() {
