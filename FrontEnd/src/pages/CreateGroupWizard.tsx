@@ -17,6 +17,10 @@ import {
   type GroupTypeValue,
 } from '../components/create-group/GroupInfoStep';
 import {
+  getBackendGroupMemberEmail,
+  getBackendGroupMemberName,
+  getBackendGroupMemberPhone,
+  getBackendGroupMemberUserId,
   getGroupMembers,
   getMyGroups,
   type BackendGroupMember,
@@ -28,7 +32,9 @@ export interface CreatedGroupPayload {
   description: string;
   groupType: GroupTypeValue;
   memberCount: number;
+  selectedUserIds?: string[];
   selectedPhones?: string[];
+  selectedEmails?: string[];
 }
 
 function validateGroupInfo(values: GroupInfoValues): GroupInfoErrors {
@@ -58,11 +64,14 @@ interface Contact {
   id: string;
   name: string;
   phone: string;
+  email?: string;
+  userId?: string;
   isFriend: boolean;
   isFrequent: boolean;
   avatar: string;
   avatarClass: string;
   sourceLabel?: string;
+  sharedGroupCount: number;
 }
 
 type ContactFilter = 'all' | 'friends' | 'frequent';
@@ -91,40 +100,123 @@ function normalizePhone(phone?: string | null) {
   return (phone || '').replace(/\s+/g, '').trim();
 }
 
+function normalizeText(value?: string | null) {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 function getMemberUserId(member: BackendGroupMember) {
-  return member.user_id || member.id || member.member_id || '';
+  return getBackendGroupMemberUserId(member);
 }
 
 function getMemberName(member: BackendGroupMember) {
-  return (
-    member.art_name ||
-    member.username ||
-    member.display_name ||
-    member.full_name ||
-    member.phone_number ||
-    member.phone ||
-    'عضو گروه'
-  );
+  return getBackendGroupMemberName(member);
 }
 
 function getMemberPhone(member: BackendGroupMember) {
-  return member.phone_number || member.phone || '';
+  const phone = getBackendGroupMemberPhone(member);
+  return phone === 'شماره ثبت نشده' ? '' : phone;
 }
 
-function makeContactFromMember(member: BackendGroupMember, index: number): Contact {
+function getMemberEmail(member: BackendGroupMember) {
+  return getBackendGroupMemberEmail(member);
+}
+
+function isFallbackMemberName(name: string) {
+  return !name || name === 'عضو گروه';
+}
+
+function shouldReplaceMemberCandidate(
+  currentMember: BackendGroupMember,
+  nextMember: BackendGroupMember,
+) {
+  const currentName = getMemberName(currentMember);
+  const nextName = getMemberName(nextMember);
+
+  if (isFallbackMemberName(currentName) && !isFallbackMemberName(nextName)) {
+    return true;
+  }
+
+  if (!getMemberPhone(currentMember) && getMemberPhone(nextMember)) {
+    return true;
+  }
+
+  return false;
+}
+
+function getMemberLookupKey(member: BackendGroupMember) {
+  return (
+    normalizePhone(getMemberPhone(member)) ||
+    normalizeText(getMemberEmail(member)) ||
+    normalizeText(getMemberUserId(member)) ||
+    normalizeText(getMemberName(member))
+  );
+}
+
+function isCurrentUserMember(
+  member: BackendGroupMember,
+  currentUser: Awaited<ReturnType<typeof getCurrentUser>> | null,
+) {
+  if (!currentUser) {
+    return false;
+  }
+
+  const memberUserId = normalizeText(getMemberUserId(member));
+  const currentUserId = normalizeText(currentUser.id);
+
+  if (memberUserId && currentUserId && memberUserId === currentUserId) {
+    return true;
+  }
+
+  const memberPhone = normalizePhone(getMemberPhone(member));
+  const currentUserPhone = normalizePhone(currentUser.phone_number || currentUser.phone);
+
+  if (memberPhone && currentUserPhone && memberPhone === currentUserPhone) {
+    return true;
+  }
+
+  const memberEmail = normalizeText(getMemberEmail(member));
+  const currentUserEmail = normalizeText(currentUser.email);
+
+  if (memberEmail && currentUserEmail && memberEmail === currentUserEmail) {
+    return true;
+  }
+
+  return false;
+}
+
+function makeContactFromMember(
+  member: BackendGroupMember,
+  index: number,
+  sharedGroupCount: number,
+  groupTitles: string[],
+): Contact {
   const name = getMemberName(member);
   const phone = getMemberPhone(member);
-  const fallbackId = normalizePhone(phone) || getMemberUserId(member) || String(index);
+  const fallbackId = getMemberLookupKey(member) || String(index);
+  const visibleGroupTitles = groupTitles.filter(Boolean).slice(0, 2);
+  const suffix =
+    sharedGroupCount > visibleGroupTitles.length
+      ? ` و ${sharedGroupCount - visibleGroupTitles.length} گروه دیگر`
+      : '';
+  const sourceLabel =
+    sharedGroupCount > 0
+      ? `عضو مشترک در ${sharedGroupCount.toLocaleString('fa-IR')} گروه${
+          visibleGroupTitles.length ? `: ${visibleGroupTitles.join('، ')}${suffix}` : ''
+        }`
+      : 'عضو گروه‌های قبلی';
 
   return {
     id: fallbackId,
     name,
     phone: phone || 'شماره ثبت نشده',
+    email: getMemberEmail(member) || undefined,
+    userId: getMemberUserId(member) || undefined,
     isFriend: true,
-    isFrequent: index < 6,
-    avatar: name.slice(0, 1),
+    isFrequent: sharedGroupCount > 1 || index < 6,
+    avatar: name.slice(0, 1) || '؟',
     avatarClass: avatarGradients[index % avatarGradients.length],
-    sourceLabel: 'عضو گروه‌های قبلی',
+    sourceLabel,
+    sharedGroupCount,
   };
 }
 
@@ -282,6 +374,11 @@ function AddMembersStep({
                       {member.name}
                     </div>
                     <div className="text-xs text-muted">{member.phone}</div>
+                    {member.sourceLabel ? (
+                      <div className="mt-1 truncate text-[11px] text-emerald-600 dark:text-emerald-300">
+                        {member.sourceLabel}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <button
@@ -369,6 +466,11 @@ function AddMembersStep({
                         {contact.name}
                       </div>
                       <div className="text-xs text-muted">{contact.phone}</div>
+                      {contact.sourceLabel ? (
+                        <div className="mt-1 truncate text-[11px] text-emerald-600 dark:text-emerald-300">
+                          {contact.sourceLabel}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <div
@@ -417,29 +519,87 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
     async function loadRealContacts() {
       try {
         setContactsLoading(true);
+
         const [groups, currentUser] = await Promise.all([
           getMyGroups(),
           getCurrentUser().catch(() => null),
         ]);
-        const currentUserPhone = normalizePhone(
-          currentUser?.phone_number || currentUser?.phone || currentUser?.username,
+
+        const memberEntries = await Promise.all(
+          groups.map(async (group) => ({
+            groupTitle: group.title,
+            members: await getGroupMembers(group.id).catch(() => []),
+          })),
         );
-        const memberLists = await Promise.all(
-          groups.slice(0, 8).map((group) => getGroupMembers(group.id).catch(() => [])),
-        );
-        const byPhone = new Map<string, Contact>();
 
-        memberLists.flat().forEach((member, index) => {
-          const phone = normalizePhone(getMemberPhone(member));
+        const contactsMap = new Map<
+          string,
+          {
+            member: BackendGroupMember;
+            groupTitles: Set<string>;
+            sharedGroupCount: number;
+          }
+        >();
 
-          if (!phone || phone === currentUserPhone) return;
-          if (byPhone.has(phone)) return;
+        memberEntries.forEach(({ groupTitle, members }) => {
+          members.forEach((member) => {
+            if (isCurrentUserMember(member, currentUser)) {
+              return;
+            }
 
-          byPhone.set(phone, makeContactFromMember(member, index));
+            const key = getMemberLookupKey(member);
+
+            if (!key) {
+              return;
+            }
+
+            const existing = contactsMap.get(key);
+
+            if (existing) {
+              existing.sharedGroupCount += 1;
+
+              if (groupTitle) {
+                existing.groupTitles.add(groupTitle);
+              }
+
+              if (shouldReplaceMemberCandidate(existing.member, member)) {
+                existing.member = member;
+              }
+
+              return;
+            }
+
+            contactsMap.set(key, {
+              member,
+              groupTitles: new Set(groupTitle ? [groupTitle] : []),
+              sharedGroupCount: 1,
+            });
+          });
         });
 
+        const nextContacts = Array.from(contactsMap.values())
+          .map((entry, index) =>
+            makeContactFromMember(
+              entry.member,
+              index,
+              entry.sharedGroupCount,
+              Array.from(entry.groupTitles),
+            ),
+          )
+          .sort((left, right) => {
+            if (right.sharedGroupCount !== left.sharedGroupCount) {
+              return right.sharedGroupCount - left.sharedGroupCount;
+            }
+
+            return left.name.localeCompare(right.name, 'fa');
+          });
+
         if (!ignore) {
-          setContacts(Array.from(byPhone.values()));
+          setContacts(nextContacts);
+        }
+      } catch {
+        if (!ignore) {
+          setContacts([]);
         }
       } finally {
         if (!ignore) {
@@ -448,7 +608,7 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
       }
     }
 
-    loadRealContacts();
+    void loadRealContacts();
 
     return () => {
       ignore = true;
@@ -512,8 +672,14 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
       description: values.description,
       groupType: values.groupType,
       memberCount: selectedIds.length,
+      selectedUserIds: selectedMembers
+        .map((member) => (member.userId || '').trim())
+        .filter(Boolean),
       selectedPhones: selectedMembers
         .map((member) => normalizePhone(member.phone))
+        .filter(Boolean),
+      selectedEmails: selectedMembers
+        .map((member) => normalizeText(member.email))
         .filter(Boolean),
     });
   };

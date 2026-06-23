@@ -27,6 +27,8 @@ import {
   type ExpenseSplitMethod,
 } from '../lib/expenseApi';
 import {
+  getBackendGroupMemberName,
+  getBackendGroupMemberUserId,
   getGroupMembers,
   getMyGroups,
   type BackendGroup,
@@ -140,19 +142,11 @@ function getExpenseTotal(expense: BackendExpense) {
 }
 
 function getMemberName(member: BackendGroupMember) {
-  return (
-    member.art_name ||
-    member.username ||
-    member.display_name ||
-    member.full_name ||
-    member.phone_number ||
-    member.phone ||
-    'عضو گروه'
-  );
+  return getBackendGroupMemberName(member);
 }
 
 function getMemberUserId(member: BackendGroupMember) {
-  return member.user_id || member.id || member.member_id || '';
+  return getBackendGroupMemberUserId(member);
 }
 
 function getParticipantName(participant?: ExpenseParticipant) {

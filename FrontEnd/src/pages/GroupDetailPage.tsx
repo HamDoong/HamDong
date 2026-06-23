@@ -57,6 +57,10 @@ import {
   getGroupDetail,
   getGroupMembers,
   getInviteId,
+  getBackendGroupMemberId,
+  getBackendGroupMemberName,
+  getBackendGroupMemberPhone,
+  getBackendGroupMemberUserId,
   getInviteUrl,
   leaveGroup,
   removeGroupMember,
@@ -86,28 +90,19 @@ interface MemberMoneyStat {
 }
 
 function getMemberId(member: BackendGroupMember) {
-  return member.id || member.member_id || member.user_id || '';
+  return getBackendGroupMemberId(member);
 }
 
 function getMemberUserId(member: BackendGroupMember) {
-  return member.user_id || member.id || member.member_id || '';
+  return getBackendGroupMemberUserId(member);
 }
 
 function getMemberName(member: BackendGroupMember) {
-  return (
-    member.display_name_snapshot ||
-    member.art_name ||
-    member.display_name ||
-    member.username ||
-    member.full_name ||
-    member.phone_number ||
-    member.phone ||
-    'عضو گروه'
-  );
+  return getBackendGroupMemberName(member);
 }
 
 function getMemberPhone(member: BackendGroupMember) {
-  return member.phone_number || member.phone || 'شماره ثبت نشده';
+  return getBackendGroupMemberPhone(member);
 }
 
 function getRoleLabel(role?: string) {
