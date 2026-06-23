@@ -62,6 +62,21 @@ class OtpRule:
         return len(code) == length and code.isdigit()
 
 
+class OtpPurposeRule:
+    """Normalize and validate OTP request purpose values."""
+
+    LOGIN = "LOGIN"
+    SIGNUP = "SIGNUP"
+    ALLOWED = {LOGIN, SIGNUP}
+
+    @classmethod
+    def normalize(cls, value: str | None) -> str | None:
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().upper()
+        return normalized if normalized in cls.ALLOWED else None
+
+
 class ArtNameRule:
     pattern = re.compile(r"^[\w\-\u0600-\u06FF]{3,32}$", re.UNICODE)
 

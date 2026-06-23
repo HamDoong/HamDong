@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 from django.conf import settings
 
-from apps.identity.domain.rules import EmailRule
+from apps.identity.domain.rules import EmailRule, OtpPurposeRule
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 
 logger = logging.getLogger(__name__)
@@ -29,23 +29,30 @@ class OtpService:
     def generate_otp(self) -> str:
         return "".join(random.choices("0123456789", k=self.otp_length))
 
-    def request_otp(self, email: str) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+    def request_otp(self, email: str, purpose: str) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
         normalized_email = EmailRule.normalize(email)
+        normalized_purpose = OtpPurposeRule.normalize(purpose)
         if not normalized_email:
             return False, "INVALID_EMAIL", None, None
+        if not normalized_purpose:
+            return False, "INVALID_PURPOSE", None, None
 
-        if self.otp_store.is_rate_limited(normalized_email):
+        if self.otp_store.is_rate_limited(normalized_email, normalized_purpose):
             return False, "OTP_RATE_LIMITED", None, None
 
-        if self.otp_store.is_in_cooldown(normalized_email):
+        if self.otp_store.is_in_cooldown(normalized_email, normalized_purpose):
             return False, "OTP_IN_COOLDOWN", None, None
 
-        self.otp_store.increment_request_count(normalized_email)
+        self.otp_store.increment_request_count(normalized_email, normalized_purpose)
         otp_code = self.generate_otp()
-        self.otp_store.store_otp(normalized_email, otp_code, self.otp_ttl)
-        self.otp_store.set_cooldown(normalized_email, self.resend_cooldown)
+        self.otp_store.store_otp(normalized_email, otp_code, self.otp_ttl, normalized_purpose)
+        self.otp_store.set_cooldown(normalized_email, self.resend_cooldown, normalized_purpose)
 
-        logger.info("OTP requested for email=%s", EmailRule.mask(normalized_email))
+        logger.info(
+            "OTP requested for purpose=%s email=%s",
+            normalized_purpose,
+            EmailRule.mask(normalized_email),
+        )
 
         debug_otp = None
         if settings.DEBUG and settings.OTP_DEBUG_RETURN_CODE:
@@ -53,31 +60,39 @@ class OtpService:
 
         return True, None, otp_code, debug_otp
 
-    def verify_otp(self, email: str, otp_code: str) -> Tuple[bool, Optional[str]]:
+    def verify_otp(self, email: str, otp_code: str, purpose: str) -> Tuple[bool, Optional[str]]:
         normalized_email = EmailRule.normalize(email)
+        normalized_purpose = OtpPurposeRule.normalize(purpose)
         if not normalized_email:
             return False, "INVALID_EMAIL"
+        if not normalized_purpose:
+            return False, "INVALID_PURPOSE"
 
-        otp_data = self.otp_store.get_otp_data(normalized_email)
+        otp_data = self.otp_store.get_otp_data(normalized_email, normalized_purpose)
         if not otp_data:
             return False, "OTP_EXPIRED"
 
-        attempts = self.otp_store.get_verify_attempts(normalized_email)
+        attempts = self.otp_store.get_verify_attempts(normalized_email, normalized_purpose)
         if attempts >= self.max_verify_attempts:
             return False, "OTP_MAX_ATTEMPTS_EXCEEDED"
 
-        if not self.otp_store.verify_otp(normalized_email, otp_code):
-            self.otp_store.increment_verify_attempts(normalized_email)
+        if not self.otp_store.verify_otp(normalized_email, otp_code, normalized_purpose):
+            self.otp_store.increment_verify_attempts(normalized_email, normalized_purpose)
             return False, "INVALID_OTP"
 
-        self.otp_store.delete_otp(normalized_email)
-        self.otp_store.reset_verify_attempts(normalized_email)
+        self.otp_store.delete_otp(normalized_email, normalized_purpose)
+        self.otp_store.reset_verify_attempts(normalized_email, normalized_purpose)
 
-        logger.info("OTP verified for email=%s", EmailRule.mask(normalized_email))
+        logger.info(
+            "OTP verified for purpose=%s email=%s",
+            normalized_purpose,
+            EmailRule.mask(normalized_email),
+        )
         return True, None
 
-    def get_resend_cooldown(self, email: str) -> int:
+    def get_resend_cooldown(self, email: str, purpose: str) -> int:
         normalized_email = EmailRule.normalize(email)
-        if not normalized_email:
+        normalized_purpose = OtpPurposeRule.normalize(purpose)
+        if not normalized_email or not normalized_purpose:
             return 0
-        return self.otp_store.get_cooldown_remaining(normalized_email)
+        return self.otp_store.get_cooldown_remaining(normalized_email, normalized_purpose)

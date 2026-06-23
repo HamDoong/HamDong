@@ -197,6 +197,123 @@ class UserBankCardApiTests(TestCase):
         self.assertFalse(first_card.is_default)
         self.assertTrue(UserBankCard.objects.exclude(id=first["id"]).get(is_active=True).is_default)
 
+
+
+    def test_single_create_rejects_non_digit_bank_card_inputs(self):
+        invalid_values = [
+            "abcd5022291234561111",
+            "5022291234561111abcd",
+            "5022 2912 3456 1111",
+            "5022-2912-3456-1111",
+            "5022_2912_3456_1111",
+            "5022.2912.3456.1111",
+            "5022/2912/3456/1111",
+            "0000000000000000",
+            "1111111111111111",
+        ]
+        for card_number in invalid_values:
+            with self.subTest(card_number=card_number):
+                before_count = UserBankCard.objects.filter(user=self.user).count()
+                response = self.client.post(
+                    self.cards_url,
+                    {
+                        "card_number": card_number,
+                        "holder_name": "Invalid Card",
+                        "bank_name": "Invalid Bank",
+                    },
+                    format="json",
+                    **self.auth_headers,
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(response.json()["error"]["code"], "INVALID_CARD_NUMBER")
+                self.assertEqual(UserBankCard.objects.filter(user=self.user).count(), before_count)
+
+    def test_bulk_save_rejects_non_digit_card_atomically(self):
+        existing = self.client.post(
+            self.cards_url,
+            {
+                "card_number": "6037991234567890",
+                "holder_name": "Existing Holder",
+                "bank_name": "Melli",
+                "is_default": True,
+            },
+            format="json",
+            **self.auth_headers,
+        ).json()
+        before_count = UserBankCard.objects.filter(user=self.user, is_active=True).count()
+
+        response = self.client.put(
+            self.bulk_url,
+            {
+                "cards": [
+                    {
+                        "client_id": "valid-card",
+                        "card_number": "5022291234561111",
+                        "holder_name": "Valid Holder",
+                        "bank_name": "Valid Bank",
+                        "is_default": True,
+                    },
+                    {
+                        "client_id": "invalid-card",
+                        "card_number": "abcd6037991234567890",
+                        "holder_name": "Invalid Holder",
+                        "bank_name": "Invalid Bank",
+                    },
+                ],
+                "deleted_card_ids": [existing["id"]],
+            },
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["error"]["code"], "VALIDATION_ERROR")
+        self.assertIn("cards[1].card_number", response.json()["error"]["details"])
+        self.assertEqual(UserBankCard.objects.filter(user=self.user, is_active=True).count(), before_count)
+        self.assertTrue(UserBankCard.objects.get(id=existing["id"]).is_active)
+
+    def test_public_bank_card_responses_never_expose_raw_secrets(self):
+        create_response = self.client.post(
+            self.cards_url,
+            {
+                "card_number": "5022291234561111",
+                "holder_name": "Valid Holder",
+                "bank_name": "Valid Bank",
+            },
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        created = create_response.json()
+        for forbidden_field in ("card_number", "card_number_hash", "encrypted_card_number", "cvv", "pin", "password"):
+            self.assertNotIn(forbidden_field, created)
+
+        list_response = self.client.get(self.cards_url, **self.auth_headers)
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        listed = list_response.json()["items"][0]
+        for forbidden_field in ("card_number", "card_number_hash", "encrypted_card_number", "cvv", "pin", "password"):
+            self.assertNotIn(forbidden_field, listed)
+
+        bulk_response = self.client.put(
+            self.bulk_url,
+            {
+                "cards": [
+                    {
+                        "id": created["id"],
+                        "holder_name": "Valid Holder Updated",
+                        "bank_name": "Updated Bank",
+                        "is_default": True,
+                    }
+                ],
+                "deleted_card_ids": [],
+            },
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(bulk_response.status_code, status.HTTP_200_OK)
+        bulk_item = bulk_response.json()["items"][0]
+        for forbidden_field in ("card_number", "card_number_hash", "encrypted_card_number", "cvv", "pin", "password"):
+            self.assertNotIn(forbidden_field, bulk_item)
+
     def test_deactivate_account_revokes_refresh_and_blocks_access(self):
         response = self.client.post(
             self.deactivate_url,

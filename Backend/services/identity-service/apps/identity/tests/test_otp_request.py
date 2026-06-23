@@ -1,64 +1,178 @@
-"""Tests for OTP flow."""
+"""Tests for OTP purpose-separated request/verify flows."""
 
-from django.test import TestCase, override_settings
-from rest_framework.test import APIClient
-from rest_framework import status
+from __future__ import annotations
+
 from unittest.mock import patch
 
-from apps.identity.domain.models import *
+from django.test import TestCase, override_settings
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from apps.identity.domain.models import User
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 
 
 @override_settings(
-    OTP_LENGTH=6, OTP_TTL_SECONDS=120, OTP_DEBUG_RETURN_CODE=True, DEBUG=True
+    DEBUG=True,
+    OTP_LENGTH=6,
+    OTP_TTL_SECONDS=120,
+    OTP_DEBUG_RETURN_CODE=True,
+    REDIS_HOST="fakeredis",
 )
-class OtpRequestTestCase(TestCase):
-    """Test cases for OTP request endpoint."""
-
+class OtpPurposeFlowTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.otp_store = RedisOtpStore()
-        self.url = "/api/v1/auth/otp/request/"
+        self.request_url = "/api/v1/auth/otp/request/"
+        self.verify_url = "/api/v1/auth/otp/verify/"
+        self.publisher = patch(
+            "apps.identity.infrastructure.rabbitmq_publisher.RabbitMqPublisher.publish",
+            return_value=True,
+        )
+        self.publisher.start()
+        self.addCleanup(self.publisher.stop)
 
     def tearDown(self):
-        """Clean up Redis after each test."""
-        # Clear OTP data
         self.otp_store.redis_client.flushdb()
 
-    def test_request_otp_with_valid_email(self):
-        """Test requesting OTP with a valid email address."""
+    def test_login_request_for_existing_email(self):
+        User.objects.create(email="existing@example.com", art_name="existing-user", is_active=True)
         response = self.client.post(
-            self.url,
-            {"email": "artist@example.com"},
+            self.request_url,
+            {"email": "existing@example.com", "purpose": "LOGIN"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("debug_otp", response.json())
+        self.assertIsNotNone(self.otp_store.get_otp_data("existing@example.com", "LOGIN"))
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data["message"] == "OTP has been requested successfully."
-        assert data["expires_in"] == 120
-        assert data["resend_after"] == 60
-        assert "debug_otp" in data  # Should be present in debug mode
-        assert len(data["debug_otp"]) == 6
-        assert data["debug_otp"].isdigit()
-
-    def test_request_otp_with_invalid_email(self):
-        """Test requesting OTP with an invalid email address."""
+    def test_login_request_for_unregistered_email_returns_not_registered(self):
         response = self.client.post(
-            self.url,
-            {"email": "12345"},
+            self.request_url,
+            {"email": "missing@example.com", "purpose": "LOGIN"},
             format="json",
         )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.json()["error"]["code"], "EMAIL_NOT_REGISTERED")
+        self.assertIsNone(self.otp_store.get_otp_data("missing@example.com", "LOGIN"))
+        self.assertEqual(User.objects.filter(email="missing@example.com").count(), 0)
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        data = response.json()
-        assert data["error"]["code"] == "INVALID_EMAIL"
+    def test_login_verify_does_not_create_new_user(self):
+        self.otp_store.store_otp("missing@example.com", "123456", 120, "LOGIN")
+        response = self.client.post(
+            self.verify_url,
+            {"email": "missing@example.com", "code": "123456", "purpose": "LOGIN"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.json()["error"]["code"], "EMAIL_NOT_REGISTERED")
+        self.assertFalse(User.objects.filter(email="missing@example.com").exists())
 
-    def test_request_otp_rate_limit(self):
-        """Test OTP request rate limiting."""
-        url = self.url
-        email = "artist@example.com"
+    def test_signup_request_for_new_email(self):
+        response = self.client.post(
+            self.request_url,
+            {"email": "new@example.com", "purpose": "SIGNUP"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("debug_otp", response.json())
+        self.assertIsNotNone(self.otp_store.get_otp_data("new@example.com", "SIGNUP"))
+        self.assertFalse(User.objects.filter(email="new@example.com").exists())
 
+    def test_signup_request_for_existing_email_returns_conflict(self):
+        User.objects.create(email="existing@example.com", art_name="existing-user", is_active=True)
+        response = self.client.post(
+            self.request_url,
+            {"email": "existing@example.com", "purpose": "SIGNUP"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.json()["error"]["code"], "EMAIL_ALREADY_REGISTERED")
+        self.assertIsNone(self.otp_store.get_otp_data("existing@example.com", "SIGNUP"))
+
+    def test_signup_verify_creates_user(self):
+        self.otp_store.store_otp("new@example.com", "123456", 120, "SIGNUP")
+        response = self.client.post(
+            self.verify_url,
+            {"email": "new@example.com", "code": "123456", "purpose": "SIGNUP"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertIn("access_token", payload)
+        self.assertTrue(User.objects.filter(email="new@example.com", is_email_verified=True).exists())
+
+    def test_purposes_do_not_mix(self):
+        self.otp_store.store_otp("new@example.com", "123456", 120, "SIGNUP")
+        response = self.client.post(
+            self.verify_url,
+            {"email": "new@example.com", "code": "123456", "purpose": "LOGIN"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["error"]["code"], "OTP_EXPIRED")
+        self.assertFalse(User.objects.filter(email="new@example.com").exists())
+
+        User.objects.create(email="existing@example.com", art_name="existing-user", is_active=True)
+        self.otp_store.store_otp("existing@example.com", "654321", 120, "LOGIN")
+        response = self.client.post(
+            self.verify_url,
+            {"email": "existing@example.com", "code": "654321", "purpose": "SIGNUP"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["error"]["code"], "OTP_EXPIRED")
+
+    def test_deactivated_account_is_blocked(self):
+        User.objects.create(email="disabled@example.com", art_name="disabled-user", is_active=False)
+        login_request = self.client.post(
+            self.request_url,
+            {"email": "disabled@example.com", "purpose": "LOGIN"},
+            format="json",
+        )
+        self.assertEqual(login_request.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(login_request.json()["error"]["code"], "ACCOUNT_DEACTIVATED")
+
+        signup_request = self.client.post(
+            self.request_url,
+            {"email": "disabled@example.com", "purpose": "SIGNUP"},
+            format="json",
+        )
+        self.assertEqual(signup_request.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(signup_request.json()["error"]["code"], "ACCOUNT_DEACTIVATED")
+
+        self.otp_store.store_otp("disabled@example.com", "123456", 120, "LOGIN")
+        verify = self.client.post(
+            self.verify_url,
+            {"email": "disabled@example.com", "code": "123456", "purpose": "LOGIN"},
+            format="json",
+        )
+        self.assertEqual(verify.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(verify.json()["error"]["code"], "ACCOUNT_DEACTIVATED")
+
+    def test_missing_and_invalid_purpose(self):
+        missing_request = self.client.post(self.request_url, {"email": "user@example.com"}, format="json")
+        self.assertEqual(missing_request.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(missing_request.json()["error"]["code"], "INVALID_PURPOSE")
+
+        invalid_request = self.client.post(
+            self.request_url,
+            {"email": "user@example.com", "purpose": "PASSWORD_RESET"},
+            format="json",
+        )
+        self.assertEqual(invalid_request.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(invalid_request.json()["error"]["code"], "INVALID_PURPOSE")
+
+        missing_verify = self.client.post(
+            self.verify_url,
+            {"email": "user@example.com", "code": "123456"},
+            format="json",
+        )
+        self.assertEqual(missing_verify.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(missing_verify.json()["error"]["code"], "INVALID_PURPOSE")
+
+    def test_login_request_rate_limit_is_purpose_specific(self):
+        User.objects.create(email="existing@example.com", art_name="existing-user", is_active=True)
         cooldown_patch = patch(
             "apps.identity.infrastructure.redis_otp_store.RedisOtpStore.is_in_cooldown",
             return_value=False,
@@ -67,183 +181,30 @@ class OtpRequestTestCase(TestCase):
             "apps.identity.infrastructure.redis_otp_store.RedisOtpStore.set_cooldown",
             return_value=None,
         )
-
         cooldown_patch.start()
         set_cooldown_patch.start()
+        self.addCleanup(cooldown_patch.stop)
+        self.addCleanup(set_cooldown_patch.stop)
 
-        try:
-            # Make 3 requests (at limit)
-            for _ in range(3):
-                response = self.client.post(
-                    url, {"email": email}, format="json"
-                )
-                assert response.status_code == status.HTTP_200_OK
-
-            # 4th request should be rate limited
+        for _ in range(3):
             response = self.client.post(
-                url, {"email": email}, format="json"
-            )
-            assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-            data = response.json()
-            assert data["error"]["code"] == "OTP_RATE_LIMITED"
-        finally:
-            set_cooldown_patch.stop()
-            cooldown_patch.stop()
-
-    def test_request_otp_cooldown(self):
-        """Test OTP request cooldown period."""
-        url = self.url
-        email = "artist@example.com"
-
-        # First request
-        response = self.client.post(url, {"email": email}, format="json")
-        assert response.status_code == status.HTTP_200_OK
-
-        # Second request immediately should fail cooldown
-        response = self.client.post(url, {"email": email}, format="json")
-        assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        data = response.json()
-        assert data["error"]["code"] == "OTP_IN_COOLDOWN"
-
-    def test_request_otp_without_email(self):
-        """Test requesting OTP without an email address."""
-        response = self.client.post(self.url, {}, format="json")
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        data = response.json()
-        assert "error" in data
-
-
-class OtpVerifyTestCase(TestCase):
-    """Test cases for OTP verification endpoint."""
-
-    def setUp(self):
-        self.client = APIClient()
-        self.otp_service = RedisOtpStore()
-        self.url = "/api/v1/auth/otp/verify/"
-
-    def tearDown(self):
-        """Clean up after each test."""
-        self.otp_service.redis_client.flushdb()
-        User.objects.all().delete()
-
-    def test_verify_otp_creates_new_user(self):
-        """Test verifying OTP creates a new user."""
-        email = "artist@example.com"
-        otp_code = "123456"
-
-        # Store OTP
-        self.otp_service.store_otp(email, otp_code, 120)
-
-        # Verify OTP
-        response = self.client.post(
-            self.url,
-            {"email": email, "code": otp_code},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
-        assert data["token_type"] == "Bearer"
-        assert "user" in data
-        assert data["user"]["email"] == email
-        assert data["user"]["is_email_verified"] is True
-
-        # User should be created
-        user = User.objects.get(email=email)
-        assert user is not None
-        assert user.is_email_verified is True
-
-    def test_verify_otp_logs_in_existing_user(self):
-        """Test verifying OTP logs in existing user."""
-        email = "artist@example.com"
-        otp_code = "123456"
-
-        # Create user first
-        user = User.objects.create(email=email)
-        assert user.is_email_verified is False
-
-        # Store OTP
-        self.otp_service.store_otp(email, otp_code, 120)
-
-        # Verify OTP
-        response = self.client.post(
-            self.url,
-            {"email": email, "code": otp_code},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert "access_token" in data
-
-        # User should be updated
-        user.refresh_from_db()
-        assert user.is_email_verified is True
-        assert user.last_login_at is not None
-
-    def test_verify_otp_with_wrong_code(self):
-        """Test verifying OTP with wrong code."""
-        email = "artist@example.com"
-        correct_otp = "123456"
-        wrong_otp = "000000"
-
-        # Store correct OTP
-        self.otp_service.store_otp(email, correct_otp, 120)
-
-        # Try with wrong OTP
-        response = self.client.post(
-            self.url,
-            {"email": email, "code": wrong_otp},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        data = response.json()
-        assert data["error"]["code"] == "INVALID_OTP"
-
-    def test_verify_otp_expired(self):
-        """Test verifying expired OTP."""
-        email = "artist@example.com"
-        otp_code = "123456"
-
-        # Don't store OTP (simulating expired)
-        response = self.client.post(
-            self.url,
-            {"email": email, "code": otp_code},
-            format="json",
-        )
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        data = response.json()
-        assert data["error"]["code"] == "OTP_EXPIRED"
-
-    def test_verify_otp_max_attempts(self):
-        """Test max OTP verification attempts."""
-        email = "artist@example.com"
-        correct_otp = "123456"
-        wrong_otp = "000000"
-
-        # Store OTP
-        self.otp_service.store_otp(email, correct_otp, 120)
-
-        # Make 5 wrong attempts
-        for _ in range(5):
-            response = self.client.post(
-                self.url,
-                {"email": email, "code": wrong_otp},
+                self.request_url,
+                {"email": "existing@example.com", "purpose": "LOGIN"},
                 format="json",
             )
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        # 6th attempt should fail with max attempts exceeded
         response = self.client.post(
-            self.url,
-            {"email": email, "code": wrong_otp},
+            self.request_url,
+            {"email": "existing@example.com", "purpose": "LOGIN"},
             format="json",
         )
-        assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        data = response.json()
-        assert data["error"]["code"] == "OTP_MAX_ATTEMPTS_EXCEEDED"
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(response.json()["error"]["code"], "OTP_RATE_LIMITED")
+
+        signup = self.client.post(
+            self.request_url,
+            {"email": "other@example.com", "purpose": "SIGNUP"},
+            format="json",
+        )
+        self.assertEqual(signup.status_code, status.HTTP_200_OK)

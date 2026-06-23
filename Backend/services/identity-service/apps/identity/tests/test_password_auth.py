@@ -21,10 +21,10 @@ class PasswordAuthenticationTests(TestCase):
         self.otp_store.redis_client.flushdb()
 
     def _otp_login(self):
-        response = self.client.post("/api/v1/auth/otp/request/", {"email": self.email}, format="json")
+        response = self.client.post("/api/v1/auth/otp/request/", {"email": self.email, "purpose": "SIGNUP"}, format="json")
         self.assertEqual(response.status_code, 200)
         code = response.json()["debug_otp"]
-        response = self.client.post("/api/v1/auth/otp/verify/", {"email": self.email, "code": code}, format="json")
+        response = self.client.post("/api/v1/auth/otp/verify/", {"email": self.email, "code": code, "purpose": "SIGNUP"}, format="json")
         self.assertEqual(response.status_code, 200)
         return response.json()
 

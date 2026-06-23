@@ -7,13 +7,13 @@ from typing import Any, Dict, Optional, Tuple
 
 from django.db import transaction
 
+from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
-from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.domain.events import PasswordChanged, SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
 from apps.identity.domain.models import User
-from apps.identity.domain.rules import ArtNameRule, EmailRule
+from apps.identity.domain.rules import ArtNameRule, EmailRule, OtpPurposeRule
 from apps.identity.infrastructure.rabbitmq_publisher import RabbitMqPublisher
 from apps.identity.infrastructure.repositories import RefreshTokenRepository, UserRepository
 
@@ -57,18 +57,40 @@ class RequestOtpUseCase:
         self.publisher = RabbitMqPublisher()
 
     def execute(
-        self, email: str
+        self,
+        email: str,
+        purpose: str,
     ) -> Tuple[bool, Optional[str], Optional[str], Optional[int]]:
-        request_result = self.otp_service.request_otp(email)
-        success, error_code, otp_code, debug_otp = request_result
+        normalized_email = EmailRule.normalize(email)
+        normalized_purpose = OtpPurposeRule.normalize(purpose)
+        if not normalized_email:
+            return False, "INVALID_EMAIL", None, None
+        if not normalized_purpose:
+            return False, "INVALID_PURPOSE", None, None
 
+        existing_any = UserRepository.get_any_by_email(normalized_email)
+        if normalized_purpose == OtpPurposeRule.LOGIN:
+            if not existing_any:
+                return False, "EMAIL_NOT_REGISTERED", None, None
+            if existing_any.deleted_at is not None or not existing_any.is_active:
+                return False, "ACCOUNT_DEACTIVATED", None, None
+        elif normalized_purpose == OtpPurposeRule.SIGNUP:
+            if existing_any and existing_any.deleted_at is None and existing_any.is_active:
+                return False, "EMAIL_ALREADY_REGISTERED", None, None
+            if existing_any and (existing_any.deleted_at is not None or not existing_any.is_active):
+                return False, "ACCOUNT_DEACTIVATED", None, None
+
+        success, error_code, otp_code, debug_otp = self.otp_service.request_otp(
+            normalized_email,
+            normalized_purpose,
+        )
         if not success:
             return False, error_code, None, None
 
         event = SendOtpEmailRequested(
-            email=EmailRule.normalize(email),
+            email=normalized_email,
             code=otp_code,
-            purpose="login",
+            purpose=normalized_purpose,
             expires_in=self.otp_service.otp_ttl,
         )
         self.publisher.publish(event.to_dict(), "identity.otp.requested")
@@ -76,7 +98,7 @@ class RequestOtpUseCase:
 
 
 class VerifyOtpUseCase:
-    """Use case for verifying OTP and logging in user."""
+    """Use case for verifying OTP for login or signup."""
 
     def __init__(self):
         self.otp_service = OtpService()
@@ -88,31 +110,36 @@ class VerifyOtpUseCase:
         self,
         email: str,
         otp_code: str,
+        purpose: str,
         user_agent: str = None,
         ip_address: str = None,
     ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
-        success, error_code = self.otp_service.verify_otp(email, otp_code)
+        normalized_email = EmailRule.normalize(email)
+        normalized_purpose = OtpPurposeRule.normalize(purpose)
+        if not normalized_email:
+            return False, "INVALID_EMAIL", None
+        if not normalized_purpose:
+            return False, "INVALID_PURPOSE", None
+
+        success, error_code = self.otp_service.verify_otp(normalized_email, otp_code, normalized_purpose)
         if not success:
             return False, error_code, None
 
-        try:
-            user, is_created = self.user_service.get_or_create(email)
-        except ValueError as exc:
-            if str(exc) == "ACCOUNT_DEACTIVATED":
+        if normalized_purpose == OtpPurposeRule.LOGIN:
+            user = UserRepository.get_any_by_email(normalized_email)
+            if not user:
+                return False, "EMAIL_NOT_REGISTERED", None
+            if user.deleted_at is not None or not user.is_active:
                 return False, "ACCOUNT_DEACTIVATED", None
-            raise
-        if not user.is_active:
-            return False, "ACCOUNT_DEACTIVATED", None
-        user = self.user_service.mark_email_verified(user)
-        user = self.user_service.update_last_login(user)
-
-        access_token, refresh_token, _ = self.token_service.generate_tokens(
-            user,
-            user_agent=user_agent,
-            ip_address=ip_address,
-        )
-
-        if is_created:
+            user = self.user_service.mark_email_verified(user)
+        else:
+            existing_any = UserRepository.get_any_by_email(normalized_email)
+            if existing_any and existing_any.deleted_at is None and existing_any.is_active:
+                return False, "EMAIL_ALREADY_REGISTERED", None
+            if existing_any and (existing_any.deleted_at is not None or not existing_any.is_active):
+                return False, "ACCOUNT_DEACTIVATED", None
+            user = self.user_service.create_from_email(normalized_email)
+            user = self.user_service.mark_email_verified(user)
             event = UserCreated(
                 user_id=user.id,
                 email=user.email,
@@ -123,6 +150,13 @@ class VerifyOtpUseCase:
                 is_active=user.is_active,
             )
             self.publisher.publish(event.to_dict(), "identity.user.created")
+
+        user = self.user_service.update_last_login(user)
+        access_token, refresh_token, _ = self.token_service.generate_tokens(
+            user,
+            user_agent=user_agent,
+            ip_address=ip_address,
+        )
 
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
@@ -247,8 +281,6 @@ class PasswordLoginUseCase:
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
         return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
-
-
 
 
 class DeactivateAccountUseCase:

@@ -86,6 +86,27 @@ class UserService:
         return user, True
 
     @staticmethod
+    def create_from_email(email: str) -> User:
+        normalized_email = EmailRule.normalize(email)
+        if not normalized_email:
+            raise ValueError("INVALID_EMAIL")
+        existing_any = UserRepository.get_any_by_email(normalized_email)
+        if existing_any:
+            if existing_any.deleted_at is not None or not existing_any.is_active:
+                raise ValueError("ACCOUNT_DEACTIVATED")
+            raise ValueError("EMAIL_ALREADY_REGISTERED")
+
+        art_name = UserService._generate_unique_art_name(normalized_email.split("@", 1)[0])
+        user = UserRepository.create(
+            email=normalized_email,
+            art_name=art_name,
+            role=User.RoleChoices.USER,
+        )
+        logger.info("New user created: %s", EmailRule.mask(normalized_email))
+        return user
+
+
+    @staticmethod
     def get_by_id(user_id: str) -> Optional[User]:
         return UserRepository.get_by_id(user_id)
 

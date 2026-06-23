@@ -9,7 +9,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from apps.identity.domain.models import User
-from apps.identity.domain.rules import ArtNameRule, DateOfBirthRule, EmailRule, PhoneNumberRule, ProfileRule
+from apps.identity.domain.rules import ArtNameRule, DateOfBirthRule, EmailRule, OtpPurposeRule, PhoneNumberRule, ProfileRule
 
 
 class NormalizedEmailField(serializers.EmailField):
@@ -50,13 +50,32 @@ class TrimmedOptionalURLField(serializers.URLField):
         return super().to_internal_value(value)
 
 
+class OtpPurposeField(serializers.ChoiceField):
+    default_error_messages = {
+        "invalid_choice": "OTP purpose must be LOGIN or SIGNUP.",
+        "required": "OTP purpose must be LOGIN or SIGNUP.",
+        "null": "OTP purpose must be LOGIN or SIGNUP.",
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(choices=[OtpPurposeRule.LOGIN, OtpPurposeRule.SIGNUP], **kwargs)
+
+    def to_internal_value(self, data):
+        normalized = OtpPurposeRule.normalize(data)
+        if not normalized:
+            self.fail("invalid_choice")
+        return normalized
+
+
 class RequestOtpSerializer(serializers.Serializer):
     email = NormalizedEmailField(required=True)
+    purpose = OtpPurposeField(required=True)
 
 
 class VerifyOtpSerializer(serializers.Serializer):
     email = NormalizedEmailField(required=True)
     code = serializers.CharField(required=True, min_length=6, max_length=6)
+    purpose = OtpPurposeField(required=True)
 
     def validate_code(self, value):
         if not value.isdigit():

@@ -51,7 +51,7 @@ class IdentitySecurityFixPack3Tests(TestCase):
     @override_settings(DEBUG=False, OTP_DEBUG_RETURN_CODE=True)
     def test_debug_otp_hidden_when_debug_is_false(self):
         service = OtpService()
-        success, error_code, otp_code, debug_otp = service.request_otp("artist@example.com")
+        success, error_code, otp_code, debug_otp = service.request_otp("artist@example.com", "LOGIN")
         assert success is True
         assert error_code is None
         assert otp_code is not None
@@ -60,9 +60,9 @@ class IdentitySecurityFixPack3Tests(TestCase):
     def test_email_is_masked_in_logs(self):
         service = OtpService()
         with self.assertLogs("apps.identity.application.otp_service", level="INFO") as logs:
-            success, _, otp_code, _ = service.request_otp("artist@example.com")
+            success, _, otp_code, _ = service.request_otp("artist@example.com", "LOGIN")
             assert success is True
-            service.verify_otp("artist@example.com", otp_code)
+            service.verify_otp("artist@example.com", otp_code, "LOGIN")
         joined = "\n".join(logs.output)
         assert "ar***@e***.com" in joined
         assert "artist@example.com" not in joined

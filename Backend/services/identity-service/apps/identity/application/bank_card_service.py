@@ -48,12 +48,12 @@ def get_fernet() -> Fernet:
 def normalize_card_number(value: Any) -> str:
     if value is None:
         raise BankCardError("INVALID_CARD_NUMBER", "Card number is required.")
-    normalized = re.sub(r"\D", "", str(value))
-    if len(normalized) != 16 or not normalized.isdigit():
+    raw_value = str(value)
+    if not re.fullmatch(r"[0-9]{16}", raw_value):
         raise BankCardError("INVALID_CARD_NUMBER", "Card number must be 16 digits.")
-    if len(set(normalized)) == 1:
+    if len(set(raw_value)) == 1:
         raise BankCardError("INVALID_CARD_NUMBER", "Card number must be 16 digits.")
-    return normalized
+    return raw_value
 
 
 def normalize_holder_name(value: Any) -> str:
@@ -351,7 +351,11 @@ class BankCardService:
                     normalized_holder_name = normalize_holder_name(item.get("holder_name"))
                     normalized_bank_name = normalize_bank_name(item.get("bank_name"))
                 except BankCardError as exc:
-                    target = "card_number" if exc.code == "INVALID_CARD_NUMBER" else "holder_name"
+                    target = {
+                        "INVALID_CARD_NUMBER": "card_number",
+                        "INVALID_HOLDER_NAME": "holder_name",
+                        "INVALID_BANK_NAME": "bank_name",
+                    }.get(exc.code, "card_number")
                     field_errors[f"cards[{index}].{target}"] = [exc.message]
                     continue
                 card_hash = hash_card_number(user.id, normalized_card_number)

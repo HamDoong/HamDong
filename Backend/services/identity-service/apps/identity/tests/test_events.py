@@ -30,10 +30,14 @@ class IdentityEventPublishingTestCase(TestCase):
         "apps.identity.application.use_cases.OtpService.request_otp",
         return_value=(True, None, "123456", "123456"),
     )
-    def test_user_otp_requested_event_published(self, request_otp_mock, publish_mock):
+    @patch(
+        "apps.identity.application.use_cases.UserRepository.get_any_by_email",
+        return_value=User(email="artist@example.com", art_name="artist-user", is_active=True),
+    )
+    def test_user_otp_requested_event_published(self, get_any_mock, request_otp_mock, publish_mock):
         use_case = RequestOtpUseCase()
 
-        success, error_code, debug_otp, resend_after = use_case.execute(self.email)
+        success, error_code, debug_otp, resend_after = use_case.execute(self.email, "LOGIN")
 
         self.assertTrue(success)
         self.assertIsNone(error_code)
@@ -46,6 +50,7 @@ class IdentityEventPublishingTestCase(TestCase):
         self.assertEqual(event_data["event_type"], "SendOtpEmailRequested")
         self.assertEqual(event_data["data"]["email"], self.email)
         self.assertEqual(event_data["data"]["code"], "123456")
+        self.assertEqual(event_data["data"]["purpose"], "LOGIN")
         self.assertEqual(event_data["data"]["expires_in"], use_case.otp_service.otp_ttl)
 
     @patch(
@@ -58,22 +63,27 @@ class IdentityEventPublishingTestCase(TestCase):
     )
     @patch("apps.identity.application.use_cases.UserService.update_last_login")
     @patch("apps.identity.application.use_cases.UserService.mark_email_verified")
-    @patch("apps.identity.application.use_cases.UserService.get_or_create")
+    @patch("apps.identity.application.use_cases.UserService.create_from_email")
+    @patch(
+        "apps.identity.application.use_cases.UserRepository.get_any_by_email",
+        return_value=None,
+    )
     @patch(
         "apps.identity.application.use_cases.OtpService.verify_otp",
         return_value=(True, None),
     )
-    def test_user_created_and_logged_in_events_published_for_new_user(
+    def test_user_created_and_logged_in_events_published_for_signup(
         self,
         verify_otp_mock,
-        get_or_create_mock,
+        get_any_mock,
+        create_from_email_mock,
         mark_verified_mock,
         update_login_mock,
         token_generate_mock,
         publish_mock,
     ):
-        user = User.objects.create(email=self.email, art_name="artist-user")
-        get_or_create_mock.return_value = (user, True)
+        user = User(email=self.email, art_name="artist-user", is_active=True)
+        create_from_email_mock.return_value = user
         mark_verified_mock.return_value = user
         update_login_mock.return_value = user
 
@@ -81,6 +91,7 @@ class IdentityEventPublishingTestCase(TestCase):
         success, error_code, token_data = use_case.execute(
             self.email,
             "123456",
+            "SIGNUP",
             user_agent="pytest",
             ip_address="127.0.0.1",
         )
@@ -91,9 +102,7 @@ class IdentityEventPublishingTestCase(TestCase):
         self.assertEqual(publish_mock.call_count, 2)
 
         routing_keys = [call.args[1] for call in publish_mock.call_args_list]
-        event_types = [
-            call.args[0]["event_type"] for call in publish_mock.call_args_list
-        ]
+        event_types = [call.args[0]["event_type"] for call in publish_mock.call_args_list]
 
         self.assertIn("identity.user.created", routing_keys)
         self.assertIn("identity.user.logged_in", routing_keys)
@@ -171,12 +180,16 @@ class IdentityEventPublishingTestCase(TestCase):
         "apps.identity.application.use_cases.OtpService.request_otp",
         return_value=(True, None, "123456", None),
     )
+    @patch(
+        "apps.identity.application.use_cases.UserRepository.get_any_by_email",
+        return_value=User(email="artist@example.com", art_name="artist-user", is_active=True),
+    )
     def test_rabbitmq_unavailable_does_not_break_otp_request(
-        self, request_otp_mock, publish_mock
+        self, get_any_mock, request_otp_mock, publish_mock
     ):
         use_case = RequestOtpUseCase()
 
-        success, error_code, debug_otp, resend_after = use_case.execute(self.email)
+        success, error_code, debug_otp, resend_after = use_case.execute(self.email, "LOGIN")
 
         self.assertTrue(success)
         self.assertIsNone(error_code)

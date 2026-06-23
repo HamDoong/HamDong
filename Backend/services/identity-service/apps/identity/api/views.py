@@ -106,6 +106,13 @@ class RequestOtpView(APIView):
                     status.HTTP_400_BAD_REQUEST,
                     serializer.errors,
                 )
+            if "purpose" in serializer.errors:
+                return _error_response(
+                    "INVALID_PURPOSE",
+                    "OTP purpose must be LOGIN or SIGNUP.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
 
             return _error_response(
                 "INVALID_REQUEST",
@@ -115,16 +122,25 @@ class RequestOtpView(APIView):
             )
 
         email = serializer.validated_data["email"]
+        purpose = serializer.validated_data["purpose"]
         use_case = RequestOtpUseCase()
-        success, error_code, debug_otp, resend_after = use_case.execute(email)
+        success, error_code, debug_otp, resend_after = use_case.execute(email, purpose)
 
         if not success:
             if error_code == "INVALID_EMAIL":
                 return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
+            if error_code == "INVALID_PURPOSE":
+                return _error_response("INVALID_PURPOSE", "OTP purpose must be LOGIN or SIGNUP.", status.HTTP_400_BAD_REQUEST)
+            if error_code == "EMAIL_NOT_REGISTERED":
+                return _error_response("EMAIL_NOT_REGISTERED", "No active account exists for this email.", status.HTTP_404_NOT_FOUND)
+            if error_code == "EMAIL_ALREADY_REGISTERED":
+                return _error_response("EMAIL_ALREADY_REGISTERED", "An account already exists for this email. Please login instead.", status.HTTP_409_CONFLICT)
+            if error_code == "ACCOUNT_DEACTIVATED":
+                return _error_response("ACCOUNT_DEACTIVATED", "This account has been deactivated.", status.HTTP_403_FORBIDDEN)
             if error_code == "OTP_RATE_LIMITED":
                 return _error_response("OTP_RATE_LIMITED", "Too many OTP requests. Please try again later.", status.HTTP_429_TOO_MANY_REQUESTS)
             if error_code == "OTP_IN_COOLDOWN":
-                cooldown = use_case.otp_service.get_resend_cooldown(email)
+                cooldown = use_case.otp_service.get_resend_cooldown(email, purpose)
                 return _error_response(
                     "OTP_IN_COOLDOWN",
                     "Please wait before requesting a new OTP.",
@@ -157,6 +173,13 @@ class VerifyOtpView(APIView):
                     status.HTTP_400_BAD_REQUEST,
                     serializer.errors,
                 )
+            if "purpose" in serializer.errors:
+                return _error_response(
+                    "INVALID_PURPOSE",
+                    "OTP purpose must be LOGIN or SIGNUP.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
 
             return _error_response(
                 "INVALID_REQUEST",
@@ -171,6 +194,7 @@ class VerifyOtpView(APIView):
         success, error_code, token_data = use_case.execute(
             serializer.validated_data["email"],
             serializer.validated_data["code"],
+            serializer.validated_data["purpose"],
             user_agent,
             ip_address,
         )
@@ -184,8 +208,14 @@ class VerifyOtpView(APIView):
                 return _error_response("OTP_MAX_ATTEMPTS_EXCEEDED", "Maximum OTP verification attempts exceeded.", status.HTTP_429_TOO_MANY_REQUESTS)
             if error_code == "INVALID_EMAIL":
                 return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
+            if error_code == "INVALID_PURPOSE":
+                return _error_response("INVALID_PURPOSE", "OTP purpose must be LOGIN or SIGNUP.", status.HTTP_400_BAD_REQUEST)
             if error_code == "ACCOUNT_DEACTIVATED":
                 return _error_response("ACCOUNT_DEACTIVATED", "This account has been deactivated.", status.HTTP_403_FORBIDDEN)
+            if error_code == "EMAIL_NOT_REGISTERED":
+                return _error_response("EMAIL_NOT_REGISTERED", "No active account exists for this email.", status.HTTP_404_NOT_FOUND)
+            if error_code == "EMAIL_ALREADY_REGISTERED":
+                return _error_response("EMAIL_ALREADY_REGISTERED", "An account already exists for this email. Please login instead.", status.HTTP_409_CONFLICT)
 
         return Response(token_data, status=status.HTTP_200_OK)
 
