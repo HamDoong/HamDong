@@ -9,22 +9,25 @@ from apps.identity.domain.models import OutboxMessage, RefreshToken, User
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 
 
-@override_settings(DEBUG=True, OTP_DEBUG_RETURN_CODE=True)
+@override_settings(DEBUG=True, OTP_DEBUG_RETURN_CODE=True, REDIS_HOST="fakeredis")
 class PasswordAuthenticationTests(TestCase):
     def setUp(self):
+        RedisOtpStore._shared_client = None
         self.client = APIClient()
         self.token_service = TokenService()
         self.otp_store = RedisOtpStore()
         self.email = "password.user@example.com"
+        self.user = User.objects.create(email=self.email)
 
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
+        RedisOtpStore._shared_client = None
 
     def _otp_login(self):
-        response = self.client.post("/api/v1/auth/otp/request/", {"email": self.email, "purpose": "SIGNUP"}, format="json")
+        response = self.client.post("/api/v1/auth/otp/request/", {"email": self.email, "purpose": "LOGIN"}, format="json")
         self.assertEqual(response.status_code, 200)
         code = response.json()["debug_otp"]
-        response = self.client.post("/api/v1/auth/otp/verify/", {"email": self.email, "code": code, "purpose": "SIGNUP"}, format="json")
+        response = self.client.post("/api/v1/auth/otp/verify/", {"email": self.email, "code": code, "purpose": "LOGIN"}, format="json")
         self.assertEqual(response.status_code, 200)
         return response.json()
 

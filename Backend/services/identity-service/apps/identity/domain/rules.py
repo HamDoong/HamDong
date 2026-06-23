@@ -16,6 +16,8 @@ _ALLOWED_NAME_PUNCTUATION = {"'", "-", ".", "(", ")"}
 _ALLOWED_BIO_CONTROLS = {"\n", "\r", "\t"}
 _ALLOWED_PROFILE_FORMAT_CHARS = {"\u200c"}
 
+VALID_OTP_PURPOSES = ("LOGIN", "SIGNUP")
+
 class EmailRule:
     """Validate, normalize, and mask email addresses."""
 
@@ -63,18 +65,13 @@ class OtpRule:
 
 
 class OtpPurposeRule:
-    """Normalize and validate OTP request purpose values."""
+    """Strict purpose validation for OTP flows."""
 
-    LOGIN = "LOGIN"
-    SIGNUP = "SIGNUP"
-    ALLOWED = {LOGIN, SIGNUP}
+    VALID_PURPOSES = VALID_OTP_PURPOSES
 
     @classmethod
-    def normalize(cls, value: str | None) -> str | None:
-        if not isinstance(value, str):
-            return None
-        normalized = value.strip().upper()
-        return normalized if normalized in cls.ALLOWED else None
+    def is_valid(cls, purpose: object) -> bool:
+        return isinstance(purpose, str) and purpose in cls.VALID_PURPOSES
 
 
 class ArtNameRule:
