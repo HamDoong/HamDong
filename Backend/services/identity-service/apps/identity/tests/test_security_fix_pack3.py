@@ -10,8 +10,10 @@ from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
 
+@override_settings(REDIS_HOST="fakeredis")
 class IdentitySecurityFixPack3Tests(TestCase):
     def setUp(self):
+        RedisOtpStore._shared_client = None
         self.user = User.objects.create(email="artist@example.com")
         self.otp_store = RedisOtpStore()
         self.otp_store.redis_client.flushdb()
@@ -19,6 +21,7 @@ class IdentitySecurityFixPack3Tests(TestCase):
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
         User.objects.all().delete()
+        RedisOtpStore._shared_client = None
 
     def test_refresh_token_is_stored_hashed(self):
         token_service = TokenService()
@@ -42,8 +45,8 @@ class IdentitySecurityFixPack3Tests(TestCase):
         assert unverified_header["kid"] == ACCESS_TOKEN_KID
 
     def test_otp_is_hashed_in_redis(self):
-        self.otp_store.store_otp("artist@example.com", "123456", 120)
-        otp_data = self.otp_store.get_otp_data("artist@example.com")
+        self.otp_store.store_otp("artist@example.com", "LOGIN", "123456", 120)
+        otp_data = self.otp_store.get_otp_data("artist@example.com", "LOGIN")
         assert otp_data is not None
         assert otp_data["otp_hash"] != "123456"
         assert "123456" not in str(otp_data)
@@ -51,7 +54,7 @@ class IdentitySecurityFixPack3Tests(TestCase):
     @override_settings(DEBUG=False, OTP_DEBUG_RETURN_CODE=True)
     def test_debug_otp_hidden_when_debug_is_false(self):
         service = OtpService()
-        success, error_code, otp_code, debug_otp = service.request_otp("artist@example.com")
+        success, error_code, otp_code, debug_otp = service.request_otp("artist@example.com", "LOGIN")
         assert success is True
         assert error_code is None
         assert otp_code is not None
@@ -60,9 +63,9 @@ class IdentitySecurityFixPack3Tests(TestCase):
     def test_email_is_masked_in_logs(self):
         service = OtpService()
         with self.assertLogs("apps.identity.application.otp_service", level="INFO") as logs:
-            success, _, otp_code, _ = service.request_otp("artist@example.com")
+            success, _, otp_code, _ = service.request_otp("artist@example.com", "LOGIN")
             assert success is True
-            service.verify_otp("artist@example.com", otp_code)
+            service.verify_otp("artist@example.com", otp_code, "LOGIN")
         joined = "\n".join(logs.output)
         assert "ar***@e***.com" in joined
         assert "artist@example.com" not in joined

@@ -55,6 +55,11 @@ class CreateExpenseSerializer(serializers.Serializer):
     expense_date = serializers.DateTimeField(required=False)
     receipt_file_id = serializers.UUIDField(required=False, allow_null=True)
     receipt_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    payment_card_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+    )
 
     def validate(self, data):
         self._reject_legacy_fields()
@@ -156,3 +161,18 @@ class UpdateExpenseSerializer(CreateExpenseSerializer):
             amount_field="service_fee_amount_minor",
         )
         return data
+
+
+
+class ExpensePaymentOptionsUpdateSerializer(serializers.Serializer):
+    payment_card_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=True,
+        allow_empty=True,
+    )
+
+
+class ExpensePaymentOptionsResponseSerializer(serializers.Serializer):
+    expense_id = serializers.UUIDField()
+    payee = serializers.DictField(required=False)
+    payment_options = serializers.ListField(child=serializers.DictField())

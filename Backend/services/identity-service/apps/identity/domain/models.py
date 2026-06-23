@@ -84,6 +84,38 @@ class User(models.Model):
         return bool(self.password_hash and is_password_usable(self.password_hash))
 
 
+class UserBankCard(models.Model):
+    """User-owned bank cards stored encrypted at rest."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="bank_cards")
+    holder_name = models.CharField(max_length=150)
+    bank_name = models.CharField(max_length=100, null=True, blank=True)
+    card_number_last4 = models.CharField(max_length=4)
+    masked_card_number = models.CharField(max_length=24)
+    card_number_hash = models.CharField(max_length=64)
+    encrypted_card_number = models.TextField()
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "user_bank_cards"
+        ordering = ["-is_default", "-updated_at", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "card_number_hash"], name="uniq_user_bank_card_hash"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["user", "is_default"]),
+        ]
+
+    def __str__(self):
+        return f"UserBankCard({self.user_id}, ****{self.card_number_last4})"
+
+
+
 class RefreshToken(models.Model):
     """Refresh token model for token rotation and revocation."""
 

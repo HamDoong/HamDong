@@ -13,6 +13,9 @@ ROUTING_KEYS = {
     "UserLoggedIn": "identity.user.logged_in",
     "SendOtpEmailRequested": "identity.otp.requested",
     "PasswordChanged": "identity.user.password_changed",
+    "UserBankCardCreated": "identity.user_bank_card.created",
+    "UserBankCardUpdated": "identity.user_bank_card.updated",
+    "UserBankCardDeactivated": "identity.user_bank_card.deactivated",
 }
 
 
@@ -124,3 +127,45 @@ class PasswordChanged(DomainEvent):
                 "other_sessions_revoked": other_sessions_revoked,
             },
         )
+
+
+class UserBankCardCreated(DomainEvent):
+    def __init__(
+        self,
+        *,
+        card_id: str,
+        user_id: str,
+        holder_name: str,
+        bank_name: str | None,
+        card_number_last4: str,
+        masked_card_number: str,
+        is_default: bool,
+        is_active: bool,
+        updated_at,
+    ):
+        super().__init__(
+            "UserBankCardCreated",
+            {
+                "card_id": str(card_id),
+                "user_id": str(user_id),
+                "holder_name": holder_name,
+                "bank_name": bank_name,
+                "card_number_last4": card_number_last4,
+                "masked_card_number": masked_card_number,
+                "is_default": is_default,
+                "is_active": is_active,
+                "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
+            },
+        )
+
+
+class UserBankCardUpdated(UserBankCardCreated):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.event_type = "UserBankCardUpdated"
+
+
+class UserBankCardDeactivated(UserBankCardCreated):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.event_type = "UserBankCardDeactivated"

@@ -10,6 +10,7 @@ from django.db import transaction
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
+from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.domain.events import PasswordChanged, SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
 from apps.identity.domain.models import User
 from apps.identity.domain.rules import ArtNameRule, EmailRule
@@ -56,9 +57,9 @@ class RequestOtpUseCase:
         self.publisher = RabbitMqPublisher()
 
     def execute(
-        self, email: str
+        self, email: str, purpose: object
     ) -> Tuple[bool, Optional[str], Optional[str], Optional[int]]:
-        request_result = self.otp_service.request_otp(email)
+        request_result = self.otp_service.request_otp(email, purpose)
         success, error_code, otp_code, debug_otp = request_result
 
         if not success:
@@ -67,7 +68,7 @@ class RequestOtpUseCase:
         event = SendOtpEmailRequested(
             email=EmailRule.normalize(email),
             code=otp_code,
-            purpose="login",
+            purpose=purpose,
             expires_in=self.otp_service.otp_ttl,
         )
         self.publisher.publish(event.to_dict(), "identity.otp.requested")
@@ -87,14 +88,28 @@ class VerifyOtpUseCase:
         self,
         email: str,
         otp_code: str,
+        purpose: object,
         user_agent: str = None,
         ip_address: str = None,
     ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
-        success, error_code = self.otp_service.verify_otp(email, otp_code)
+        success, error_code = self.otp_service.verify_otp(email, otp_code, purpose)
         if not success:
             return False, error_code, None
 
-        user, is_created = self.user_service.get_or_create(email)
+        try:
+            if purpose == "LOGIN":
+                user = self.user_service.get_for_login(email)
+                is_created = False
+            elif purpose == "SIGNUP":
+                user, is_created = self.user_service.create_for_signup(email)
+            else:
+                return False, "INVALID_PURPOSE", None
+        except ValueError as exc:
+            if str(exc) in {"ACCOUNT_DEACTIVATED", "USER_NOT_FOUND", "EMAIL_ALREADY_EXISTS"}:
+                return False, str(exc), None
+            raise
+        if not user.is_active:
+            return False, "ACCOUNT_DEACTIVATED", None
         user = self.user_service.mark_email_verified(user)
         user = self.user_service.update_last_login(user)
 
@@ -239,6 +254,16 @@ class PasswordLoginUseCase:
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
         return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
+
+
+
+
+class DeactivateAccountUseCase:
+    def __init__(self):
+        self.bank_card_service = BankCardService()
+
+    def execute(self, user: User, *, current_password: str | None = None, reason: str | None = None) -> tuple[str, User]:
+        return self.bank_card_service.deactivate_account(user, current_password=current_password, reason=reason)
 
 
 class ChangePasswordUseCase:

@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 import logging
+import hmac
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.identity.api.authentication import JWTAuthentication
 from apps.identity.api.serializers import (
+    BulkUserBankCardSaveResponseSerializer,
+    BulkUserBankCardSaveSerializer,
+    CreateUserBankCardSerializer,
+    DeactivateAccountResponseSerializer,
+    DeactivateAccountSerializer,
+    InternalPaymentContextBankCardsRequestSerializer,
     LogoutSerializer,
     PasswordChangeSerializer,
     PasswordLoginSerializer,
@@ -20,12 +27,17 @@ from apps.identity.api.serializers import (
     RefreshTokenSerializer,
     RequestOtpSerializer,
     UpdateUserSerializer,
+    UpdateUserBankCardSerializer,
+    UserBankCardListResponseSerializer,
+    UserBankCardSerializer,
     UserSerializer,
     VerifyOtpSerializer,
 )
+from apps.identity.application.bank_card_service import BankCardError, BankCardService, serialize_bank_card
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.use_cases import (
     ChangePasswordUseCase,
+    DeactivateAccountUseCase,
     LogoutUseCase,
     PasswordLoginUseCase,
     RefreshTokenUseCase,
@@ -87,6 +99,14 @@ class RequestOtpView(APIView):
     def post(self, request):
         serializer = RequestOtpSerializer(data=request.data)
         if not serializer.is_valid():
+            if "purpose" in serializer.errors:
+                return _error_response(
+                    "INVALID_PURPOSE",
+                    "Purpose must be LOGIN or SIGNUP.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
             if "email" in serializer.errors and request.data.get("email"):
                 return _error_response(
                     "INVALID_EMAIL",
@@ -103,16 +123,19 @@ class RequestOtpView(APIView):
             )
 
         email = serializer.validated_data["email"]
+        purpose = serializer.validated_data["purpose"]
         use_case = RequestOtpUseCase()
-        success, error_code, debug_otp, resend_after = use_case.execute(email)
+        success, error_code, debug_otp, resend_after = use_case.execute(email, purpose)
 
         if not success:
+            if error_code == "INVALID_PURPOSE":
+                return _error_response("INVALID_PURPOSE", "Purpose must be LOGIN or SIGNUP.", status.HTTP_400_BAD_REQUEST)
             if error_code == "INVALID_EMAIL":
                 return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
             if error_code == "OTP_RATE_LIMITED":
                 return _error_response("OTP_RATE_LIMITED", "Too many OTP requests. Please try again later.", status.HTTP_429_TOO_MANY_REQUESTS)
             if error_code == "OTP_IN_COOLDOWN":
-                cooldown = use_case.otp_service.get_resend_cooldown(email)
+                cooldown = use_case.otp_service.get_resend_cooldown(email, purpose)
                 return _error_response(
                     "OTP_IN_COOLDOWN",
                     "Please wait before requesting a new OTP.",
@@ -138,6 +161,14 @@ class VerifyOtpView(APIView):
     def post(self, request):
         serializer = VerifyOtpSerializer(data=request.data)
         if not serializer.is_valid():
+            if "purpose" in serializer.errors:
+                return _error_response(
+                    "INVALID_PURPOSE",
+                    "Purpose must be LOGIN or SIGNUP.",
+                    status.HTTP_400_BAD_REQUEST,
+                    serializer.errors,
+                )
+
             if "email" in serializer.errors and request.data.get("email"):
                 return _error_response(
                     "INVALID_EMAIL",
@@ -159,11 +190,14 @@ class VerifyOtpView(APIView):
         success, error_code, token_data = use_case.execute(
             serializer.validated_data["email"],
             serializer.validated_data["code"],
+            serializer.validated_data["purpose"],
             user_agent,
             ip_address,
         )
 
         if not success:
+            if error_code == "INVALID_PURPOSE":
+                return _error_response("INVALID_PURPOSE", "Purpose must be LOGIN or SIGNUP.", status.HTTP_400_BAD_REQUEST)
             if error_code == "INVALID_OTP":
                 return _error_response("INVALID_OTP", "The OTP code is invalid.", status.HTTP_400_BAD_REQUEST)
             if error_code == "OTP_EXPIRED":
@@ -172,6 +206,12 @@ class VerifyOtpView(APIView):
                 return _error_response("OTP_MAX_ATTEMPTS_EXCEEDED", "Maximum OTP verification attempts exceeded.", status.HTTP_429_TOO_MANY_REQUESTS)
             if error_code == "INVALID_EMAIL":
                 return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
+            if error_code == "ACCOUNT_DEACTIVATED":
+                return _error_response("ACCOUNT_DEACTIVATED", "This account has been deactivated.", status.HTTP_403_FORBIDDEN)
+            if error_code == "USER_NOT_FOUND":
+                return _error_response("USER_NOT_FOUND", "No active account exists for this email.", status.HTTP_404_NOT_FOUND)
+            if error_code == "EMAIL_ALREADY_EXISTS":
+                return _error_response("EMAIL_ALREADY_EXISTS", "An account already exists for this email.", status.HTTP_409_CONFLICT)
 
         return Response(token_data, status=status.HTTP_200_OK)
 
@@ -433,6 +473,171 @@ class MeView(APIView):
             raise
 
         return Response(UserSerializer(updated_user).data, status=status.HTTP_200_OK)
+
+
+class MeBankCardsView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Users"],
+        summary="List current user's bank cards",
+        parameters=[OpenApiParameter(name="include_inactive", required=False, type=bool)],
+        responses={200: UserBankCardListResponseSerializer},
+    )
+    def get(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        include_inactive = str(request.query_params.get("include_inactive", "false")).lower() in {"1", "true", "yes"}
+        cards = BankCardService().list_cards(user, include_inactive=include_inactive)
+        return Response({"items": [serialize_bank_card(card) for card in cards]})
+
+    @extend_schema(
+        tags=["Users"],
+        summary="Create a bank card",
+        request=CreateUserBankCardSerializer,
+        responses={201: UserBankCardSerializer},
+    )
+    def post(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        serializer = CreateUserBankCardSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+        try:
+            card, created = BankCardService().create_card(user, **serializer.validated_data)
+        except BankCardError as exc:
+            http_status = status.HTTP_409_CONFLICT if exc.code in {"CARD_ALREADY_EXISTS", "BANK_CARD_LIMIT_EXCEEDED"} else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status, exc.fields)
+        return Response(serialize_bank_card(card), status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class MeBankCardDetailView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Users"], summary="Update a bank card", request=UpdateUserBankCardSerializer, responses={200: UserBankCardSerializer})
+    def patch(self, request, card_id):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        serializer = UpdateUserBankCardSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+        try:
+            card = BankCardService().update_card(user, card_id, serializer.validated_data)
+        except BankCardError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            if exc.code == "CARD_NUMBER_IMMUTABLE":
+                http_status = status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status, exc.fields)
+        return Response(serialize_bank_card(card))
+
+    @extend_schema(tags=["Users"], summary="Delete a bank card", responses={204: OpenApiResponse(description="Bank card deactivated")})
+    def delete(self, request, card_id):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        try:
+            BankCardService().delete_card(user, card_id)
+        except BankCardError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status, exc.fields)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MeBankCardsBulkView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Users"], summary="Bulk save bank cards", request=BulkUserBankCardSaveSerializer, responses={200: BulkUserBankCardSaveResponseSerializer})
+    def put(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        serializer = BulkUserBankCardSaveSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+        deleted_card_ids = serializer.validated_data.get("deleted_card_ids", [])
+        try:
+            items = BankCardService().bulk_save(
+                user,
+                serializer.validated_data.get("cards", []),
+                deleted_card_ids=deleted_card_ids,
+            )
+        except BankCardError as exc:
+            http_status = status.HTTP_409_CONFLICT if exc.code in {"BANK_CARD_LIMIT_EXCEEDED"} else status.HTTP_400_BAD_REQUEST
+            if exc.code == "NOT_FOUND":
+                http_status = status.HTTP_404_NOT_FOUND
+            return _error_response(exc.code, exc.message, http_status, exc.fields)
+        return Response({"items": items, "deleted_card_ids": deleted_card_ids})
+
+
+class DeactivateAccountView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Users"], summary="Deactivate current account", request=DeactivateAccountSerializer, responses={200: DeactivateAccountResponseSerializer})
+    def post(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        serializer = DeactivateAccountSerializer(data=request.data or {})
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+        try:
+            result, updated_user = DeactivateAccountUseCase().execute(
+                user,
+                current_password=serializer.validated_data.get("current_password"),
+                reason=serializer.validated_data.get("reason"),
+            )
+        except BankCardError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_400_BAD_REQUEST, exc.fields)
+        if result == "ALREADY_DEACTIVATED":
+            return Response(
+                {
+                    "status": result,
+                    "message": "Your account is already deactivated.",
+                    "deactivated_at": updated_user.deleted_at,
+                }
+            )
+        return Response(
+            {
+                "status": result,
+                "message": "Your account has been deactivated successfully.",
+                "deactivated_at": updated_user.deleted_at,
+            }
+        )
+
+
+class InternalPaymentContextBankCardsView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def _is_authorized(self, request) -> bool:
+        expected = str(getattr(settings, "INTERNAL_SERVICE_TOKEN", "hamdong-internal-token"))
+        provided = request.headers.get("X-Internal-Service-Token") or request.META.get("HTTP_X_INTERNAL_SERVICE_TOKEN")
+        return bool(provided and hmac.compare_digest(provided, expected))
+
+    @extend_schema(
+        tags=["Internal"],
+        summary="Resolve owner bank cards for internal payment contexts",
+        request=InternalPaymentContextBankCardsRequestSerializer,
+        responses={200: UserBankCardListResponseSerializer},
+    )
+    def post(self, request):
+        if not self._is_authorized(request):
+            return _error_response("FORBIDDEN", "Internal authorization failed.", status.HTTP_403_FORBIDDEN)
+        serializer = InternalPaymentContextBankCardsRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+        items = BankCardService().resolve_payment_context_cards(
+            serializer.validated_data["owner_user_id"],
+            card_ids=serializer.validated_data.get("card_ids"),
+        )
+        return Response({"items": items})
 
 
 class JwksView(APIView):

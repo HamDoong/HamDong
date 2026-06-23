@@ -27,6 +27,14 @@ class UserProjectionRepository:
         return UserProjection.objects.filter(identity_user_id=identity_user_id).first()
 
     @staticmethod
+    def get_map_by_identity_ids(identity_user_ids):
+        projection_ids = {identity_user_id for identity_user_id in identity_user_ids if identity_user_id}
+        if not projection_ids:
+            return {}
+        projections = UserProjection.objects.filter(identity_user_id__in=projection_ids)
+        return {str(projection.identity_user_id): projection for projection in projections}
+
+    @staticmethod
     def create_or_update(
         identity_user_id,
         email,

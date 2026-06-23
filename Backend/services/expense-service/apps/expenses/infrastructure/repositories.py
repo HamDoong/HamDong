@@ -11,8 +11,10 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.expenses.domain.models import (
+    BankCardProjection,
     Expense,
     ExpenseParticipant,
+    ExpensePaymentOption,
     GroupMemberProjection,
     GroupProjection,
     UserProjection,
@@ -46,6 +48,20 @@ class ProjectionRepository:
     def get_user(identity_user_id: object) -> UserProjection | None:
         return UserProjection.objects.filter(identity_user_id=identity_user_id).first()
 
+    @staticmethod
+    def get_active_bank_cards(user_id: object) -> list[BankCardProjection]:
+        return list(
+            BankCardProjection.objects.filter(user_id=user_id, is_active=True).order_by("-is_default", "created_at")
+        )
+
+    @staticmethod
+    def get_active_bank_card(user_id: object, card_id: object) -> BankCardProjection | None:
+        return BankCardProjection.objects.filter(user_id=user_id, card_id=card_id, is_active=True).first()
+
+    @staticmethod
+    def get_default_active_bank_card(user_id: object) -> BankCardProjection | None:
+        return BankCardProjection.objects.filter(user_id=user_id, is_active=True, is_default=True).order_by("created_at").first()
+
 
 class ExpenseRepository:
     """Persistence helpers for expenses and participants."""
@@ -56,7 +72,7 @@ class ExpenseRepository:
 
     @staticmethod
     def get_by_id(expense_id: object) -> Optional[Expense]:
-        return Expense.objects.filter(id=expense_id).prefetch_related("participants").first()
+        return Expense.objects.filter(id=expense_id).prefetch_related("participants", "payment_options").first()
 
     @staticmethod
     def list_by_group(
@@ -68,7 +84,7 @@ class ExpenseRepository:
         qs: QuerySet[Expense] = (
             Expense.objects.filter(group_id=group_id)
             .exclude(status=Expense.STATUS_DELETED)
-            .prefetch_related("participants")
+            .prefetch_related("participants", "payment_options")
             .order_by("-created_at")
         )
 
@@ -112,6 +128,19 @@ class ExpenseRepository:
     def replace_participants(expense: Expense, participants: list[dict]) -> list[ExpenseParticipant]:
         expense.participants.all().delete()
         return ExpenseRepository.add_participants(expense, participants)
+
+    @staticmethod
+    @transaction.atomic
+    def set_payment_options(expense: Expense, options: list[dict]) -> list[ExpensePaymentOption]:
+        expense.payment_options.all().delete()
+        created: list[ExpensePaymentOption] = []
+        for row in options:
+            created.append(ExpensePaymentOption.objects.create(expense=expense, **row))
+        return created
+
+    @staticmethod
+    def list_payment_options(expense: Expense) -> list[ExpensePaymentOption]:
+        return list(expense.payment_options.all().order_by("-is_default", "created_at"))
 
 
 from django.conf import settings

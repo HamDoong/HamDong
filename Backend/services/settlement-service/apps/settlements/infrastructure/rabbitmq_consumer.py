@@ -12,6 +12,7 @@ from apps.settlements.application.reminder_service import ReminderService
 from apps.settlements.application.use_cases import ExpenseEventUseCase
 from apps.settlements.infrastructure.event_envelope import validate_event_envelope
 from apps.settlements.infrastructure.repositories import (
+    BankCardProjectionRepository,
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
     InboxRepository,
@@ -152,6 +153,8 @@ class SettlementEventConsumer:
     def _handle_identity(self, event_type, data):
         if event_type in ("UserCreated", "UserUpdated"):
             UserProjectionRepository.upsert_from_event(**data)
+        elif event_type in ("UserBankCardCreated", "UserBankCardUpdated", "UserBankCardDeactivated"):
+            BankCardProjectionRepository.upsert_from_event(**data)
 
     def _handle_group(self, event_type, data):
         if event_type == "GroupCreated":
@@ -230,7 +233,7 @@ class SettlementEventConsumer:
             thread.join()
 
     def start_identity_consumer(self):
-        self._start_queue(self.exchange_identity, self.queue_identity, ["identity.user.created", "identity.user.updated"], self._callback_factory(self._handle_identity))
+        self._start_queue(self.exchange_identity, self.queue_identity, ["identity.user.created", "identity.user.updated", "identity.user_bank_card.created", "identity.user_bank_card.updated", "identity.user_bank_card.deactivated"], self._callback_factory(self._handle_identity))
 
     def start_group_consumer(self):
         self._start_queue(self.exchange_group, self.queue_group, ["group.created", "group.updated", "group.archived", "group.member.joined", "group.member.removed", "group.member.left"], self._callback_factory(self._handle_group))

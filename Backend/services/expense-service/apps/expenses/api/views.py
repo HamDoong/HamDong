@@ -10,7 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.expenses.api.serializers import CreateExpenseSerializer, UpdateExpenseSerializer
+from apps.expenses.api.serializers import CreateExpenseSerializer, ExpensePaymentOptionsResponseSerializer, ExpensePaymentOptionsUpdateSerializer, UpdateExpenseSerializer
 from apps.expenses.api.serializers_response import ExpenseResponseSerializer, serialize_expense
 from apps.expenses.application.use_cases import (
     ExpensePermissionError,
@@ -193,6 +193,49 @@ class ExpenseDetailView(AuthenticatedExpenseAPIView):
             return _error_response(exc.code, exc.message, http_status)
 
         return Response({"id": str(expense.id), "status": expense.status}, status=status.HTTP_200_OK)
+
+
+class ExpensePaymentOptionsView(AuthenticatedExpenseAPIView):
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Get expense payment options",
+        description="Return the selected payment cards for an expense. Full card number is returned only in this authorized payment context.",
+        responses={200: ExpensePaymentOptionsResponseSerializer},
+    )
+    def get(self, request, expense_id):
+        service = ExpenseService()
+        try:
+            payload = service.get_expense_payment_options(expense_id, request.user)
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status)
+        return Response(payload)
+
+    @extend_schema(
+        tags=["Expenses"],
+        summary="Replace expense payment options",
+        request=ExpensePaymentOptionsUpdateSerializer,
+        responses={200: ExpensePaymentOptionsResponseSerializer},
+    )
+    def put(self, request, expense_id):
+        serializer = ExpensePaymentOptionsUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", str(serializer.errors), status.HTTP_400_BAD_REQUEST)
+        service = ExpenseService()
+        try:
+            payload = service.replace_expense_payment_options(
+                expense_id,
+                request.user,
+                serializer.validated_data["payment_card_ids"],
+            )
+        except ExpensePermissionError as exc:
+            return _error_response(exc.code, exc.message, status.HTTP_403_FORBIDDEN)
+        except ExpenseServiceError as exc:
+            http_status = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+            return _error_response(exc.code, exc.message, http_status)
+        return Response(payload)
 
 
 class CreateExpenseView(GroupExpensesView):
