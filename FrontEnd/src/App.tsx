@@ -250,7 +250,7 @@ function AppContent() {
       setGroupItems(backendGroups.map((group) => mapBackendGroupToDashboardGroup(group)));
     } catch (error) {
       console.error(error);
-      setGroupsError('خطا در دریافت گروه‌ها از بک‌اند');
+      setGroupsError('فعلاً گروه‌ها بارگذاری نشدند. دوباره تلاش کن.');
     } finally {
       setLoadingGroups(false);
     }
@@ -416,7 +416,7 @@ function AppContent() {
     notify({
       type: 'info',
       title: 'این بخش هنوز آماده نشده',
-      description: 'فعلاً صفحه گروه‌ها، فعالیت‌ها و کیف پول برای UI فعال هستند.',
+      description: 'این بخش هنوز در حال تکمیل است و به‌زودی اضافه می‌شود.',
     });
   };
 
@@ -464,7 +464,7 @@ function AppContent() {
       notify({
         type: 'error',
         title: 'ایجاد گروه ناموفق بود',
-        description: 'Network و Console را بررسی کن.',
+        description: 'گروه ساخته نشد. دوباره تلاش کن.',
       });
     }
   };
@@ -548,7 +548,7 @@ function AppContent() {
       notify({
         type: 'error',
         title: 'حذف گروه ناموفق بود',
-        description: 'Network و Console را بررسی کن.',
+        description: 'گروه ساخته نشد. دوباره تلاش کن.',
       });
     }
   };
@@ -629,8 +629,8 @@ function AppContent() {
     <div dir="rtl" className="app-auth-background min-h-screen text-text">
       <MobileDrawer open={mobileDrawerOpen} onClose={() => setMobileDrawerOpen(false)} activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
-      <div className="mx-auto min-h-screen max-w-[1536px] lg:relative lg:pr-[236px]">
-        <Sidebar className="hidden lg:fixed lg:right-[max(0px,calc((100vw-1536px)/2))] lg:top-0 lg:z-30 lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
+      <div className="min-h-screen w-full lg:relative lg:pr-[236px] 2xl:pr-[252px]">
+        <Sidebar className="hidden lg:fixed lg:right-0 lg:top-0 lg:z-30 lg:flex lg:h-screen lg:w-[236px] lg:shrink-0 lg:border-l lg:border-border/90 2xl:w-[252px]" activePage={getSidebarActivePage(page)} onNavigate={handleSidebarNavigate} />
 
         <div className="min-w-0">
           <TopBar
@@ -638,6 +638,11 @@ function AppContent() {
             displayName={currentUserDisplayName}
             unreadNotificationCount={notificationBadgeCount}
             onOpenNotifications={handleOpenNotifications}
+            groups={groupItems.map((group) => ({
+              id: String(group.id),
+              name: group.name,
+            }))}
+            onOpenGroup={handleOpenGroup}
           />
 
           {page === 'dashboard' ? (

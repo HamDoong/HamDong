@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
+import { getFriendlyApiErrorMessage, humanizeMachineLabel } from '../lib/userMessages';
 import {
   createGroupExpense,
   deleteExpense,
@@ -117,31 +118,10 @@ function getRoleLabel(role?: string) {
 }
 
 function getBackendMessage(error: unknown) {
-  if (!isApiError(error)) {
-    return 'خطای غیرمنتظره‌ای رخ داد. لطفاً دوباره تلاش کنید.';
-  }
-
-  if (error.status === 400) {
-    return 'اطلاعات واردشده صحیح نیست.';
-  }
-
-  if (error.status === 401) {
-    return 'نشست شما منقضی شده است. دوباره وارد شوید.';
-  }
-
-  if (error.status === 403) {
-    return 'شما اجازه انجام این عملیات را ندارید.';
-  }
-
-  if (error.status === 404) {
-    return 'اطلاعات موردنظر پیدا نشد.';
-  }
-
-  if (error.status >= 500) {
-    return 'مشکلی در سرور رخ داده است. کمی بعد دوباره تلاش کنید.';
-  }
-
-  return 'عملیات انجام نشد. لطفاً دوباره تلاش کنید.';
+  return getFriendlyApiErrorMessage(error, {
+    defaultMessage: 'عملیات انجام نشد. لطفاً دوباره تلاش کنید.',
+    invalidMessage: 'اطلاعات واردشده کامل یا درست نیست.',
+  });
 }
 
 function formatMoney(minor = 0) {
@@ -167,7 +147,7 @@ function getSettlementStatusLabel(status?: string) {
   if (status === 'COMPLETED') return 'تکمیل شده';
   if (status === 'PENDING_CONFIRMATION') return 'در انتظار تأیید';
   if (status === 'EXPIRED') return 'منقضی شده';
-  return status;
+  return humanizeMachineLabel(status, 'نامشخص');
 }
 
 function isOpenSettlementStatus(status?: string) {
@@ -436,7 +416,7 @@ export function GroupDetailPage({
         title: 'دریافت اعضا ناموفق بود',
         description:
           getBackendMessage(err) ||
-          'Network و Console را بررسی کن.',
+          'لطفاً دوباره تلاش کن.',
       });
     } finally {
       setMembersLoading(false);
@@ -453,7 +433,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'دریافت هزینه‌ها ناموفق بود',
-        description: getBackendMessage(err) || 'Network و Console را بررسی کن.',
+        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
       });
     } finally {
       setExpensesLoading(false);
@@ -482,7 +462,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'دریافت تسویه‌ها ناموفق بود',
-        description: getBackendMessage(err) || 'Network و Console را بررسی کن.',
+        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
       });
     } finally {
       setSettlementLoading(false);
@@ -519,7 +499,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'ویرایش گروه ناموفق بود',
-        description: getBackendMessage(err) || 'Network و Console را بررسی کن.',
+        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
       });
     } finally {
       setSaving(false);
@@ -563,7 +543,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'آرشیو گروه ناموفق بود',
-        description: getBackendMessage(err) || 'Network و Console را بررسی کن.',
+        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
       });
     } finally {
       setArchiveLoading(false);
@@ -582,7 +562,7 @@ export function GroupDetailPage({
 
     const confirmed = await confirm({
       title: 'بازگردانی گروه؟',
-      description: 'اگر بک‌اند تغییر وضعیت گروه را پشتیبانی کند، این گروه دوباره در لیست گروه‌های فعال نمایش داده می‌شود.',
+      description: 'بعد از بازگردانی، این گروه دوباره به لیست گروه‌های فعال برمی‌گردد.',
       confirmText: 'فعال کن',
       cancelText: 'انصراف',
       tone: 'success',
@@ -606,7 +586,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'بازگردانی گروه ناموفق بود',
-        description: getBackendMessage(err) || 'احتمالاً بک‌اند هنوز endpoint یا فیلد status برای فعال‌سازی دوباره ندارد.',
+        description: getBackendMessage(err) || 'فعلاً بازگردانی این گروه انجام نشد. کمی بعد دوباره تلاش کن.',
       });
     } finally {
       setArchiveLoading(false);
@@ -618,7 +598,7 @@ export function GroupDetailPage({
       notify({
         type: 'info',
         title: 'مالک گروه نمی‌تواند خارج شود',
-        description: 'این محدودیت از سمت بک‌اند است. برای مالک، فعلاً آرشیو گروه یا انتقال مالکیت لازم است.',
+        description: 'تا وقتی مالک گروه هستی، امکان خروج مستقیم وجود ندارد. ابتدا گروه را آرشیو کن یا مالکیت را منتقل کن.',
       });
       return;
     }
@@ -643,7 +623,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'خروج از گروه ناموفق بود',
-        description: getBackendMessage(err) || 'اگر مالک گروه هستی، بک‌اند اجازه خروج مالک را نمی‌دهد.',
+        description: getBackendMessage(err) || 'اگر مالک گروه هستی، ابتدا مالکیت را منتقل کن یا گروه را آرشیو کن.',
       });
     } finally {
       setLeaveLoading(false);
@@ -654,7 +634,7 @@ export function GroupDetailPage({
     const memberId = getMemberId(member);
 
     if (!memberId) {
-      notify({ type: 'error', title: 'شناسه عضو پیدا نشد', description: 'پاسخ بک‌اند برای member id کافی نیست.' });
+      notify({ type: 'error', title: 'حذف عضو انجام نشد', description: 'اطلاعات این عضو کامل نیست. دوباره تلاش کن.' });
       return;
     }
 
@@ -674,7 +654,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'عضو حذف شد', description: 'این عضو دیگر در گروه فعال نیست.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'حذف عضو ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'حذف عضو ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     }
   }
 
@@ -731,7 +711,7 @@ export function GroupDetailPage({
       });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'ثبت هزینه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'ثبت هزینه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setExpenseSaving(false);
     }
@@ -754,7 +734,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'هزینه حذف شد', description: 'هزینه از گزارش گروه حذف شد.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'حذف هزینه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'حذف هزینه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     }
   }
 
@@ -778,7 +758,7 @@ export function GroupDetailPage({
         receiver_user_id: targetReceiverId,
         amount_minor: targetAmountMinor,
         currency: 'IRR',
-        description: manualDescription || 'تسویه دستی از فرانت همدنگ',
+        description: manualDescription || 'تسویه دستی در گروه',
       });
       setManualAmount('');
       setManualDescription('');
@@ -786,7 +766,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'تسویه ثبت شد', description: 'در انتظار تأیید دریافت‌کننده قرار گرفت.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'ثبت تسویه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'ثبت تسویه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setSettlementSaving(false);
     }
@@ -802,7 +782,7 @@ export function GroupDetailPage({
     notify({
       type: 'info',
       title: 'بدهی قابل پرداخت پیدا نشد',
-      description: `${formatMoney(Math.abs(stat.netMinor))} بدهی در محاسبه فرانت دیده شد، اما debt رسمی از settlement-service پیدا نشد.`,
+      description: `${formatMoney(Math.abs(stat.netMinor))} بدهی برای تو دیده می‌شود، اما هنوز گزینه آماده‌ای برای ثبت پرداخت وجود ندارد.`,
     });
   }
 
@@ -815,7 +795,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'برنامه تسویه ساخته شد', description: 'حداقل انتقال‌های لازم برای تسویه گروه محاسبه شد.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'ساخت برنامه تسویه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'ساخت برنامه تسویه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setSettlementSaving(false);
     }
@@ -830,7 +810,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'برنامه فعال شد', description: 'اعضا می‌توانند پرداخت آیتم‌های برنامه را گزارش کنند.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'فعال‌سازی برنامه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'فعال‌سازی برنامه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setSettlementSaving(false);
     }
@@ -845,7 +825,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'برنامه لغو شد', description: 'برنامه تسویه دیگر فعال نیست.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'لغو برنامه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'لغو برنامه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setSettlementSaving(false);
     }
@@ -861,7 +841,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'وضعیت آیتم بروزرسانی شد', description: 'اطلاعات تسویه دوباره دریافت شد.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'بروزرسانی آیتم ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'بروزرسانی آیتم ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setSettlementSaving(false);
     }
@@ -877,7 +857,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'تسویه بروزرسانی شد', description: 'لیست تسویه‌های گروه دوباره دریافت شد.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'بروزرسانی تسویه ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'بروزرسانی تسویه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     } finally {
       setSettlementSaving(false);
     }
@@ -911,7 +891,7 @@ export function GroupDetailPage({
 
   async function handleCopyInvite() {
     if (!inviteUrl) {
-      notify({ type: 'error', title: 'لینک دعوت موجود نیست', description: 'پاسخ بک‌اند token یا invite_url نداشت.' });
+      notify({ type: 'error', title: 'لینک دعوت موجود نیست', description: 'لینک دعوت آماده نشد. دوباره تلاش کن.' });
       return;
     }
 
@@ -922,7 +902,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'لینک کپی شد', description: 'حالا می‌تونی لینک را برای کاربر دیگر بفرستی.' });
     } catch {
       setCopied(false);
-      notify({ type: 'error', title: 'کپی لینک ناموفق بود', description: 'دسترسی clipboard مرورگر فعال نیست.' });
+      notify({ type: 'error', title: 'کپی لینک ناموفق بود', description: 'کپی خودکار در این مرورگر در دسترس نیست. لینک را دستی کپی کن.' });
     }
   }
 
@@ -931,7 +911,7 @@ export function GroupDetailPage({
     const inviteId = getInviteId(invite);
 
     if (!inviteId) {
-      notify({ type: 'error', title: 'شناسه دعوت در پاسخ بک‌اند نیست', description: 'برای لغو دعوت، بک‌اند باید id یا invite_id برگرداند.' });
+      notify({ type: 'error', title: 'لغو دعوت انجام نشد', description: 'اطلاعات لازم برای لغو این دعوت کامل نیست.' });
       return;
     }
 
@@ -951,7 +931,7 @@ export function GroupDetailPage({
       notify({ type: 'success', title: 'لینک دعوت لغو شد', description: 'این دعوت دیگر قابل استفاده نیست.' });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'لغو دعوت ناموفق بود', description: getBackendMessage(err) || 'Network و Console را بررسی کن.' });
+      notify({ type: 'error', title: 'لغو دعوت ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
     }
   }
 
@@ -1001,11 +981,11 @@ export function GroupDetailPage({
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div><label className="mb-2 block text-sm font-semibold text-text">عنوان هزینه</label><input dir="rtl" value={expenseTitle} onChange={(event) => setExpenseTitle(event.target.value)} placeholder="مثلاً شام، تاکسی، خرید..." className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" /></div>
-                <div><label className="mb-2 block text-sm font-semibold text-text">مبلغ</label><input dir="rtl" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} placeholder="مثلاً 250000" className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" /></div>
+                <div><label className="mb-2 block text-sm font-semibold text-text">مبلغ</label><input dir="rtl" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} placeholder="مثلاً ۲۵۰٬۰۰۰" className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" /></div>
                 <div><label className="mb-2 block text-sm font-semibold text-text">پرداخت‌کننده</label><select value={expensePayerId} onChange={(event) => setExpensePayerId(event.target.value)} className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10">{members.map((member) => { const userId = getMemberUserId(member); return <option key={userId} value={userId}>{getMemberName(member)}</option>; })}</select></div>
                 <div><label className="mb-2 block text-sm font-semibold text-text">روش تقسیم</label><div className="flex h-12 w-full items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700"><span>تقسیم مساوی</span><span className="text-xs font-medium text-emerald-600">بین اعضای انتخاب‌شده</span></div></div>
               </div>
-              <div className="mt-4"><label className="mb-2 block text-sm font-semibold text-text">توضیح هزینه</label><textarea dir="rtl" value={expenseDescription} onChange={(event) => setExpenseDescription(event.target.value)} placeholder="توضیح اختیاری..." className="min-h-[84px] w-full resize-none rounded-2xl border border-border bg-white px-4 py-3 text-sm leading-7 text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" /></div>
+              <div className="mt-4"><label className="mb-2 block text-sm font-semibold text-text">توضیح هزینه</label><textarea dir="rtl" value={expenseDescription} onChange={(event) => setExpenseDescription(event.target.value)} placeholder="اگر خواستی توضیح کوتاهی بنویس..." className="min-h-[84px] w-full resize-none rounded-2xl border border-border bg-white px-4 py-3 text-sm leading-7 text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" /></div>
               <div className="mt-4 rounded-2xl border border-border bg-slate-50 p-4"><div className="mb-3 text-right text-sm font-semibold text-text">این هزینه بین چه کسانی تقسیم شود؟</div><div className="grid gap-2 sm:grid-cols-2">{members.map((member) => { const userId = getMemberUserId(member); const selected = expenseParticipantIds.includes(userId); return <button key={userId} type="button" onClick={() => toggleExpenseParticipant(userId)} className={["flex items-center justify-between rounded-2xl border px-3 py-3 text-right text-sm transition", selected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border bg-white text-slate-600 hover:bg-slate-50'].join(' ')}><span className="font-semibold">{getMemberName(member)}</span><span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-emerald-600">{selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}</span></button>; })}</div></div>
               <div className="mt-5 flex justify-end"><button type="button" onClick={handleCreateExpense} disabled={expenseSaving || members.length === 0} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60">{expenseSaving ? <InlineLoader label="در حال ثبت..." /> : <><Plus className="h-4.5 w-4.5" /> ثبت و تقسیم هزینه</>}</button></div>
             </div>
@@ -1094,7 +1074,7 @@ export function GroupDetailPage({
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-right">
                   <h2 className="text-2xl font-bold text-text">تسویه حساب گروه</h2>
-                  <p className="mt-1 text-sm text-muted">بالانس واقعی، بدهی‌ها و برنامه تسویه از settlement-service دریافت می‌شود.</p>
+                  <p className="mt-1 text-sm text-muted">خلاصه بدهی‌ها، طلب‌ها و پیشنهادهای تسویه اینجا نمایش داده می‌شود.</p>
                 </div>
                 <button
                   type="button"
@@ -1195,14 +1175,14 @@ export function GroupDetailPage({
                       dir="rtl"
                       value={manualAmount}
                       onChange={(event) => setManualAmount(event.target.value)}
-                      placeholder="مبلغ تسویه، مثلاً 120000"
+                      placeholder="مثلاً ۱۲۰٬۰۰۰"
                       className="h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                     />
                     <input
                       dir="rtl"
                       value={manualDescription}
                       onChange={(event) => setManualDescription(event.target.value)}
-                      placeholder="توضیح اختیاری"
+                      placeholder="اگر خواستی توضیح کوتاهی بنویس"
                       className="h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                     />
                     <button
@@ -1329,7 +1309,7 @@ export function GroupDetailPage({
 
             <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
               <div className="mb-5 text-right"><h2 className="text-xl font-bold text-text">دعوت اعضا</h2><p className="mt-1 text-sm leading-7 text-muted">لینک دعوت بساز و برای اعضای جدید بفرست.</p></div>
-              {!invite ? <button type="button" onClick={handleCreateInvite} disabled={inviteLoading} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"><Link2 className="h-4.5 w-4.5" />{inviteLoading ? 'در حال ساخت...' : 'ساخت لینک دعوت'}</button> : <div className="space-y-3"><div className="relative"><Link2 className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input readOnly dir="ltr" value={inviteUrl || 'لینک در پاسخ بک‌اند وجود ندارد'} className="h-12 w-full rounded-2xl border border-border bg-slate-50 pr-11 pl-4 text-left text-sm text-slate-700 outline-none" /></div><div className="grid grid-cols-2 gap-3"><button type="button" onClick={handleCopyInvite} disabled={!inviteUrl} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Copy className="h-4 w-4" />{copied ? 'کپی شد' : 'کپی'}</button><button type="button" onClick={handleRevokeInvite} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"><Trash2 className="h-4 w-4" />لغو</button></div>{invite.expires_at ? <p className="text-center text-xs text-muted">اعتبار تا: {invite.expires_at}</p> : null}</div>}
+              {!invite ? <button type="button" onClick={handleCreateInvite} disabled={inviteLoading} className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"><Link2 className="h-4.5 w-4.5" />{inviteLoading ? 'در حال ساخت...' : 'ساخت لینک دعوت'}</button> : <div className="space-y-3"><div className="relative"><Link2 className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" /><input readOnly dir="ltr" value={inviteUrl || 'لینکی برای نمایش آماده نیست'} className="h-12 w-full rounded-2xl border border-border bg-slate-50 pr-11 pl-4 text-left text-sm text-slate-700 outline-none" /></div><div className="grid grid-cols-2 gap-3"><button type="button" onClick={handleCopyInvite} disabled={!inviteUrl} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"><Copy className="h-4 w-4" />{copied ? 'کپی شد' : 'کپی'}</button><button type="button" onClick={handleRevokeInvite} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 text-sm font-semibold text-rose-600 transition hover:bg-rose-100"><Trash2 className="h-4 w-4" />لغو</button></div>{invite.expires_at ? <p className="text-center text-xs text-muted">اعتبار تا: {invite.expires_at}</p> : null}</div>}
             </div>
           </aside>
         </div>

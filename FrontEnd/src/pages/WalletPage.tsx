@@ -1,19 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle,
   ArrowDown,
   ArrowUp,
   CheckCircle2,
-  ChevronLeft,
-  Clock3,
   CreditCard,
   History,
   Loader2,
   Plus,
   ReceiptText,
   RefreshCw,
-  Send,
-  Users,
   WalletCards,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,6 +16,8 @@ import { listGroupExpenses, type BackendExpense, type ExpenseParticipant } from 
 import { getGroupBalances, getMyGroupBalance, getSettlementPlan, listGroupSettlements, type BalanceItem, type SettlementItem, type SettlementPlanItem } from '../lib/settlementApi';
 import { getMyGroups, type BackendGroup } from '../lib/groupApi';
 import { getCurrentUser } from '../lib/userApi';
+import { humanizeMachineLabel } from '../lib/userMessages';
+import { Users } from 'lucide-react';
 
 type TransactionTone = 'positive' | 'negative';
 type TransactionStatus = 'received' | 'paid' | 'pending';
@@ -184,7 +181,7 @@ function getSettlementStatusLabel(status?: string) {
   if (value === 'CANCELLED') return 'لغو شده';
   if (value === 'PENDING') return 'در انتظار';
 
-  return status || 'وضعیت نامشخص';
+  return humanizeMachineLabel(status, 'وضعیت نامشخص');
 }
 
 function getNameMap(balances: BalanceItem[]) {
@@ -389,48 +386,6 @@ function TransactionRow({ transaction }: { transaction: WalletTransaction }) {
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string;
-  value: string;
-  tone?: 'positive' | 'negative' | 'neutral';
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 text-sm">
-      <span className="text-muted">{label}</span>
-      <span
-        className={[
-          'font-extrabold tracking-normal',
-          tone === 'positive' ? 'text-emerald-600' : '',
-          tone === 'negative' ? 'text-rose-500' : '',
-          tone === 'neutral' ? 'text-text' : '',
-        ].join(' ')}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function QuickAction({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between border-b border-border py-4 text-right text-sm font-semibold text-slate-700 transition last:border-b-0 hover:text-emerald-600"
-    >
-      <ChevronLeft className="h-4.5 w-4.5 text-slate-400" />
-      <span className="flex items-center gap-3">
-        {label}
-        <Icon className="h-5 w-5 text-slate-500" />
-      </span>
-    </button>
-  );
-}
-
 function EmptyState({
   icon: Icon,
   title,
@@ -607,7 +562,7 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
       setSettlementSuggestions(nextSuggestions);
     } catch (loadError) {
       console.error(loadError);
-      setError('اطلاعات کیف پول از بک‌اند دریافت نشد.');
+      setError('فعلاً اطلاعات کیف پول در دسترس نیست. دوباره تلاش کن.');
       setSummary(emptySummary);
       setTransactions([]);
       setGroupBalances([]);
@@ -635,19 +590,10 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
             <div>
               <h1 className="text-[32px] font-extrabold leading-tight text-text">کیف پول</h1>
               <p className="mt-2 text-base text-muted">
-                خلاصه حساب گروه‌ها، تسویه‌ها و تراکنش‌های ثبت‌شده در بک‌اند
+                خلاصه حساب گروه‌ها، تسویه‌ها و رفت‌وآمدهای مالی تو در اینجا نمایش داده می‌شود.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={loadWalletData}
-              disabled={loading}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw className={['h-4 w-4', loading ? 'animate-spin' : ''].join(' ')} />
-              به‌روزرسانی
-            </button>
           </div>
 
           {error ? (
@@ -746,7 +692,7 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
               <EmptyState
                 icon={Loader2}
                 title="در حال دریافت تراکنش‌ها"
-                description="تسویه‌ها و هزینه‌های گروهی از بک‌اند خوانده می‌شوند."
+                description="در حال آماده‌کردن تراکنش‌های اخیر هستیم."
               />
             ) : null}
 
@@ -789,32 +735,13 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
               <EmptyState
                 icon={CheckCircle2}
                 title="تسویه بازی ندارید"
-                description="اگر برای گروهی settlement-plan فعال یا پیش‌نویس وجود داشته باشد، پیشنهادهای پرداخت اینجا می‌آید."
+                description="اگر برای تسویه گروه‌ها پیشنهادی وجود داشته باشد، اینجا به تو نشان داده می‌شود."
               />
             ) : null}
           </div>
         </section>
 
         <aside className="space-y-6">
-          <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-            <div className="mb-6 flex items-center justify-between">
-              <div className={['flex h-12 w-12 items-center justify-center rounded-2xl', netTone === 'positive' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'].join(' ')}>
-                <HeroDirectionIcon className="h-5.5 w-5.5" />
-              </div>
-              <h2 className="text-xl font-extrabold text-text">خلاصه کیف پول</h2>
-            </div>
-
-            <div className="space-y-5">
-              <SummaryRow label="خالص حساب گروه‌ها" value={formatSignedMoney(summary.netMinor)} tone={netTone} />
-              <SummaryRow label="در انتظار دریافت" value={`+${formatMoney(summary.creditMinor)}`} tone="positive" />
-              <SummaryRow label="در انتظار پرداخت" value={`-${formatMoney(summary.debtMinor)}`} tone="negative" />
-              <SummaryRow label="تسویه‌های باز" value={formatMoney(summary.openSettlementMinor)} />
-              <SummaryRow label="گروه‌های فعال" value={summary.activeGroupCount.toLocaleString('fa-IR')} />
-              <SummaryRow label="تسویه‌های ثبت‌شده" value={summary.settlementCount.toLocaleString('fa-IR')} />
-              <SummaryRow label="هزینه‌های خوانده‌شده" value={summary.expenseCount.toLocaleString('fa-IR')} />
-            </div>
-          </div>
-
           <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
             <div className="mb-4 flex items-center justify-between">
               <button
@@ -838,31 +765,6 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
                 هنوز بالانسی برای گروه‌های شما دریافت نشده است.
               </div>
             )}
-          </div>
-
-          <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-            <h2 className="mb-3 text-xl font-extrabold text-text">اقدامات سریع</h2>
-            <QuickAction icon={ReceiptText} label="ثبت یا مشاهده هزینه‌ها" onClick={onOpenActivities} />
-            <QuickAction icon={Users} label="مدیریت گروه‌ها" onClick={onOpenGroups} />
-            <QuickAction icon={Send} label="مشاهده تسویه‌ها" onClick={onOpenGroups} />
-            <QuickAction icon={RefreshCw} label="دریافت دوباره از بک‌اند" onClick={loadWalletData} />
-          </div>
-
-          <div className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-6 shadow-soft">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
-                <Clock3 className="h-5.5 w-5.5" />
-              </div>
-              <div className="text-right">
-                <h2 className="text-lg font-extrabold text-text">داده زنده بک‌اند</h2>
-                <p className="mt-1 text-sm text-muted">settlement و expense</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 rounded-2xl bg-white/70 p-4 text-right text-sm leading-7 text-slate-600">
-              <AlertCircle className="mt-1 h-5 w-5 shrink-0 text-emerald-600" />
-              موجودی این صفحه از حساب گروه‌ها، تسویه‌ها و هزینه‌های ثبت‌شده ساخته می‌شود.
-            </div>
           </div>
         </aside>
       </div>

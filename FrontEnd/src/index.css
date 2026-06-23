@@ -1774,3 +1774,273 @@ html.dark .landing-page [class~="hover:text-primary"]:hover {
     bottom: -70px;
   }
 }
+
+
+
+/* Theme controls for auth pages */
+.auth-page-theme-toggle {
+  position: fixed;
+  top: 1rem;
+  inset-inline-start: 1rem;
+  z-index: 50;
+}
+
+.auth-page-theme-toggle .theme-toggle {
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow:
+    0 14px 32px rgba(15, 23, 42, 0.08),
+    0 6px 18px rgba(0, 168, 107, 0.06);
+  backdrop-filter: blur(12px);
+}
+
+html.dark .auth-page-theme-toggle .theme-toggle {
+  border-color: rgba(52, 211, 153, 0.22);
+  background: rgba(10, 24, 38, 0.84);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.24),
+    0 8px 18px rgba(16, 185, 129, 0.08);
+}
+
+@media (max-width: 767px) {
+  .auth-page-theme-toggle {
+    top: 0.85rem;
+    inset-inline-start: 0.85rem;
+  }
+}
+
+/* Real dark mode for landing */
+html.dark .landing-page {
+  color-scheme: dark;
+  --landing-ink: #f3f7fb;
+  --landing-ink-soft: #d5e0ea;
+  --landing-copy: #afbfd0;
+  --landing-muted: #7f93a8;
+  --landing-card-copy: #bfd0df;
+  --landing-faint: #36506a;
+  --landing-green-main: #34d399;
+  --landing-green-dark: #10b981;
+  --landing-orange: #ffb155;
+  --landing-orange-dark: #ff9f2e;
+  --landing-red: #ff7d8f;
+  --shadow-button: 0 18px 38px rgba(16, 185, 129, 0.2);
+  --gradient-primary: linear-gradient(135deg, #10b981 0%, #07966e 52%, #055c49 100%);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 159, 46, 0.12), transparent 28%),
+    radial-gradient(circle at 100% 0%, rgba(16, 185, 129, 0.16), transparent 32%),
+    radial-gradient(circle at 100% 58%, rgba(92, 200, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, #07131f 0%, #081722 42%, #0b1b2a 100%);
+}
+
+html.dark .landing-page::before {
+  background:
+    linear-gradient(125deg, rgba(16, 185, 129, 0.08), transparent 34%),
+    linear-gradient(240deg, rgba(255, 159, 46, 0.07), transparent 44%);
+}
+
+html.dark .landing-wave-lines {
+  opacity: 0.18;
+}
+
+html.dark .landing-frame-dots {
+  opacity: 0.28;
+  filter: brightness(0.9) saturate(0.7);
+}
+
+html.dark .landing-page [class~="bg-white"],
+html.dark .landing-page [class*="bg-white/"] {
+  background-color: rgba(10, 24, 38, 0.76);
+}
+
+html.dark .landing-page [class~="bg-slate-50"],
+html.dark .landing-page [class~="bg-slate-100"] {
+  background-color: rgba(19, 43, 63, 0.82);
+}
+
+html.dark .landing-page [class~="bg-emerald-50"],
+html.dark .landing-page [class~="bg-emerald-100"] {
+  background-color: rgba(16, 185, 129, 0.16);
+}
+
+html.dark .landing-page [class~="bg-orange-50"],
+html.dark .landing-page [class~="bg-orange-100"] {
+  background-color: rgba(255, 159, 46, 0.16);
+}
+
+html.dark .landing-page [class~="border-white/90"],
+html.dark .landing-page [class*="border-white/"],
+html.dark .landing-page [class~="border-orange-200/70"],
+html.dark .landing-page [class*="border-orange-200"],
+html.dark .landing-page [class*="border-emerald-200"] {
+  border-color: rgba(92, 117, 142, 0.32);
+}
+
+html.dark .landing-header nav,
+html.dark .hero-eyebrow,
+html.dark .feature-strip,
+html.dark .how-card,
+html.dark .balance-row,
+html.dark .landing-login-button,
+html.dark .landing-theme-toggle {
+  backdrop-filter: blur(18px);
+}
+
+html.dark .landing-header nav {
+  background: rgba(10, 24, 38, 0.68);
+  border-color: rgba(92, 117, 142, 0.34);
+  box-shadow:
+    0 20px 54px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .landing-page [class~="hover:bg-white"]:hover {
+  background-color: rgba(19, 43, 63, 0.9);
+}
+
+html.dark .landing-page [class~="hover:text-primary"]:hover {
+  color: var(--landing-green-main);
+}
+
+html.dark .landing-page .landing-login-button,
+html.dark .landing-page .landing-theme-toggle {
+  color: var(--landing-ink);
+  background: rgba(10, 24, 38, 0.72);
+  border-color: rgba(92, 117, 142, 0.34);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .landing-page .landing-login-button:hover,
+html.dark .landing-page .landing-theme-toggle:hover {
+  background: rgba(15, 34, 51, 0.92);
+  border-color: rgba(52, 211, 153, 0.34);
+  color: var(--landing-green-main);
+}
+
+html.dark .landing-page .landing-theme-toggle.theme-toggle {
+  color: var(--landing-ink);
+}
+
+html.dark .hero-eyebrow,
+html.dark .feature-strip,
+html.dark .how-card {
+  border-color: rgba(92, 117, 142, 0.28);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .feature-strip::before {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.16), rgba(255, 159, 46, 0.14));
+  filter: blur(28px);
+}
+
+html.dark .feature-strip-item:hover {
+  background: rgba(19, 43, 63, 0.8);
+  box-shadow: inset 0 0 0 1px rgba(92, 117, 142, 0.3);
+}
+
+html.dark .how-card:hover {
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .balance-panel {
+  border-color: rgba(255, 159, 46, 0.34);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 159, 46, 0.2), transparent 30%),
+    linear-gradient(135deg, rgba(80, 45, 12, 0.92), rgba(163, 92, 22, 0.7) 46%, rgba(15, 34, 51, 0.96) 100%);
+  box-shadow:
+    0 30px 72px rgba(0, 0, 0, 0.28),
+    0 16px 38px rgba(255, 159, 46, 0.12);
+}
+
+html.dark .balance-panel::before {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.dark .balance-row {
+  background: rgba(10, 24, 38, 0.78);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .balance-row:hover {
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
+}
+
+html.dark .hero-expense-card {
+  background: rgba(10, 24, 38, 0.82);
+  border-color: rgba(255, 159, 46, 0.18);
+  box-shadow:
+    0 -14px 34px rgba(0, 0, 0, 0.2),
+    0 22px 48px rgba(0, 0, 0, 0.28),
+    0 10px 28px rgba(16, 185, 129, 0.1);
+}
+
+html.dark .hero-mockup-stage::before {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.08) 0 26%, transparent 58%),
+    radial-gradient(circle, rgba(16, 185, 129, 0.22) 0 58%, rgba(16, 185, 129, 0.08) 59% 100%);
+  border-color: rgba(16, 185, 129, 0.22);
+  box-shadow:
+    0 38px 104px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html.dark .hero-mockup-stage::after {
+  background:
+    radial-gradient(circle at 59% 50%, transparent 0 87.4%, rgba(16, 185, 129, 0.38) 87.8% 92.8%, transparent 93.6% 100%),
+    radial-gradient(circle, rgba(255, 255, 255, 0.08) 0 24%, transparent 60%),
+    radial-gradient(circle, rgba(16, 185, 129, 0.2) 0 62%, rgba(16, 185, 129, 0.08) 63% 100%);
+  border-color: rgba(16, 185, 129, 0.2);
+  box-shadow:
+    0 26px 74px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html.dark .hero-phone-screen {
+  background: #081722;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+html.dark .landing-final-cta {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 159, 46, 0.22), transparent 28%),
+    linear-gradient(135deg, rgba(5, 98, 79, 0.98), rgba(7, 150, 110, 0.94) 56%, rgba(8, 24, 38, 0.98)),
+    #066a53;
+  box-shadow:
+    0 28px 78px rgba(0, 0, 0, 0.28),
+    0 10px 28px rgba(16, 185, 129, 0.12);
+}
+
+html.dark .landing-final-cta .bg-white {
+  background-color: rgba(255, 255, 255, 0.92);
+}
+
+/* Create group wizard dark mode polish */
+html.dark .create-group-wizard-page .card-surface,
+html.dark .create-group-wizard-page .panel-surface {
+  background:
+    linear-gradient(180deg, rgba(15, 34, 51, 0.96), rgba(10, 24, 38, 0.94));
+  border-color: rgb(var(--color-border) / 0.92);
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html.dark .create-group-wizard-page .create-group-stepper .theme-toggle {
+  background: rgba(10, 24, 38, 0.84);
+}
+
+html.dark .create-group-wizard-page .create-group-upload-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+html.dark .create-group-wizard-page .text-muted {
+  color: rgb(var(--color-muted));
+}
+

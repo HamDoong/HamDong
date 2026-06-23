@@ -64,7 +64,7 @@ function JoinByInviteCard({ onOpenInvite }: { onOpenInvite: (tokenOrLink: string
         onKeyDown={(event) => {
           if (event.key === 'Enter') handleSubmit();
         }}
-        placeholder="https://.../invite/token"
+        placeholder="لینک دعوت را اینجا وارد کن"
         className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
       />
 

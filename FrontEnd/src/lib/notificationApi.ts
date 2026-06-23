@@ -1,4 +1,4 @@
-import { apiRequest, isApiError } from './api';
+import { apiRequest } from './api';
 
 export type NotificationMessageStatus =
   | 'PENDING'
@@ -37,20 +37,8 @@ export interface BackendNotificationMessage {
   content?: string;
   rendered_message?: string;
   template_context?: string | Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-  data?: Record<string, unknown>;
-}
-
-export interface SendTestSmsInput {
-  phone_number: string;
-  message: string;
-}
-
-export interface SendTestSmsResponse {
-  status?: string;
-  provider?: string;
-  message_id?: string;
-  message?: string;
+  metadata?: string | Record<string, unknown>;
+  data?: string | Record<string, unknown>;
 }
 
 interface PaginatedResponse<T> {
@@ -59,6 +47,13 @@ interface PaginatedResponse<T> {
   previous?: string | null;
   results?: T[];
   data?: T[];
+}
+
+interface UnreadCountResponse {
+  count?: number;
+  unread_count?: number;
+  unread?: number;
+  pending_count?: number;
 }
 
 export interface NotificationMessagesParams {
@@ -77,8 +72,18 @@ function getLimit(params: NotificationMessagesParams = {}) {
   return Math.min(Math.max(params.limit || 100, 1), 100);
 }
 
-function shouldFallbackToDebugMessages(error: unknown) {
-  return isApiError(error) && [404, 405, 502, 503, 504].includes(error.status);
+function toJsonString(value: unknown) {
+  if (!value) return '';
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '';
+  }
 }
 
 function getSearchHaystack(item: BackendNotificationMessage) {
@@ -92,20 +97,14 @@ function getSearchHaystack(item: BackendNotificationMessage) {
     item.recipient,
     item.template_code,
     item.status,
-    item.provider,
-    item.provider_message_id,
-    item.error_code,
-    item.error_message,
     item.message,
     item.body,
     item.text,
     item.content,
     item.rendered_message,
-    typeof item.template_context === 'string'
-      ? item.template_context
-      : JSON.stringify(item.template_context || ''),
-    JSON.stringify(item.metadata || ''),
-    JSON.stringify(item.data || ''),
+    toJsonString(item.template_context),
+    toJsonString(item.metadata),
+    toJsonString(item.data),
   ]
     .filter(Boolean)
     .join(' ')
@@ -139,48 +138,146 @@ function filterClientSide(
   });
 }
 
+function getDateScore(item: BackendNotificationMessage) {
+  return new Date(item.sent_at || item.last_attempt_at || item.created_at || 0).getTime();
+}
+
+function buildMessageKey(item: BackendNotificationMessage) {
+  return [
+    item.id,
+    item.channel,
+    item.notification_type,
+    item.message_type,
+    item.title,
+    item.recipient,
+    item.recipient_masked,
+    item.template_code,
+    item.created_at,
+    item.sent_at,
+    item.message,
+    item.body,
+    item.text,
+    item.content,
+    item.rendered_message,
+  ]
+    .filter(Boolean)
+    .join('|');
+}
+
+function mergeNotificationItems(items: BackendNotificationMessage[]) {
+  const seen = new Map<string, BackendNotificationMessage>();
+
+  for (const item of items) {
+    const key = buildMessageKey(item);
+    const existing = seen.get(key);
+
+    if (!existing) {
+      seen.set(key, item);
+      continue;
+    }
+
+    seen.set(key, {
+      ...existing,
+      ...item,
+      template_context: item.template_context || existing.template_context,
+      metadata: item.metadata || existing.metadata,
+      data: item.data || existing.data,
+      message: item.message || existing.message,
+      body: item.body || existing.body,
+      text: item.text || existing.text,
+      content: item.content || existing.content,
+      rendered_message: item.rendered_message || existing.rendered_message,
+      recipient_masked: item.recipient_masked || existing.recipient_masked,
+      recipient: item.recipient || existing.recipient,
+      status: item.status || existing.status,
+      sent_at: item.sent_at || existing.sent_at,
+      created_at: item.created_at || existing.created_at,
+    });
+  }
+
+  return Array.from(seen.values()).sort((left, right) => getDateScore(right) - getDateScore(left));
+}
+
+async function fetchNotificationsFromPath(path: string) {
+  return apiRequest<BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>>(path);
+}
+
 export async function getNotificationMessages(
   params: NotificationMessagesParams = {},
 ) {
   const limit = getLimit(params);
-  let data: BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>;
+  const endpoints = [
+    `/notifications/messages/?limit=${limit}`,
+    `/notifications/?limit=${limit}`,
+  ];
 
-  try {
-    data = await apiRequest<
-      BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>
-    >(`/notifications/?limit=${limit}`);
-  } catch (error) {
-    if (!shouldFallbackToDebugMessages(error)) {
-      throw error;
-    }
+  const settled = await Promise.allSettled(endpoints.map((path) => fetchNotificationsFromPath(path)));
+  const successfulResults = settled
+    .filter((result): result is PromiseFulfilledResult<BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>> => result.status === 'fulfilled')
+    .flatMap((result) => unwrapList(result.value));
 
-    data = await apiRequest<
-      BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>
-    >(`/notifications/messages/?limit=${limit}`);
+  if (!successfulResults.length) {
+    const rejected = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    throw rejected?.reason ?? new Error('Unable to load notifications');
   }
 
-  return filterClientSide(unwrapList(data), params).slice(0, limit);
+  return filterClientSide(mergeNotificationItems(successfulResults), params).slice(0, limit);
+}
+
+
+export async function markNotificationMessageAsRead(notificationId: string) {
+  const normalizedId = String(notificationId || '').trim();
+
+  if (!normalizedId) {
+    throw new Error('Notification id is required');
+  }
+
+  const attempts = [
+    {
+      path: `/notifications/${normalizedId}/read/`,
+      options: {
+        method: 'POST',
+      },
+    },
+    {
+      path: `/notifications/${normalizedId}/`,
+      options: {
+        method: 'PATCH',
+        body: JSON.stringify({ is_read: true }),
+      },
+    },
+  ] as const;
+
+  let lastError: unknown;
+
+  for (const attempt of attempts) {
+    try {
+      return await apiRequest(attempt.path, attempt.options);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error('Unable to mark notification as read');
 }
 
 export async function getPendingNotificationCount() {
   try {
-    const messages = await getNotificationMessages();
-    return messages.filter((item) => {
-      const status = (item.status || '').toUpperCase();
-      return status === 'PENDING' || status === 'FAILED';
-    }).length;
+    const unread = await apiRequest<UnreadCountResponse>('/notifications/unread-count/');
+    const count = Number(unread.unread_count ?? unread.count ?? unread.unread ?? unread.pending_count);
+
+    if (Number.isFinite(count) && count >= 0) {
+      return count;
+    }
+  } catch (error) {
+    console.warn('Unread notification count endpoint unavailable, falling back to messages list.', error);
+  }
+
+  try {
+    const messages = await getNotificationMessages({ limit: 100 });
+    return messages.filter((item) => item.is_read !== true && !item.read_at).length;
   } catch (error) {
     console.warn('Failed to fetch notification count', error);
     return 0;
   }
-}
-
-export async function sendTestSms(input: SendTestSmsInput) {
-  return apiRequest<SendTestSmsResponse>('/notifications/sms/test/', {
-    method: 'POST',
-    body: JSON.stringify({
-      phone_number: input.phone_number.trim(),
-      message: input.message.trim(),
-    }),
-  });
 }

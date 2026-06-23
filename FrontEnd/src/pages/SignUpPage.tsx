@@ -8,6 +8,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { isApiError } from '../lib/api';
+import { getFriendlyApiErrorMessage } from '../lib/userMessages';
 import {
   requestLoginOtp,
   setInitialPassword,
@@ -22,6 +23,7 @@ import {
   normalizeLocalizedDigits,
   otpDigitOnlyPattern,
 } from './LoginPage';
+import { ThemeToggle } from '../components/theme/ThemeToggle';
 import './LoginPage.css';
 
 type SignUpPageProps = {
@@ -36,30 +38,32 @@ const artNamePattern = /^[\w\-\u0600-\u06FF]{3,32}$/u;
 function getSignUpErrorMessage(error: unknown) {
   if (isApiError(error)) {
     const body = error.body as {
-      error?: { code?: string; message?: string; details?: Record<string, unknown> };
-      detail?: string;
+      error?: { code?: string; details?: Record<string, unknown> };
     };
     const code = body?.error?.code;
 
-    if (error.status === 404) return 'مسیر ثبت‌نام در API پیدا نشد. تنظیمات /api/v1 یا API Gateway را بررسی کنید.';
-    if ([502, 503, 504].includes(error.status)) return 'سرویس هویت در دسترس نیست. وضعیت API Gateway و identity-service را بررسی کنید.';
+    if (code === 'INVALID_EMAIL') return 'ایمیل را درست وارد کن.';
+    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل را درست وارد کن.';
 
-    if (code === 'INVALID_EMAIL') return 'ایمیل معتبر نیست.';
-    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل معتبر نیست.';
-    if (code === 'INVALID_OTP') return 'کد تایید اشتباه است.';
-    if (code === 'OTP_EXPIRED') return 'کد تایید منقضی شده است.';
-    if (code === 'OTP_IN_COOLDOWN') return 'برای دریافت کد جدید کمی صبر کنید.';
-    if (code === 'OTP_RATE_LIMITED') return 'تعداد درخواست‌ها زیاد است. کمی بعد دوباره تلاش کنید.';
-    if (code === 'ART_NAME_ALREADY_EXISTS') return 'این نام هنری قبلاً انتخاب شده است.';
-    if (code === 'INVALID_ART_NAME') return 'نام هنری باید ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.';
-    if (code === 'PASSWORD_ALREADY_SET') return 'این ایمیل قبلاً حساب فعال دارد. از صفحه ورود استفاده کنید.';
-    if (code === 'WEAK_PASSWORD') return 'رمز عبور به اندازه کافی قوی نیست.';
-    if (code === 'PASSWORD_CONFIRMATION_MISMATCH') return 'رمز عبور و تکرار آن یکسان نیستند.';
-    if (body?.error?.message) return body.error.message;
-    if (body?.detail) return body.detail;
+    return getFriendlyApiErrorMessage(error, {
+      defaultMessage: 'ثبت‌نام انجام نشد. دوباره تلاش کن.',
+      invalidMessage: 'اطلاعات ثبت‌نام کامل یا درست نیست.',
+      unavailableMessage: 'فعلاً ثبت‌نام در دسترس نیست. کمی بعد دوباره تلاش کن.',
+      codeMap: {
+        INVALID_OTP: 'کد تایید اشتباه است.',
+        OTP_EXPIRED: 'زمان این کد تمام شده است. یک کد جدید بگیر.',
+        OTP_IN_COOLDOWN: 'برای دریافت کد جدید کمی صبر کن.',
+        OTP_RATE_LIMITED: 'درخواست‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
+        ART_NAME_ALREADY_EXISTS: 'این نام کاربری قبلاً انتخاب شده است.',
+        INVALID_ART_NAME: 'نام کاربری باید بین ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.',
+        PASSWORD_ALREADY_SET: 'برای این ایمیل قبلاً حساب ساخته شده است. از صفحه ورود استفاده کن.',
+        WEAK_PASSWORD: 'رمز عبور انتخابی خیلی ضعیف است.',
+        PASSWORD_CONFIRMATION_MISMATCH: 'رمز عبور و تکرار آن یکسان نیستند.',
+      },
+    });
   }
 
-  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.';
+  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کن.';
 }
 
 function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
@@ -73,7 +77,6 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
   const [repeatPasswordVisible, setRepeatPasswordVisible] = useState(false);
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
-  const [otpDebugCode, setOtpDebugCode] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [requestingOtp, setRequestingOtp] = useState(false);
@@ -130,9 +133,8 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
       const response = await requestLoginOtp(normalizedEmail);
       setOtpRequested(true);
       setOtpVerified(false);
-      setOtpDebugCode(response.debug_otp || '');
       setStep('otp');
-      setStatusMessage('کد تایید برای ایمیل ارسال شد.');
+      setStatusMessage('کد تایید به ایمیلت ارسال شد.')
     } catch (error) {
       setFormError(getSignUpErrorMessage(error));
     } finally {
@@ -246,8 +248,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                     setEmail(event.target.value);
                     setOtpRequested(false);
                     setOtpVerified(false);
-                    setOtpDebugCode('');
-                    resetFeedback();
+                      resetFeedback();
                   }}
                   placeholder="name@example.com"
                   aria-label="ایمیل"
@@ -389,10 +390,9 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
         </p>
       ) : null}
 
-      {statusMessage || otpDebugCode ? (
+      {statusMessage ? (
         <p className="login-form-message login-form-message-success">
           {statusMessage ? <span>{statusMessage}</span> : null}
-          {otpDebugCode ? <span>کد تست: {otpDebugCode}</span> : null}
         </p>
       ) : null}
 
@@ -428,6 +428,9 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 export function SignUpPage({ onLogin, onSignUp }: SignUpPageProps) {
   return (
     <main className="login-page" dir="rtl">
+      <div className="auth-page-theme-toggle">
+        <ThemeToggle className="h-11 w-11 rounded-full sm:h-12 sm:w-12" />
+      </div>
       <section className="login-main">
         <AuthShowcase />
 

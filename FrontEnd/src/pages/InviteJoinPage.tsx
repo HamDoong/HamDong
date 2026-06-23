@@ -5,6 +5,7 @@ import {
   useFeedback,
 } from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
+import { humanizeMachineLabel } from '../lib/userMessages';
 import {
   acceptInvite,
   extractInviteToken,
@@ -41,7 +42,7 @@ function getInviteStatusLabel(status?: string) {
   if (status === 'EXPIRED') return 'منقضی‌شده';
   if (status === 'REVOKED') return 'لغوشده';
 
-  return status;
+  return humanizeMachineLabel(status, 'فعال');
 }
 
 function getBackendErrorCode(error: unknown) {
