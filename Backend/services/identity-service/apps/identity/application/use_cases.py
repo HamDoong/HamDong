@@ -10,6 +10,7 @@ from django.db import transaction
 from apps.identity.application.otp_service import OtpService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
+from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.domain.events import PasswordChanged, SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
 from apps.identity.domain.models import User
 from apps.identity.domain.rules import ArtNameRule, EmailRule
@@ -94,7 +95,14 @@ class VerifyOtpUseCase:
         if not success:
             return False, error_code, None
 
-        user, is_created = self.user_service.get_or_create(email)
+        try:
+            user, is_created = self.user_service.get_or_create(email)
+        except ValueError as exc:
+            if str(exc) == "ACCOUNT_DEACTIVATED":
+                return False, "ACCOUNT_DEACTIVATED", None
+            raise
+        if not user.is_active:
+            return False, "ACCOUNT_DEACTIVATED", None
         user = self.user_service.mark_email_verified(user)
         user = self.user_service.update_last_login(user)
 
@@ -239,6 +247,16 @@ class PasswordLoginUseCase:
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
         return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
+
+
+
+
+class DeactivateAccountUseCase:
+    def __init__(self):
+        self.bank_card_service = BankCardService()
+
+    def execute(self, user: User, *, current_password: str | None = None, reason: str | None = None) -> tuple[str, User]:
+        return self.bank_card_service.deactivate_account(user, current_password=current_password, reason=reason)
 
 
 class ChangePasswordUseCase:

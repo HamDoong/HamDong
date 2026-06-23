@@ -21,6 +21,7 @@ from apps.settlements.api.views import (
     RejectSettlementView,
     RejectPlanItemView,
     ReportPlanItemPaidView,
+    SettlementPlanItemPaymentOptionsView,
 )
 
 urlpatterns = [
@@ -75,6 +76,12 @@ urlpatterns = [
         "settlement-plans/<uuid:plan_id>/cancel/",
         CancelSettlementPlanView.as_view(),
         name="cancel_settlement_plan",
+    ),
+
+    path(
+        "settlement-plan-items/<uuid:item_id>/payment-options/",
+        SettlementPlanItemPaymentOptionsView.as_view(),
+        name="settlement_plan_item_payment_options",
     ),
     path(
         "settlement-plan-items/<uuid:item_id>/report-paid/",

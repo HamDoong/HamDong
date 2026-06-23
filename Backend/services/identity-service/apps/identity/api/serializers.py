@@ -221,3 +221,83 @@ class UserDetailSerializer(serializers.Serializer):
     role = serializers.CharField()
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
+
+
+
+class UserBankCardSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    masked_card_number = serializers.CharField(read_only=True)
+    card_number_last4 = serializers.CharField(read_only=True)
+    holder_name = serializers.CharField()
+    bank_name = serializers.CharField(allow_null=True, allow_blank=True, required=False)
+    is_default = serializers.BooleanField(required=False, default=False)
+    is_active = serializers.BooleanField(required=False, default=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+
+class CreateUserBankCardSerializer(serializers.Serializer):
+    card_number = serializers.CharField(required=True)
+    holder_name = serializers.CharField(required=True)
+    bank_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    is_default = serializers.BooleanField(required=False, default=False)
+
+
+class UpdateUserBankCardSerializer(serializers.Serializer):
+    holder_name = serializers.CharField(required=False)
+    bank_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    is_default = serializers.BooleanField(required=False)
+    is_active = serializers.BooleanField(required=False)
+    card_number = serializers.CharField(required=False)
+
+    def validate(self, attrs):
+        immutable = {"card_number_hash", "encrypted_card_number", "card_number_last4", "user_id", "created_at", "id"}
+        unexpected = immutable.intersection(self.initial_data.keys())
+        if unexpected:
+            raise serializers.ValidationError({name: "This field may not be updated." for name in unexpected})
+        return attrs
+
+
+class UserBankCardListResponseSerializer(serializers.Serializer):
+    items = UserBankCardSerializer(many=True)
+
+
+class BulkUserBankCardItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField(required=False)
+    client_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    card_number = serializers.CharField(required=False)
+    holder_name = serializers.CharField(required=False)
+    bank_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    is_default = serializers.BooleanField(required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class BulkUserBankCardSaveSerializer(serializers.Serializer):
+    cards = BulkUserBankCardItemSerializer(many=True)
+    deleted_card_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
+
+
+class BulkUserBankCardSaveResponseSerializer(serializers.Serializer):
+    items = serializers.ListField(child=serializers.DictField())
+    deleted_card_ids = serializers.ListField(child=serializers.UUIDField())
+
+
+class DeactivateAccountSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=False, allow_blank=False)
+    reason = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=500)
+
+
+class DeactivateAccountResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    message = serializers.CharField()
+    deactivated_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class InternalPaymentContextBankCardsRequestSerializer(serializers.Serializer):
+    owner_user_id = serializers.UUIDField(required=True)
+    card_ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True)

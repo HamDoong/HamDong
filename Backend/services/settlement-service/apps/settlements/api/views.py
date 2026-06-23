@@ -27,6 +27,7 @@ from apps.settlements.api.serializers import (
     SettlementPlanGenerateSerializer,
     SettlementPlanRejectItemSerializer,
     SettlementPlanReportPaidSerializer,
+    SettlementPaymentOptionsResponseSerializer,
     SettlementRejectSerializer,
 )
 from datetime import datetime
@@ -55,6 +56,7 @@ from apps.settlements.application.settlement_plan_use_cases import (
     ConfirmPlanItemUseCase,
     GenerateSettlementPlanUseCase,
     GetLatestSettlementPlanUseCase,
+    GetPlanItemPaymentOptionsUseCase,
     RejectPlanItemUseCase,
     ReportPlanItemPaidUseCase,
 )
@@ -338,6 +340,24 @@ class CancelSettlementPlanView(APIView):
         return Response({"message": "Settlement plan cancelled successfully."})
 
 
+
+
+class SettlementPlanItemPaymentOptionsView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Settlements"],
+        responses={200: SettlementPaymentOptionsResponseSerializer},
+    )
+    def get(self, request, item_id, *args, **kwargs):
+        try:
+            payload = GetPlanItemPaymentOptionsUseCase().execute(request.user, item_id)
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response(payload)
+
+
 class ReportPlanItemPaidView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -351,7 +371,7 @@ class ReportPlanItemPaidView(APIView):
         serializer = SettlementPlanReportPaidSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            _, settlement = ReportPlanItemPaidUseCase().execute(
+            item, settlement = ReportPlanItemPaidUseCase().execute(
                 request.user, item_id, serializer.validated_data
             )
         except SettlementServiceError as exc:
@@ -360,6 +380,23 @@ class ReportPlanItemPaidView(APIView):
             {
                 "message": "Payment report submitted successfully.",
                 "manual_settlement_id": str(settlement.id),
+                "settlement_item_id": str(item.id),
+                "status": item.status,
+                "payment_method": settlement.payment_method,
+                "paid_to_bank_card": (
+                    {
+                        "id": str(settlement.paid_to_bank_card_id),
+                        "masked_card_number": settlement.paid_to_bank_card_masked_number,
+                        "card_number_last4": settlement.paid_to_bank_card_last4,
+                        "bank_name": settlement.paid_to_bank_card_bank_name,
+                        "holder_name": settlement.paid_to_bank_card_holder_name,
+                    }
+                    if settlement.paid_to_bank_card_id
+                    else None
+                ),
+                "amount_minor": settlement.amount_minor,
+                "currency": settlement.currency,
+                "reported_at": settlement.paid_at or settlement.created_at,
             }
         )
 

@@ -149,7 +149,7 @@ class TokenService:
             return None
 
         user = User.objects.filter(id=payload.get("sub"), deleted_at__isnull=True).first()
-        if not user:
+        if not user or not user.is_active:
             return None
 
         token_hash = RefreshTokenRepository.hash_token(refresh_token)

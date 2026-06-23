@@ -125,6 +125,13 @@ class SettlementPlanReportPaidSerializer(serializers.Serializer):
     description = serializers.CharField(
         required=False, allow_blank=True, allow_null=True
     )
+    payment_method = serializers.CharField(required=False, allow_blank=False)
+    paid_to_bank_card_id = serializers.UUIDField(required=False, allow_null=True)
+    amount_minor = serializers.IntegerField(required=False)
+    paid_at = serializers.DateTimeField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=500)
+    tracking_code = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=64)
+    receipt_file_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class SettlementPlanRejectItemSerializer(serializers.Serializer):
@@ -134,6 +141,13 @@ class SettlementPlanRejectItemSerializer(serializers.Serializer):
 class MessageWithManualSettlementSerializer(serializers.Serializer):
     message = serializers.CharField()
     manual_settlement_id = serializers.UUIDField()
+    settlement_item_id = serializers.UUIDField(required=False)
+    status = serializers.CharField(required=False)
+    payment_method = serializers.CharField(required=False, allow_null=True)
+    paid_to_bank_card = serializers.DictField(required=False)
+    amount_minor = serializers.IntegerField(required=False)
+    currency = serializers.CharField(required=False)
+    reported_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class ReminderSettingsSerializer(serializers.Serializer):
@@ -204,3 +218,27 @@ class ManualReminderSendResponseSerializer(serializers.Serializer):
     reminder_id = serializers.UUIDField()
     status = serializers.CharField()
     channels = serializers.ListField(child=serializers.CharField())
+
+
+
+class SettlementPaymentOptionCardSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    type = serializers.CharField()
+    card_number = serializers.CharField(required=False, allow_null=True)
+    masked_card_number = serializers.CharField()
+    card_number_last4 = serializers.CharField()
+    bank_name = serializers.CharField(allow_null=True)
+    holder_name = serializers.CharField()
+    is_default = serializers.BooleanField()
+
+
+class SettlementPaymentOptionsResponseSerializer(serializers.Serializer):
+    settlement_item_id = serializers.UUIDField()
+    group = serializers.DictField(required=False)
+    payer = serializers.DictField(required=False)
+    payee = serializers.DictField(required=False)
+    amount_minor = serializers.IntegerField()
+    currency = serializers.CharField()
+    status = serializers.CharField()
+    payment_options = SettlementPaymentOptionCardSerializer(many=True)
+    message = serializers.CharField(required=False)

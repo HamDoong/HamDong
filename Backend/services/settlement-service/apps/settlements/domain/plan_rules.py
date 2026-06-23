@@ -54,6 +54,24 @@ class SettlementPlanPermissionDeniedError(SettlementPlanError):
     status_code = 403
 
 
+class SettlementNotPayableError(SettlementPlanError):
+    code = "SETTLEMENT_NOT_PAYABLE"
+    message = "This settlement is not payable in its current status."
+    status_code = 409
+
+
+class InvalidPaymentMethodError(SettlementPlanError):
+    code = "INVALID_PAYMENT_METHOD"
+    message = "The provided payment method is invalid."
+    status_code = 400
+
+
+class InvalidBankCardSelectionError(SettlementPlanError):
+    code = "INVALID_BANK_CARD_SELECTION"
+    message = "The selected bank card is invalid for this settlement."
+    status_code = 400
+
+
 def ensure_active_group(group):
     if not group:
         raise GroupNotFoundError()

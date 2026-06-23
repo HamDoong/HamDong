@@ -23,8 +23,11 @@ from apps.settlements.domain.models import (
     SettlementPlanStatusChoices,
 )
 from apps.settlements.domain.plan_rules import (
+    InvalidBankCardSelectionError,
+    InvalidPaymentMethodError,
     InvalidPlanItemActionError,
     NoBalancesFoundError,
+    SettlementNotPayableError,
     SettlementPlanAlreadyActiveError,
     SettlementPlanNotFoundError,
     ensure_active_group,
@@ -34,8 +37,10 @@ from apps.settlements.domain.plan_rules import (
     ensure_plan_member,
     ensure_plan_status,
 )
+from apps.settlements.infrastructure.clients import IdentityBankCardClient
 from apps.settlements.infrastructure.publishers import RabbitMQPublisher
 from apps.settlements.infrastructure.repositories import (
+    BankCardProjectionRepository,
     GroupBalanceSnapshotRepository,
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
@@ -48,12 +53,19 @@ from apps.settlements.infrastructure.repositories import (
 
 
 class SettlementPlanService:
-    def __init__(self, publisher=None, balance_service=None, settlement_service=None):
+    def __init__(
+        self,
+        publisher=None,
+        balance_service=None,
+        settlement_service=None,
+        bank_card_client=None,
+    ):
         self.publisher = publisher or RabbitMQPublisher()
         self.balance_service = balance_service or BalanceService()
         self.settlement_service = settlement_service or SettlementService(
             publisher=self.publisher, balance_service=self.balance_service
         )
+        self.bank_card_client = bank_card_client or IdentityBankCardClient()
 
     def _publish(self, event, routing_key):
         self.publisher.publish(event.event_type, event.data, routing_key)
@@ -87,6 +99,53 @@ class SettlementPlanService:
             or " ".join(part for part in [user.first_name, user.last_name] if part)
             or None
         )
+
+    def _user_actor_payload(self, user_id):
+        return {
+            "user_id": str(user_id),
+            "art_name": self._serialize_user_art_name(user_id) or "عضو گروه",
+        }
+
+    def _item_payment_options_payload(self, item, plan, payment_options, message=None):
+        payload = {
+            "settlement_item_id": str(item.id),
+            "group": {"id": str(plan.group_id), "title": plan.group.title if hasattr(plan, "group") and plan.group else None},
+            "payer": self._user_actor_payload(item.payer_user_id),
+            "payee": self._user_actor_payload(item.receiver_user_id),
+            "amount_minor": item.amount_minor,
+            "currency": item.currency,
+            "status": item.status,
+            "payment_options": payment_options,
+        }
+        if message:
+            payload["message"] = message
+        return payload
+
+    def _resolve_full_card_numbers(self, owner_user_id, projection_cards):
+        if not projection_cards:
+            return []
+        resolved_cards = {
+            str(card.get("id")): card
+            for card in self.bank_card_client.resolve_payment_context_cards(
+                owner_user_id, [card.card_id for card in projection_cards]
+            )
+        }
+        options = []
+        for projection_card in projection_cards:
+            resolved = resolved_cards.get(str(projection_card.card_id), {})
+            options.append(
+                {
+                    "id": str(projection_card.card_id),
+                    "type": "BANK_CARD",
+                    "card_number": resolved.get("card_number"),
+                    "masked_card_number": projection_card.masked_card_number,
+                    "card_number_last4": projection_card.card_number_last4,
+                    "bank_name": projection_card.bank_name,
+                    "holder_name": projection_card.holder_name,
+                    "is_default": projection_card.is_default,
+                }
+            )
+        return options
 
     def _plan_payload(self, plan, items):
         return {
@@ -293,7 +352,53 @@ class SettlementPlanService:
         return plan
 
     @transaction.atomic
-    def report_plan_item_paid(self, item_id, user_id, description=None):
+    def get_plan_item_payment_options(self, item_id, user_id):
+        item = SettlementPlanItemRepository.get(item_id)
+        if not item:
+            raise InvalidPlanItemActionError()
+        plan = SettlementPlanRepository.get(item.settlement_plan_id)
+        if not plan:
+            raise SettlementPlanNotFoundError()
+        group, _ = self._group_and_member(plan.group_id, user_id)
+        plan.group = group
+        if plan.status != SettlementPlanStatusChoices.ACTIVE:
+            raise SettlementNotPayableError()
+        ensure_plan_item_actor(item, user_id, "payer_user_id")
+        if item.status not in {
+            SettlementPlanItemStatusChoices.PENDING,
+            SettlementPlanItemStatusChoices.REJECTED,
+        }:
+            raise SettlementNotPayableError()
+        projection_cards = BankCardProjectionRepository.get_active_for_user(
+            item.receiver_user_id
+        )
+        if not projection_cards:
+            return self._item_payment_options_payload(
+                item,
+                plan,
+                [],
+                message="Payee has not added any active bank card.",
+            )
+        return self._item_payment_options_payload(
+            item,
+            plan,
+            self._resolve_full_card_numbers(item.receiver_user_id, projection_cards),
+        )
+
+    @transaction.atomic
+    def report_plan_item_paid(
+        self,
+        item_id,
+        user_id,
+        description=None,
+        payment_method=None,
+        paid_to_bank_card_id=None,
+        amount_minor=None,
+        paid_at=None,
+        note=None,
+        tracking_code=None,
+        receipt_file_id=None,
+    ):
         item = SettlementPlanItemRepository.get(item_id)
         if not item:
             raise InvalidPlanItemActionError()
@@ -301,22 +406,52 @@ class SettlementPlanService:
         if not plan:
             raise SettlementPlanNotFoundError()
         _, member = self._group_and_member(plan.group_id, user_id)
-        ensure_plan_status(plan, [SettlementPlanStatusChoices.ACTIVE])
-        ensure_plan_item_status(
-            item,
-            [
-                SettlementPlanItemStatusChoices.PENDING,
-                SettlementPlanItemStatusChoices.REJECTED,
-            ],
-        )
+        if plan.status != SettlementPlanStatusChoices.ACTIVE:
+            raise SettlementNotPayableError()
+        if item.status not in {
+            SettlementPlanItemStatusChoices.PENDING,
+            SettlementPlanItemStatusChoices.REJECTED,
+        }:
+            raise SettlementNotPayableError()
         ensure_plan_item_actor(item, user_id, "payer_user_id")
+        if amount_minor is not None and int(amount_minor) != int(item.amount_minor):
+            raise InvalidPlanItemActionError("Reported amount must match settlement amount.")
+        normalized_payment_method = payment_method or None
+        if normalized_payment_method and normalized_payment_method != "BANK_TRANSFER":
+            raise InvalidPaymentMethodError()
+        selected_card = None
+        if paid_to_bank_card_id:
+            selected_card = BankCardProjectionRepository.get_active(
+                item.receiver_user_id, paid_to_bank_card_id
+            )
+            if not selected_card:
+                raise InvalidBankCardSelectionError(
+                    "Selected bank card does not belong to the payee or is inactive."
+                )
+        clean_description = description.strip() if isinstance(description, str) and description.strip() else None
+        clean_note = note.strip() if isinstance(note, str) and note.strip() else None
+        if clean_note and len(clean_note) > 1000:
+            raise InvalidPlanItemActionError("Note is too long.")
+        clean_tracking_code = tracking_code.strip() if isinstance(tracking_code, str) and tracking_code.strip() else None
+        if clean_tracking_code and len(clean_tracking_code) > 64:
+            raise InvalidPlanItemActionError("Tracking code is too long.")
         settlement = ManualSettlementRepository.create_pending(
             group_id=plan.group_id,
             payer_user_id=item.payer_user_id,
             receiver_user_id=item.receiver_user_id,
             amount_minor=item.amount_minor,
             currency=item.currency,
-            description=description,
+            description=clean_description,
+            payment_method=normalized_payment_method,
+            paid_to_bank_card_id=getattr(selected_card, "card_id", None),
+            paid_to_bank_card_masked_number=getattr(selected_card, "masked_card_number", None),
+            paid_to_bank_card_last4=getattr(selected_card, "card_number_last4", None),
+            paid_to_bank_card_bank_name=getattr(selected_card, "bank_name", None),
+            paid_to_bank_card_holder_name=getattr(selected_card, "holder_name", None),
+            tracking_code=clean_tracking_code,
+            note=clean_note,
+            receipt_file_id=receipt_file_id,
+            paid_at=paid_at,
             created_by_user_id=user_id,
         )
         SettlementPlanItemRepository.mark_reported(item, settlement.id)

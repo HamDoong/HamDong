@@ -51,6 +51,11 @@ IDENTITY_JWKS_URL = env(
 IDENTITY_PUBLIC_KEY_PATH = env(
     "IDENTITY_PUBLIC_KEY_PATH", default="/app/keys/public.pem"
 )
+IDENTITY_SERVICE_URL = env(
+    "IDENTITY_SERVICE_URL",
+    default="http://identity-service:8000",
+)
+INTERNAL_SERVICE_TOKEN = env("INTERNAL_SERVICE_TOKEN", default="hamdong-internal-token")
 JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
 JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")

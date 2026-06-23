@@ -136,6 +136,26 @@ class UserProjection(models.Model):
         db_table = "settlement_user_projections"
 
 
+
+class BankCardProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    card_id = models.UUIDField(unique=True)
+    user_id = models.UUIDField(db_index=True)
+    holder_name = models.CharField(max_length=150)
+    bank_name = models.CharField(max_length=100, null=True, blank=True)
+    card_number_last4 = models.CharField(max_length=4)
+    masked_card_number = models.CharField(max_length=24)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "settlement_bankcardprojection"
+        indexes = [models.Index(fields=["user_id", "is_active"]), models.Index(fields=["user_id", "is_default"])]
+
+
+
 class GroupProjection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group_id = models.UUIDField(unique=True, db_index=True)
@@ -303,6 +323,16 @@ class ManualSettlement(models.Model):
         max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR
     )
     description = models.TextField(null=True, blank=True)
+    payment_method = models.CharField(max_length=32, null=True, blank=True)
+    paid_to_bank_card_id = models.UUIDField(null=True, blank=True)
+    paid_to_bank_card_masked_number = models.CharField(max_length=24, null=True, blank=True)
+    paid_to_bank_card_last4 = models.CharField(max_length=4, null=True, blank=True)
+    paid_to_bank_card_bank_name = models.CharField(max_length=100, null=True, blank=True)
+    paid_to_bank_card_holder_name = models.CharField(max_length=150, null=True, blank=True)
+    tracking_code = models.CharField(max_length=64, null=True, blank=True)
+    note = models.TextField(null=True, blank=True)
+    receipt_file_id = models.UUIDField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
         max_length=30,
         choices=ManualSettlementStatusChoices.choices,

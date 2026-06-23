@@ -117,6 +117,8 @@ class InviteCreateResponseSerializer(serializers.Serializer):
 class MemberSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     user_id = serializers.UUIDField()
+    art_name = serializers.CharField()
+    username = serializers.CharField()
     art_name_snapshot = serializers.CharField(allow_null=True)
     role = serializers.CharField()
     joined_at = serializers.DateTimeField()

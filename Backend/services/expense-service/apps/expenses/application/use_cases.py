@@ -22,6 +22,7 @@ from apps.expenses.domain.events import (
     expense_updated_event,
 )
 from apps.expenses.domain.models import Expense, GroupMemberProjection, GroupProjection
+from apps.expenses.infrastructure.clients import IdentityBankCardClient
 from apps.expenses.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 from apps.expenses.infrastructure.repositories import ExpenseRepository, ProjectionRepository
 
@@ -51,8 +52,9 @@ class ExpensePermissionError(PermissionError):
 class ExpenseService:
     """Application service for expense workflows."""
 
-    def __init__(self, publisher: RabbitMQPublisher | None = None):
+    def __init__(self, publisher: RabbitMQPublisher | None = None, bank_card_client: IdentityBankCardClient | None = None):
         self.publisher = publisher or RabbitMQPublisher()
+        self.bank_card_client = bank_card_client or IdentityBankCardClient()
 
     def create_expense(self, group_id: object, creator: Any, payload: dict[str, Any]) -> Expense:
         creator_user_id = self._request_user_id(creator)
@@ -101,6 +103,11 @@ class ExpenseService:
         )
         self._verify_totals(participants, total_amount_minor)
 
+        payment_option_rows = self._resolve_create_payment_options(
+            creator_user_id=creator_user_id,
+            payment_card_ids=payload.get("payment_card_ids"),
+        )
+
         with transaction.atomic():
             expense = ExpenseRepository.create_expense(
                 group_id=group.group_id,
@@ -127,10 +134,11 @@ class ExpenseService:
                 expense_date=payload.get("expense_date") or timezone.now(),
             )
             ExpenseRepository.add_participants(expense, participants)
+            ExpenseRepository.set_payment_options(expense, payment_option_rows)
 
         event = expense_created_event(expense, participants)
         self._publish(event)
-        return ExpenseRepository.get_by_id(expense.id) or expense
+        return self._hydrate_expense(ExpenseRepository.get_by_id(expense.id) or expense)
 
     def list_expenses(
         self,
@@ -143,7 +151,7 @@ class ExpenseService:
         requester_user_id = self._request_user_id(requester)
         group = self._require_active_group(group_id)
         self._require_active_member(group.group_id, requester_user_id, error_code="NOT_GROUP_MEMBER")
-        return ExpenseRepository.list_by_group(group.group_id, filters=filters, page=page, page_size=page_size)
+        return [self._hydrate_expense(expense) for expense in ExpenseRepository.list_by_group(group.group_id, filters=filters, page=page, page_size=page_size)]
 
     def get_expense(self, expense_id: object, requester: Any) -> Expense:
         requester_user_id = self._request_user_id(requester)
@@ -152,7 +160,7 @@ class ExpenseService:
             raise ExpenseServiceError("NOT_FOUND", "Expense not found.")
 
         self._require_active_member(expense.group_id, requester_user_id, error_code="NOT_GROUP_MEMBER")
-        return expense
+        return self._hydrate_expense(expense)
 
     def update_expense(self, expense_id: object, requester: Any, payload: dict[str, Any]) -> Expense:
         requester_user_id = self._request_user_id(requester)
@@ -244,6 +252,117 @@ class ExpenseService:
         event = expense_deleted_event(expense, deleted_by_user_id=requester_user_id)
         self._publish(event)
         return expense
+
+    def get_expense_payment_options(self, expense_id: object, requester: Any) -> dict[str, Any]:
+        requester_user_id = self._request_user_id(requester)
+        expense = ExpenseRepository.get_by_id(expense_id)
+        if not expense or expense.status == Expense.STATUS_DELETED:
+            raise ExpenseServiceError("NOT_FOUND", "Expense not found.")
+        if not self._can_view_payment_options(expense, requester_user_id):
+            raise ExpensePermissionError("NOT_ALLOWED", "You are not allowed to view expense payment options.")
+
+        local_options = ExpenseRepository.list_payment_options(expense)
+        full_cards = self.bank_card_client.resolve_payment_context_cards(
+            expense.created_by_user_id,
+            [option.bank_card_id for option in local_options],
+        )
+        cards_by_id = {str(card["id"]): card for card in full_cards}
+        return {
+            "expense_id": str(expense.id),
+            "payee": {
+                "user_id": str(expense.created_by_user_id),
+                "art_name": self._serialize_user_art_name(expense.created_by_user_id),
+            },
+            "payment_options": [
+                {
+                    "id": str(option.bank_card_id),
+                    "type": "BANK_CARD",
+                    "card_number": cards_by_id.get(str(option.bank_card_id), {}).get("card_number"),
+                    "masked_card_number": option.masked_card_number,
+                    "card_number_last4": option.card_number_last4,
+                    "bank_name": option.bank_name,
+                    "holder_name": option.holder_name,
+                    "is_default": option.is_default,
+                }
+                for option in local_options
+            ],
+        }
+
+    def replace_expense_payment_options(self, expense_id: object, requester: Any, payment_card_ids: list[object]) -> dict[str, Any]:
+        requester_user_id = self._request_user_id(requester)
+        expense = ExpenseRepository.get_by_id(expense_id)
+        if not expense or expense.status == Expense.STATUS_DELETED:
+            raise ExpenseServiceError("NOT_FOUND", "Expense not found.")
+        self._require_update_permission(expense, requester_user_id)
+        rows = self._build_payment_option_rows(expense.created_by_user_id, payment_card_ids, allow_default=False)
+        ExpenseRepository.set_payment_options(expense, rows)
+        refreshed = ExpenseRepository.get_by_id(expense.id) or expense
+        return {
+            "expense_id": str(refreshed.id),
+            "payment_options": [
+                {
+                    "id": str(option.bank_card_id),
+                    "masked_card_number": option.masked_card_number,
+                    "bank_name": option.bank_name,
+                    "holder_name": option.holder_name,
+                }
+                for option in ExpenseRepository.list_payment_options(refreshed)
+            ],
+        }
+
+    def _hydrate_expense(self, expense: Expense) -> Expense:
+        setattr(expense, "created_by_art_name", self._serialize_user_art_name(expense.created_by_user_id))
+        return expense
+
+    def _serialize_user_art_name(self, user_id: object) -> str | None:
+        user = ProjectionRepository.get_user(user_id)
+        if user and user.art_name:
+            return user.art_name
+        return None
+
+    def _resolve_create_payment_options(self, *, creator_user_id: str, payment_card_ids: list[object] | None) -> list[dict[str, Any]]:
+        if payment_card_ids is None:
+            default_card = ProjectionRepository.get_default_active_bank_card(creator_user_id)
+            if not default_card:
+                return []
+            return [self._payment_option_row(default_card)]
+        return self._build_payment_option_rows(creator_user_id, payment_card_ids, allow_default=False)
+
+    def _build_payment_option_rows(self, owner_user_id: object, payment_card_ids: list[object], *, allow_default: bool = False) -> list[dict[str, Any]]:
+        normalized_ids: list[str] = []
+        for card_id in payment_card_ids:
+            card_id_str = str(card_id)
+            if card_id_str not in normalized_ids:
+                normalized_ids.append(card_id_str)
+        if not normalized_ids:
+            return []
+        rows: list[dict[str, Any]] = []
+        for card_id in normalized_ids:
+            card = ProjectionRepository.get_active_bank_card(owner_user_id, card_id)
+            if not card:
+                raise ExpenseServiceError("INVALID_PAYMENT_CARD", "Only active cards owned by the expense creator can be selected.")
+            rows.append(self._payment_option_row(card))
+        return rows
+
+    def _payment_option_row(self, card: Any) -> dict[str, Any]:
+        return {
+            "bank_card_id": card.card_id,
+            "holder_name": card.holder_name,
+            "bank_name": card.bank_name,
+            "card_number_last4": card.card_number_last4,
+            "masked_card_number": card.masked_card_number,
+            "is_default": card.is_default,
+        }
+
+    def _can_view_payment_options(self, expense: Expense, requester_user_id: str) -> bool:
+        if str(expense.created_by_user_id) == str(requester_user_id):
+            return True
+        member = ProjectionRepository.get_active_member(expense.group_id, requester_user_id)
+        if not member:
+            return False
+        if member.role in (GroupMemberProjection.ROLE_OWNER, GroupMemberProjection.ROLE_ADMIN):
+            return True
+        return expense.participants.filter(user_id=requester_user_id).exists()
 
     def _request_user_id(self, requester: Any) -> str:
         user_id = getattr(requester, "sub", None) or getattr(requester, "id", None)

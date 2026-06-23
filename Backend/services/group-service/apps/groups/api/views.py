@@ -20,6 +20,7 @@ from apps.groups.api.serializers import (
     RestoreGroupSerializer,
     UpdateGroupSerializer,
 )
+from apps.groups.application.member_display import build_member_payload
 from apps.groups.application.use_cases import (
     ArchiveGroupUseCase,
     CreateGroupUseCase,
@@ -35,7 +36,7 @@ from apps.groups.application.use_cases import (
 )
 from apps.groups.domain.models import GroupMember
 from apps.groups.infrastructure.jwt_authentication import JWTAuthentication
-from apps.groups.infrastructure.repositories import GroupInviteRepository, GroupRepository
+from apps.groups.infrastructure.repositories import GroupInviteRepository, GroupRepository, UserProjectionRepository
 
 
 def _error_response(code: str, message: str, http_status: int) -> Response:
@@ -309,23 +310,17 @@ class MembersListView(APIView):
         if not GroupMember.objects.filter(group=group, user_id=request.user.sub, status="ACTIVE").exists():
             return _error_response("NOT_GROUP_MEMBER", "You are not an active member of this group.", status.HTTP_403_FORBIDDEN)
 
-        members = ListMembersUseCase().execute(group)
-        return Response(
-            MemberSerializer(
-                [
-                    {
-                        "id": member.id,
-                        "user_id": member.user_id,
-                        "art_name_snapshot": member.art_name_snapshot,
-                        "role": member.role,
-                        "joined_at": member.joined_at,
-                        "email": _mask_email(member.email),
-                    }
-                    for member in members
-                ],
-                many=True,
-            ).data
-        )
+        members = list(ListMembersUseCase().execute(group))
+        projection_map = UserProjectionRepository.get_map_by_identity_ids(member.user_id for member in members)
+        payload = [
+            build_member_payload(
+                member,
+                projection=projection_map.get(str(member.user_id)),
+                masked_email=_mask_email(member.email),
+            )
+            for member in members
+        ]
+        return Response(MemberSerializer(payload, many=True).data)
 
 
 class RemoveMemberView(APIView):

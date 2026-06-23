@@ -36,6 +36,7 @@ from apps.settlements.domain.models import (
     SettlementPlanItemStatusChoices,
     SettlementPlanStatusChoices,
     UserProjection,
+    BankCardProjection,
 )
 
 
@@ -83,6 +84,36 @@ class UserProjectionRepository:
         return UserProjection.objects.filter(
             identity_user_id=normalize_uuid(identity_user_id)
         ).first()
+
+
+class BankCardProjectionRepository:
+    @staticmethod
+    def upsert_from_event(**data):
+        card_id = normalize_uuid(data.get("card_id"))
+        user_id = normalize_uuid(data.get("user_id"))
+        if not card_id or not user_id:
+            return None
+        defaults = {
+            "user_id": user_id,
+            "holder_name": data.get("holder_name") or "",
+            "bank_name": data.get("bank_name"),
+            "card_number_last4": data.get("card_number_last4") or "",
+            "masked_card_number": data.get("masked_card_number") or "",
+            "is_default": data.get("is_default", False),
+            "is_active": data.get("is_active", True),
+        }
+        obj, _ = BankCardProjection.objects.update_or_create(card_id=card_id, defaults=defaults)
+        if obj.is_default:
+            BankCardProjection.objects.filter(user_id=user_id, is_active=True).exclude(card_id=card_id).update(is_default=False)
+        return obj
+
+    @staticmethod
+    def get_active_for_user(user_id):
+        return list(BankCardProjection.objects.filter(user_id=normalize_uuid(user_id), is_active=True).order_by("-is_default", "created_at"))
+
+    @staticmethod
+    def get_active(user_id, card_id):
+        return BankCardProjection.objects.filter(user_id=normalize_uuid(user_id), card_id=normalize_uuid(card_id), is_active=True).first()
 
 
 class GroupProjectionRepository:
@@ -480,6 +511,16 @@ class ManualSettlementRepository:
             amount_minor=int(data.get("amount_minor", 0)),
             currency=data.get("currency", CurrencyChoices.IRR),
             description=data.get("description"),
+            payment_method=data.get("payment_method"),
+            paid_to_bank_card_id=normalize_uuid(data.get("paid_to_bank_card_id")),
+            paid_to_bank_card_masked_number=data.get("paid_to_bank_card_masked_number"),
+            paid_to_bank_card_last4=data.get("paid_to_bank_card_last4"),
+            paid_to_bank_card_bank_name=data.get("paid_to_bank_card_bank_name"),
+            paid_to_bank_card_holder_name=data.get("paid_to_bank_card_holder_name"),
+            tracking_code=data.get("tracking_code"),
+            note=data.get("note"),
+            receipt_file_id=normalize_uuid(data.get("receipt_file_id")),
+            paid_at=data.get("paid_at"),
             status=ManualSettlementStatusChoices.PENDING_CONFIRMATION,
             created_by_user_id=normalize_uuid(
                 data.get("created_by_user_id") or data.get("payer_user_id")

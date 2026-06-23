@@ -58,6 +58,10 @@ class UserService:
     @staticmethod
     def get_or_create(email: str) -> tuple[User, bool]:
         normalized_email = EmailRule.normalize(email)
+        existing_any = UserRepository.get_any_by_email(normalized_email) if normalized_email else None
+        if existing_any and not existing_any.is_active:
+            raise ValueError("ACCOUNT_DEACTIVATED")
+
         user = UserRepository.get_by_email(normalized_email) if normalized_email else None
         if user:
             if not user.art_name:

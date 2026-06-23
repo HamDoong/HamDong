@@ -10,7 +10,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.identity.domain.models import OutboxMessage, OutboxMessageStatusChoices, RefreshToken, User
+from apps.identity.domain.models import OutboxMessage, OutboxMessageStatusChoices, RefreshToken, User, UserBankCard
 
 
 class UserRepository:
@@ -26,6 +26,10 @@ class UserRepository:
             email=email,
             deleted_at__isnull=True,
         ).first()
+
+    @staticmethod
+    def get_any_by_email(email: str) -> Optional[User]:
+        return User.objects.filter(email=email).first()
 
     @staticmethod
     def get_by_art_name(art_name: str) -> Optional[User]:
