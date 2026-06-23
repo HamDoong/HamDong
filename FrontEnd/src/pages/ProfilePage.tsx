@@ -12,6 +12,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Loader2,
   FileText,
   Laptop,
   Lock,
@@ -36,6 +37,7 @@ import {
   getCurrentUser,
   setPassword,
   updateCurrentUserProfile,
+  checkArtNameAvailability,
   type CurrentUser,
 } from '../lib/userApi';
 
@@ -252,6 +254,70 @@ function getPasswordStrength(value: string) {
   return { label: 'ضعیف', className: 'bg-rose-50 text-rose-600' };
 }
 
+const artNamePattern = /^[\w\-\u0600-\u06FF]{3,32}$/u;
+
+type ArtNameStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'error';
+
+function normalizeArtName(value: string) {
+  return value.trim();
+}
+
+function getArtNameValidationMessage(value: string) {
+  const normalized = normalizeArtName(value);
+
+  if (!normalized) {
+    return 'نام کاربری نمی‌تواند خالی باشد.';
+  }
+
+  if (!artNamePattern.test(normalized)) {
+    return 'نام کاربری باید بین ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.';
+  }
+
+  return '';
+}
+
+function getArtNameFeedback(status: ArtNameStatus, fallback = '') {
+  if (status === 'checking') {
+    return {
+      tone: 'neutral' as const,
+      message: 'در حال بررسی نام کاربری...',
+    };
+  }
+
+  if (status === 'available') {
+    return {
+      tone: 'success' as const,
+      message: fallback || 'این نام کاربری قابل استفاده است.',
+    };
+  }
+
+  if (status === 'taken') {
+    return {
+      tone: 'error' as const,
+      message: fallback || 'این نام کاربری قبلاً ثبت شده است.',
+    };
+  }
+
+  if (status === 'invalid') {
+    return {
+      tone: 'warning' as const,
+      message: fallback || 'نام کاربری باید بین ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.',
+    };
+  }
+
+  if (status === 'error') {
+    return {
+      tone: 'warning' as const,
+      message: fallback || 'بررسی نام کاربری انجام نشد. هنگام ذخیره دوباره بررسی می‌شود.',
+    };
+  }
+
+  return {
+    tone: 'neutral' as const,
+    message: fallback,
+  };
+}
+
 function FieldShell({
   label,
   icon: Icon,
@@ -305,6 +371,58 @@ function TextInput({
         className="h-12 min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300"
       />
     </FieldShell>
+  );
+}
+
+function ArtNameInput({
+  value,
+  onChange,
+  status,
+  message,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  status: ArtNameStatus;
+  message: string;
+  disabled?: boolean;
+}) {
+  const feedback = getArtNameFeedback(status, message);
+  const feedbackClassName =
+    feedback.tone === 'success'
+      ? 'text-emerald-600'
+      : feedback.tone === 'error'
+        ? 'text-rose-600'
+        : feedback.tone === 'warning'
+          ? 'text-amber-600'
+          : 'text-slate-500';
+
+  return (
+    <label className="block">
+      <span className="mb-2 block text-right text-sm font-black text-slate-700">نام کاربری</span>
+      <div className="flex min-h-12 w-full items-center gap-3 rounded-2xl border border-border bg-white px-4 text-slate-700 shadow-sm transition focus-within:border-emerald-500/50 focus-within:ring-4 focus-within:ring-emerald-500/10">
+        <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-slate-500" />
+        <input
+          dir="ltr"
+          type="text"
+          value={value}
+          disabled={disabled}
+          placeholder="username"
+          onChange={(event) => onChange(event.target.value)}
+          className="h-12 min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300"
+        />
+        {status === 'checking' ? (
+          <Loader2 className="h-4.5 w-4.5 shrink-0 animate-spin text-slate-400" />
+        ) : status === 'available' ? (
+          <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-emerald-600" />
+        ) : status === 'taken' || status === 'invalid' || status === 'error' ? (
+          <AlertCircle className="h-4.5 w-4.5 shrink-0 text-amber-600" />
+        ) : null}
+      </div>
+      {feedback.message ? (
+        <p className={`mt-2 text-right text-xs font-bold leading-6 ${feedbackClassName}`}>{feedback.message}</p>
+      ) : null}
+    </label>
   );
 }
 
@@ -585,7 +703,6 @@ function PersonalInfoPanel({
 }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [artName, setArtName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -596,11 +713,14 @@ function PersonalInfoPanel({
   const [message, setMessage] = useState('');
   const [messageTone, setMessageTone] = useState<MessageTone>('neutral');
   const [bankCards, setBankCards] = useStoredState<BankCardField[]>('hamdong.profile.bankCards', []);
+  const [artNameStatus, setArtNameStatus] = useState<ArtNameStatus>('idle');
+  const [artNameMessage, setArtNameMessage] = useState('');
+  const [artNameTouched, setArtNameTouched] = useState(false);
+  const currentArtName = normalizeArtName(user?.art_name || user?.username || '');
 
   useEffect(() => {
     setFirstName(user?.first_name || '');
     setLastName(user?.last_name || '');
-    setDisplayName(user?.display_name || '');
     setArtName(user?.art_name || user?.username || '');
     setPhoneNumber(user?.phone_number || user?.phone || '');
     setDateOfBirth(user?.date_of_birth || '');
@@ -608,11 +728,114 @@ function PersonalInfoPanel({
     setBio(user?.bio || '');
     setAvatarUrl(user?.avatar_url || '');
     setMessage('');
+    setArtNameTouched(false);
+    setArtNameStatus('idle');
+    setArtNameMessage('');
   }, [user]);
 
+  useEffect(() => {
+    const normalizedArtName = normalizeArtName(artName);
+
+    if (!artNameTouched) {
+      setArtNameStatus('idle');
+      setArtNameMessage('');
+      return;
+    }
+
+    if (!normalizedArtName) {
+      setArtNameStatus('invalid');
+      setArtNameMessage('نام کاربری را وارد کنید.');
+      return;
+    }
+
+    if (normalizedArtName === currentArtName) {
+      setArtNameStatus('idle');
+      setArtNameMessage('');
+      return;
+    }
+
+    const validationMessage = getArtNameValidationMessage(normalizedArtName);
+
+    if (validationMessage) {
+      setArtNameStatus('invalid');
+      setArtNameMessage(validationMessage);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setArtNameStatus('checking');
+        setArtNameMessage('در حال بررسی نام کاربری...');
+
+        const result = await checkArtNameAvailability(normalizedArtName, {
+          currentArtName,
+          signal: controller.signal,
+        });
+
+        if (result.unsupported) {
+          setArtNameStatus('idle');
+          setArtNameMessage('');
+          return;
+        }
+
+        if (result.available) {
+          setArtNameStatus('available');
+          setArtNameMessage('این نام کاربری آزاد است.');
+          return;
+        }
+
+        setArtNameStatus('taken');
+        setArtNameMessage(result.message || 'این نام کاربری قبلاً ثبت شده است.');
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        const code = getApiErrorCode(error);
+
+        if (code === 'ART_NAME_ALREADY_EXISTS') {
+          setArtNameStatus('taken');
+          setArtNameMessage('این نام کاربری قبلاً ثبت شده است.');
+          return;
+        }
+
+        if (code === 'INVALID_ART_NAME') {
+          setArtNameStatus('invalid');
+          setArtNameMessage('نام کاربری باید بین ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.');
+          return;
+        }
+
+        setArtNameStatus('error');
+        setArtNameMessage('اتصال برای بررسی نام کاربری برقرار نشد. هنگام ذخیره دوباره بررسی می‌کنیم.');
+      }
+    }, 300);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [artName, artNameTouched, currentArtName]);
+
   async function handleSaveProfile() {
-    if (!artName.trim()) {
-      setMessage('نام کاربری نمی‌تواند خالی باشد.');
+    const normalizedArtName = normalizeArtName(artName);
+    const artNameValidationMessage = getArtNameValidationMessage(normalizedArtName);
+
+    if (artNameValidationMessage) {
+      setMessage(artNameValidationMessage);
+      setMessageTone('error');
+      setArtNameTouched(true);
+      setArtNameStatus('invalid');
+      setArtNameMessage(artNameValidationMessage);
+      return;
+    }
+
+    if (artNameStatus === 'checking') {
+      setMessage('چند لحظه صبر کنید تا تکراری بودن نام کاربری بررسی شود.');
+      setMessageTone('error');
+      return;
+    }
+
+    if (artNameStatus === 'taken') {
+      setMessage(artNameMessage || 'این نام کاربری قبلاً ثبت شده است.');
       setMessageTone('error');
       return;
     }
@@ -625,8 +848,7 @@ function PersonalInfoPanel({
       const updatedUser = await updateCurrentUserProfile({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        display_name: displayName.trim(),
-        art_name: artName.trim(),
+        art_name: normalizedArtName,
         phone_number: phoneNumber.trim() || null,
         date_of_birth: dateOfBirth || null,
         city: city.trim() || null,
@@ -645,7 +867,6 @@ function PersonalInfoPanel({
         ART_NAME_ALREADY_EXISTS: 'این نام کاربری قبلا ثبت شده است.',
         PHONE_NUMBER_ALREADY_EXISTS: 'این شماره موبایل قبلا استفاده شده است.',
         INVALID_ART_NAME: 'فرمت نام کاربری معتبر نیست.',
-        INVALID_DISPLAY_NAME: 'نام نمایشی معتبر نیست.',
         INVALID_PHONE_NUMBER: 'شماره موبایل معتبر نیست.',
         INVALID_DATE_OF_BIRTH: 'تاریخ تولد معتبر نیست.',
         INVALID_CITY: 'شهر معتبر نیست.',
@@ -693,8 +914,17 @@ function PersonalInfoPanel({
       <div className="grid gap-5 md:grid-cols-2">
         <TextInput label="نام" value={firstName} icon={User} onChange={setFirstName} />
         <TextInput label="نام خانوادگی" value={lastName} icon={User} onChange={setLastName} />
-        <TextInput label="نام نمایشی" value={displayName} icon={User} onChange={setDisplayName} />
-        <TextInput label="نام کاربری" value={artName} icon={CheckCircle2} onChange={setArtName} dir="ltr" />
+        <ArtNameInput
+          value={artName}
+          onChange={(value) => {
+            setArtName(value);
+            setArtNameTouched(true);
+            setMessage('');
+          }}
+          status={artNameStatus}
+          message={artNameMessage}
+          disabled={saving}
+        />
         <TextInput label="شماره موبایل" value={phoneNumber} icon={Phone} onChange={setPhoneNumber} dir="ltr" />
         <TextInput label="تاریخ تولد" value={dateOfBirth} icon={Calendar} onChange={setDateOfBirth} type="date" dir="ltr" />
         <TextInput label="شهر / محل سکونت" value={city} icon={MapPin} onChange={setCity} />
@@ -814,22 +1044,6 @@ function QuickAccessCard({
             <span className="mt-1 block text-xs font-semibold leading-6 text-muted">دانلود داده‌های قابل نمایش صفحه</span>
           </span>
         </button>
-      </div>
-
-      <div className="my-7 h-px bg-border" />
-
-      <div className="text-right">
-        <h3 className="text-base font-black text-text">وضعیت حساب</h3>
-        <div className="mt-5 space-y-3 text-sm font-semibold text-slate-600">
-          <div className="flex items-center justify-between">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            اطلاعات حساب از سرور خوانده می‌شود
-          </div>
-          <div className="flex items-center justify-between">
-            <Database className="h-5 w-5 text-slate-500" />
-            تنظیمات این صفحه روی همین دستگاه ذخیره می‌شوند
-          </div>
-        </div>
       </div>
     </aside>
   );
@@ -1002,18 +1216,11 @@ function SecurityPanel({ user }: { user: CurrentUser | null }) {
         <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-slate-50 px-4 py-4">
           <Monitor className="h-6 w-6 text-slate-700" />
           <div className="min-w-0 text-right">
-            <div className="text-sm font-black text-slate-800">{browserName}</div>
+            <div className="text-sm font-black text-text">{browserName}</div>
             <div className="mt-1 text-xs font-semibold leading-6 text-muted">
               جزئیات دستگاه فعلی از مرورگر شما خوانده می‌شود.
             </div>
           </div>
-        </div>
-      </Panel>
-
-      <Panel title="عملیات حساس" icon={AlertCircle}>
-        <div className="space-y-3 text-right text-sm font-semibold leading-7 text-muted">
-          <p>تغییر رمز عبور با اطلاعات حساب شما انجام می‌شود.</p>
-          <p>خروج از سایر دستگاه‌ها و حذف حساب در این نسخه فعال نیست.</p>
         </div>
       </Panel>
     </div>
@@ -1123,13 +1330,13 @@ function VisibilityControl({
   const Icon = icon;
 
   return (
-    <div className="rounded-2xl border border-emerald-100 bg-gradient-to-l from-emerald-50/70 to-white p-4">
+    <div className="rounded-2xl border border-border bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
           <Icon className="h-5 w-5" />
         </span>
         <div className="min-w-0 text-right">
-          <div className="text-sm font-black text-slate-800">{label}</div>
+          <div className="text-sm font-black text-text">{label}</div>
           <p className="mt-1 text-xs font-semibold leading-6 text-muted">{description}</p>
         </div>
       </div>
@@ -1269,7 +1476,7 @@ function PrivacyPanel({
             <button
               type="button"
               onClick={() => setMessage('حذف حساب در این نسخه فعال نیست.')}
-              className="flex min-h-[76px] w-full items-center justify-between gap-4 rounded-2xl border border-red-100 bg-red-50/45 px-5 py-4 text-sm font-black text-red-600 transition hover:bg-red-50"
+              className="flex min-h-[76px] w-full items-center justify-between gap-4 rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-black text-rose-700 transition hover:bg-rose-100"
             >
               <Trash2 className="h-5 w-5" />
               حذف حساب کاربری
