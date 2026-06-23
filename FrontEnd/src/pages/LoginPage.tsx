@@ -18,9 +18,10 @@ import {
 import { isApiError } from '../lib/api';
 import { getFriendlyApiErrorMessage } from '../lib/userMessages';
 import {
+  isIncompleteSignupError,
   loginWithPassword,
   requestLoginOtp,
-  verifyLoginOtp,
+  verifyLoginOtpForExistingAccount,
 } from '../lib/authApi';
 import { ThemeToggle } from '../components/theme/ThemeToggle';
 import './LoginPage.css';
@@ -80,6 +81,7 @@ const localizedDigitMap: Record<string, string> = {
 };
 
 type LoginMode = 'password' | 'otp';
+type OtpLoginStep = 'email' | 'code';
 
 export function normalizeLocalizedDigits(value: string) {
   return value.replace(/[۰-۹٠-٩]/g, (digit) => localizedDigitMap[digit] || digit);
@@ -142,8 +144,10 @@ function BenefitList() {
   );
 }
 
+
 function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
   const [mode, setMode] = useState<LoginMode>('password');
+  const [otpStep, setOtpStep] = useState<OtpLoginStep>('email');
   const [modeHasChanged, setModeHasChanged] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [artName, setArtName] = useState('');
@@ -171,6 +175,19 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
       setMode(nextMode);
     }
 
+    if (nextMode === 'otp') {
+      setOtpStep('email');
+      setOtpRequested(false);
+      setOtpCode('');
+    }
+
+    resetFeedback();
+  }
+
+  function handleBackToOtpEmailStep() {
+    setOtpStep('email');
+    setOtpRequested(false);
+    setOtpCode('');
     resetFeedback();
   }
 
@@ -178,7 +195,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     const cleanArtName = artName.trim();
 
     if (!cleanArtName || !password) {
-      setErrorMessage('نام هنری و رمز عبور را وارد کنید.');
+      setErrorMessage('نام کاربری و رمز عبور را وارد کنید.');
       return;
     }
 
@@ -205,9 +222,10 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     resetFeedback();
 
     try {
-      const response = await requestLoginOtp(normalizedEmail);
+      await requestLoginOtp(normalizedEmail);
       setOtpRequested(true);
-      setStatusMessage('کد تایید به ایمیلت ارسال شد.')
+      setOtpStep('code');
+      setStatusMessage('کد تایید به ایمیلت ارسال شد.');
     } catch (error) {
       setErrorMessage(getLoginErrorMessage(error));
     } finally {
@@ -230,13 +248,17 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     resetFeedback();
 
     try {
-      await verifyLoginOtp({
+      await verifyLoginOtpForExistingAccount({
         email: normalizedEmail,
         code: normalizedOtpCode,
       });
       onLogin();
     } catch (error) {
-      setErrorMessage(getLoginErrorMessage(error));
+      if (isIncompleteSignupError(error)) {
+        setErrorMessage('برای این ایمیل هنوز حسابی کامل نشده است. اول ثبت‌نام را کامل کنید.');
+      } else {
+        setErrorMessage(getLoginErrorMessage(error));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -249,6 +271,8 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
         event.preventDefault();
         if (mode === 'password') {
           void handlePasswordLogin();
+        } else if (otpStep === 'email') {
+          void handleRequestOtp();
         } else {
           void handleOtpLogin();
         }
@@ -283,7 +307,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
       {mode === 'password' ? (
         <>
           <label className="login-field">
-            <span>نام هنری</span>
+            <span>نام کاربری</span>
             <div className="login-input-wrap">
               <input
                 type="text"
@@ -295,7 +319,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
                   resetFeedback();
                 }}
                 placeholder="ali_artist"
-                aria-label="نام هنری"
+                aria-label="نام کاربری"
                 disabled={submitting}
                 required
               />
@@ -340,38 +364,34 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
             </label>
           </div>
         </>
+      ) : otpStep === 'email' ? (
+        <label className="login-field">
+          <span>ایمیل</span>
+          <div className="login-input-wrap">
+            <input
+              type="email"
+              name="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setOtpRequested(false);
+                setOtpCode('');
+                resetFeedback();
+              }}
+              placeholder="name@example.com"
+              aria-label="ایمیل"
+              disabled={submitting || requestingOtp}
+              required
+            />
+            <Mail className="login-input-icon" strokeWidth={2.4} />
+          </div>
+        </label>
       ) : (
         <>
-          <label className="login-field">
-            <span>ایمیل</span>
-            <div className="login-input-wrap">
-              <input
-                type="email"
-                name="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setOtpRequested(false);
-                  resetFeedback();
-                }}
-                placeholder="name@example.com"
-                aria-label="ایمیل"
-                disabled={submitting || requestingOtp}
-                required
-              />
-              <Mail className="login-input-icon" strokeWidth={2.4} />
-            </div>
-          </label>
-
-          <button
-            type="button"
-            className="login-secondary-action"
-            disabled={requestingOtp || submitting}
-            onClick={() => void handleRequestOtp()}
-          >
-            {requestingOtp ? 'در حال ارسال...' : otpRequested ? 'ارسال دوباره کد' : 'دریافت کد تایید'}
-          </button>
+          <p className="auth-step-note">
+            کد تایید به <span dir="ltr">{normalizedEmail}</span> ارسال شد.
+          </p>
 
           <label className="login-field login-field-compact">
             <span>کد تایید</span>
@@ -395,6 +415,26 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
               <Hash className="login-input-icon" strokeWidth={2.4} />
             </div>
           </label>
+
+          <div className="auth-step-actions">
+            <button
+              type="button"
+              className="login-secondary-action auth-step-action-button"
+              disabled={requestingOtp || submitting}
+              onClick={() => void handleRequestOtp()}
+            >
+              {requestingOtp ? 'در حال ارسال...' : otpRequested ? 'ارسال دوباره کد' : 'دریافت دوباره کد'}
+            </button>
+
+            <button
+              type="button"
+              className="auth-step-back-button"
+              disabled={requestingOtp || submitting}
+              onClick={handleBackToOtpEmailStep}
+            >
+              ویرایش ایمیل
+            </button>
+          </div>
         </>
       )}
 
@@ -407,13 +447,24 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
       {statusMessage ? (
         <p className="login-form-message login-form-message-success">
           {statusMessage}
-          
         </p>
       ) : null}
 
       <button className="login-submit" type="submit" disabled={submitting || requestingOtp}>
         <ArrowLeft />
-        <span>{submitting ? 'در حال ورود...' : mode === 'otp' ? 'تایید و ورود' : 'ورود'}</span>
+        <span>
+          {mode === 'password'
+            ? submitting
+              ? 'در حال ورود...'
+              : 'ورود'
+            : otpStep === 'email'
+              ? requestingOtp
+                ? 'در حال ارسال...'
+                : 'دریافت کد تایید'
+              : submitting
+                ? 'در حال ورود...'
+                : 'تایید و ورود'}
+        </span>
       </button>
 
       <p className="login-register">

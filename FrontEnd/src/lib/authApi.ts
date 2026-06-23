@@ -4,6 +4,7 @@ import {
   identityApiRequest,
   setTokens,
 } from './api';
+import { getCurrentUser } from './userApi';
 import type { CurrentUser } from './userApi';
 
 export interface AuthResponse {
@@ -34,6 +35,24 @@ export interface OtpRequestResponse {
 
 export interface MessageResponse {
   message: string;
+}
+
+
+export class IncompleteSignupError extends Error {
+  constructor(message = 'برای این ایمیل هنوز ثبت‌نام کامل نشده است.') {
+    super(message);
+    this.name = 'IncompleteSignupError';
+  }
+}
+
+export function isIncompleteSignupError(error: unknown): error is IncompleteSignupError {
+  return error instanceof IncompleteSignupError;
+}
+
+function hasCompletedSignup(user?: CurrentUser | null) {
+  const artName = String(user?.art_name || '').trim();
+  const username = String(user?.username || '').trim();
+  return Boolean(artName || username);
 }
 
 function persistAuthTokens(response: RawAuthResponse): AuthResponse {
@@ -90,6 +109,19 @@ export async function verifyLoginOtp(payload: { email: string; code: string }) {
   });
 
   return persistAuthTokens(response);
+}
+
+export async function verifyLoginOtpForExistingAccount(payload: { email: string; code: string }) {
+  await verifyLoginOtp(payload);
+
+  const currentUser = await getCurrentUser();
+
+  if (!hasCompletedSignup(currentUser)) {
+    clearTokens();
+    throw new IncompleteSignupError();
+  }
+
+  return currentUser;
 }
 
 export async function updateSignupProfile(payload: {
