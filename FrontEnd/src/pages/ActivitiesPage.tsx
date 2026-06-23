@@ -12,7 +12,6 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
-  User,
   Users,
   X,
 } from 'lucide-react';
@@ -78,6 +77,10 @@ const defaultFormState: ExpenseFormState = {
   expenseDate: '',
   receiptUrl: '',
 };
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
 
 function toPersianNumber(value: string | number) {
   return String(value).replace(/\d/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
@@ -202,6 +205,46 @@ function getExpenseKind(expense: BackendExpense, currentUserId?: string | null) 
   return isParticipant ? 'received' : 'paid';
 }
 
+function getExpenseKindLabel(kind: ReturnType<typeof getExpenseKind>) {
+  return kind === 'paid' ? 'پرداخت من' : 'سهم من';
+}
+
+function getSplitMethodLabel(method?: string) {
+  if (method === 'CUSTOM') return 'تقسیم سفارشی';
+  if (method === 'EQUAL') return 'تقسیم مساوی';
+  return 'روش تقسیم نامشخص';
+}
+
+function getExpenseStatusLabel(status?: string) {
+  const normalizedStatus = String(status || 'ACTIVE').toUpperCase();
+
+  if (normalizedStatus.includes('SETTLED') || normalizedStatus.includes('CLOSED')) return 'تسویه‌شده';
+  if (normalizedStatus.includes('CANCELLED')) return 'لغوشده';
+  if (normalizedStatus.includes('DELETED')) return 'حذف‌شده';
+  return 'فعال';
+}
+
+function getExpenseStatusClassName(status?: string) {
+  const normalizedStatus = String(status || 'ACTIVE').toUpperCase();
+
+  if (normalizedStatus.includes('SETTLED') || normalizedStatus.includes('CLOSED')) {
+    return 'border-emerald-100 bg-emerald-50 text-emerald-700';
+  }
+
+  if (normalizedStatus.includes('CANCELLED') || normalizedStatus.includes('DELETED')) {
+    return 'border-rose-100 bg-rose-50 text-rose-600';
+  }
+
+  return 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
+function getParticipantCountLabel(expense: BackendExpense) {
+  const count = expense.participants?.filter((participant) => participant.is_included !== false).length || 0;
+
+  if (count === 0) return 'بدون شرکت‌کننده';
+  return `${toPersianNumber(count)} نفر`;
+}
+
 function groupExpensesByDate(expenses: UiExpense[]) {
   return expenses.reduce<Record<string, UiExpense[]>>((acc, expense) => {
     const key = formatDate(expense.expense_date || expense.created_at);
@@ -234,21 +277,43 @@ function makeShareInputs(participants?: ExpenseParticipant[]) {
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="rounded-3xl border border-dashed border-emerald-200 bg-emerald-50/40 p-10 text-center">
-      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-emerald-600 shadow-sm">
+    <div className="rounded-[24px] border border-dashed border-emerald-200 bg-emerald-50/40 p-8 text-center sm:p-10">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[18px] bg-white text-emerald-600 shadow-sm">
         <ClipboardList className="h-7 w-7" />
       </div>
       <h2 className="text-xl font-bold text-text">هنوز فعالیتی ثبت نشده</h2>
       <p className="mt-2 text-sm leading-7 text-muted">
-        اولین هزینه گروهی را ثبت کن تا تاریخچه فعالیت‌ها از بک‌اند نمایش داده شود.
+        بعد از ثبت اولین هزینه گروهی، تاریخچه فعالیت‌ها اینجا نمایش داده می‌شود.
       </p>
       <button
         type="button"
         onClick={onCreate}
-        className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+        className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-[16px] bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700"
       >
         <Plus className="h-4 w-4" />
         ثبت هزینه جدید
+      </button>
+    </div>
+  );
+}
+
+function FilterEmptyState({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="rounded-[24px] border border-dashed border-border bg-white p-8 text-center shadow-soft sm:p-10">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[18px] bg-slate-50 text-slate-500">
+        <Search className="h-6 w-6" />
+      </div>
+      <h2 className="text-xl font-bold text-text">نتیجه‌ای با این فیلترها پیدا نشد</h2>
+      <p className="mt-2 text-sm leading-7 text-muted">
+        عبارت جستجو، گروه یا بازه تاریخ را تغییر بدهید تا فعالیت‌های بیشتری دیده شود.
+      </p>
+      <button
+        type="button"
+        onClick={onReset}
+        className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-[16px] border border-border bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+      >
+        <RefreshCw className="h-4 w-4" />
+        پاک کردن فیلترها
       </button>
     </div>
   );
@@ -263,7 +328,7 @@ function Toast({ toast, onClose }: { toast: ToastState; onClose: () => void }) {
         : 'border-sky-100 bg-sky-50 text-sky-700';
 
   return (
-    <div className={`fixed left-5 top-24 z-50 w-[320px] rounded-3xl border p-4 shadow-[0_18px_50px_rgba(15,23,42,0.14)] ${toneClass}`}>
+    <div className={`fixed inset-x-4 top-20 z-50 rounded-[20px] border p-4 shadow-[0_18px_50px_rgba(15,23,42,0.14)] sm:left-5 sm:right-auto sm:w-[320px] ${toneClass}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="text-right">
           <div className="text-sm font-extrabold">{toast.title}</div>
@@ -325,7 +390,7 @@ export function ActivitiesPage() {
       setCurrentUserId(currentUser?.id ? String(currentUser.id) : null);
     } catch (loadError) {
       console.error(loadError);
-      setError('خطا در دریافت گروه‌ها از بک‌اند');
+      setError('دریافت گروه‌ها ناموفق بود. دوباره تلاش کنید.');
     } finally {
       setLoadingGroups(false);
     }
@@ -402,7 +467,7 @@ export function ActivitiesPage() {
       );
     } catch (loadError) {
       console.error(loadError);
-      setError('خطا در دریافت فعالیت‌ها از بک‌اند');
+      setError('دریافت فعالیت‌ها ناموفق بود. دوباره تلاش کنید.');
     } finally {
       setLoadingExpenses(false);
     }
@@ -476,6 +541,22 @@ export function ActivitiesPage() {
   }, [currentUserId, expenses, searchTerm, selectedType]);
 
   const groupedExpenses = useMemo(() => groupExpensesByDate(filteredExpenses), [filteredExpenses]);
+  const hasActiveFilters = Boolean(
+    selectedGroupId !== 'all' ||
+    selectedType !== 'all' ||
+    fromDate ||
+    toDate ||
+    searchTerm.trim(),
+  );
+  const totalVisibleAmount = useMemo(
+    () => filteredExpenses.reduce((sum, expense) => sum + getExpenseTotal(expense), 0),
+    [filteredExpenses],
+  );
+  const paidVisibleCount = useMemo(
+    () => filteredExpenses.filter((expense) => getExpenseKind(expense, currentUserId) === 'paid').length,
+    [currentUserId, filteredExpenses],
+  );
+  const receivedVisibleCount = Math.max(filteredExpenses.length - paidVisibleCount, 0);
 
   function resetFilters() {
     setSelectedGroupId('all');
@@ -599,22 +680,22 @@ export function ActivitiesPage() {
     event.preventDefault();
 
     if (!form.groupId) {
-      showToast({ tone: 'error', title: 'گروه را انتخاب کن' });
+      showToast({ tone: 'error', title: 'گروه را انتخاب کنید' });
       return;
     }
 
     if (!form.title.trim()) {
-      showToast({ tone: 'error', title: 'عنوان هزینه را وارد کن' });
+      showToast({ tone: 'error', title: 'عنوان هزینه را وارد کنید' });
       return;
     }
 
     if (!form.payerUserId) {
-      showToast({ tone: 'error', title: 'پرداخت‌کننده را انتخاب کن' });
+      showToast({ tone: 'error', title: 'پرداخت‌کننده را انتخاب کنید' });
       return;
     }
 
     if (form.participantUserIds.length === 0) {
-      showToast({ tone: 'error', title: 'حداقل یک شرکت‌کننده انتخاب کن' });
+      showToast({ tone: 'error', title: 'حداقل یک شرکت‌کننده انتخاب کنید' });
       return;
     }
 
@@ -637,7 +718,7 @@ export function ActivitiesPage() {
       showToast({
         tone: 'error',
         title: 'ثبت هزینه ناموفق بود',
-        message: 'Response درخواست را در Network بررسی کن.',
+        message: 'اطلاعات فرم یا اتصال را بررسی کنید و دوباره تلاش کنید.',
       });
     } finally {
       setSubmitting(false);
@@ -659,23 +740,23 @@ export function ActivitiesPage() {
   }
 
   return (
-    <main className="px-4 py-6 sm:px-6 xl:px-8">
+    <main className="px-4 py-5 sm:px-6 sm:py-7 xl:px-8">
       {toast ? <Toast toast={toast} onClose={() => setToast(null)} /> : null}
 
       <div className="mx-auto max-w-[1240px] space-y-6">
-        <div className="flex flex-col gap-5 rounded-3xl border border-border bg-white p-6 shadow-soft xl:flex-row xl:items-center xl:justify-between">
-          <div className="text-right">
-            <h1 className="text-[32px] font-extrabold tracking-[-0.03em] text-text">فعالیت‌ها</h1>
-            <p className="mt-2 text-sm leading-7 text-muted">
-              هزینه‌های گروهی از expense-service دریافت می‌شوند؛ بعداً می‌توانیم تراکنش‌ها و تسویه‌ها را هم اضافه کنیم.
+        <div className="flex flex-col gap-4 text-right lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-[30px] font-extrabold leading-tight text-text sm:text-[32px]">فعالیت‌ها</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-muted sm:text-base">
+              هزینه‌های گروهی، سهم اعضا و وضعیت پرداخت‌ها را در یک نمای قابل جستجو دنبال کنید.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={openCreateModal}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.22)] transition hover:-translate-y-0.5"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-[16px] bg-gradient-to-l from-[#00915F] to-[#00A86B] px-5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(0,168,107,0.22)] transition hover:-translate-y-0.5"
             >
               <Plus className="h-4.5 w-4.5" />
               ثبت هزینه جدید
@@ -687,29 +768,66 @@ export function ActivitiesPage() {
                 loadGroups();
                 loadExpenses();
               }}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              disabled={loadingGroups || loadingExpenses}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-[16px] border border-border bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RefreshCw className="h-4.5 w-4.5" />
-              بروزرسانی
+              <RefreshCw className={cn('h-4.5 w-4.5', (loadingGroups || loadingExpenses) && 'animate-spin')} />
+              به‌روزرسانی
             </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-[20px] border border-border bg-white p-4 shadow-panel">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-slate-50 text-slate-600">
+                <ClipboardList className="h-5 w-5" />
+              </div>
+              <span className="text-xs font-bold text-muted">نتایج نمایش‌داده‌شده</span>
+            </div>
+            <div className="text-2xl font-black text-text">{toPersianNumber(filteredExpenses.length)}</div>
+            <p className="mt-1 text-xs leading-6 text-muted">فعالیت مطابق فیلترهای فعلی</p>
+          </div>
+
+          <div className="rounded-[20px] border border-border bg-white p-4 shadow-panel">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-emerald-50 text-emerald-600">
+                <TrendingDown className="h-5 w-5" />
+              </div>
+              <span className="text-xs font-bold text-muted">سهم‌های من</span>
+            </div>
+            <div className="text-2xl font-black text-emerald-600">{toPersianNumber(receivedVisibleCount)}</div>
+            <p className="mt-1 text-xs leading-6 text-muted">فعالیت‌هایی که شما در آن‌ها شریک هستید</p>
+          </div>
+
+          <div className="rounded-[20px] border border-border bg-white p-4 shadow-panel">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-orange-50 text-orange-600">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <span className="text-xs font-bold text-muted">گردش هزینه‌ها</span>
+            </div>
+            <div className="text-xl font-black text-text sm:text-2xl">{formatMoney(totalVisibleAmount)}</div>
+            <p className="mt-1 text-xs leading-6 text-muted">{toPersianNumber(paidVisibleCount)} پرداخت ثبت‌شده در این نما</p>
           </div>
         </div>
 
         <div className="space-y-6">
           <section className="space-y-6">
-            <div className="rounded-3xl border border-border bg-white p-5 shadow-soft">
-              <div className="mb-5 flex flex-col gap-2 text-right sm:flex-row sm:items-center sm:justify-between">
+            <div className="rounded-[24px] border border-border bg-white p-4 shadow-soft sm:p-5">
+              <div className="mb-5 flex flex-col gap-3 text-right lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-xl font-extrabold text-text">فیلتر فعالیت‌ها</h2>
+                  <h2 className="text-lg font-extrabold text-text sm:text-xl">فیلترها</h2>
                   <p className="mt-1 text-sm leading-6 text-muted">
-                    جستجو و فیلترها همین‌جا بالای لیست هستند تا صفحه خلوت‌تر بماند.
+                    فعالیت‌ها را بر اساس گروه، بازه زمانی و نوع نمایش محدود کنید.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  disabled={!hasActiveFilters}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[16px] border border-border bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <RefreshCw className="h-4 w-4" />
                   پاک کردن فیلترها
@@ -717,66 +835,72 @@ export function ActivitiesPage() {
               </div>
 
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(180px,0.9fr)_160px_160px]">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    dir="rtl"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="جستجو در عنوان هزینه، توضیح یا گروه..."
-                    className="h-12 w-full rounded-2xl border border-border bg-white pr-12 pl-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                  />
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-muted">جستجو</label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      dir="rtl"
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="عنوان، توضیح یا نام گروه"
+                      className="h-12 w-full rounded-[16px] border border-border bg-white pr-12 pl-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    />
+                  </div>
                 </div>
 
-                <div className="relative">
-                  <Users className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-                  <ChevronDown className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-                  <select
-                    value={selectedGroupId}
-                    onChange={(event) => setSelectedGroupId(event.target.value)}
-                    className="h-12 w-full appearance-none rounded-2xl border border-border bg-white px-11 text-sm font-semibold text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                  >
-                    <option value="all">همه گروه‌ها</option>
-                    {groups.map((group) => (
-                      <option key={group.id} value={getSelectedGroupValue(group)}>{group.title}</option>
-                    ))}
-                  </select>
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-muted">گروه</label>
+                  <div className="relative">
+                    <Users className="pointer-events-none absolute right-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+                    <select
+                      value={selectedGroupId}
+                      onChange={(event) => setSelectedGroupId(event.target.value)}
+                      className="h-12 w-full appearance-none rounded-[16px] border border-border bg-white px-11 text-sm font-semibold text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+                    >
+                      <option value="all">همه گروه‌ها</option>
+                      {groups.map((group) => (
+                        <option key={group.id} value={getSelectedGroupValue(group)}>{group.title}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div className="relative">
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-muted">از تاریخ</label>
                   <input
                     type="date"
                     value={fromDate}
                     onChange={(event) => setFromDate(event.target.value)}
-                    className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                    title="از تاریخ"
+                    className="h-12 w-full rounded-[16px] border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                   />
                 </div>
 
-                <div className="relative">
+                <div>
+                  <label className="mb-2 block text-xs font-bold text-muted">تا تاریخ</label>
                   <input
                     type="date"
                     value={toDate}
                     onChange={(event) => setToDate(event.target.value)}
-                    className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                    title="تا تاریخ"
+                    className="h-12 w-full rounded-[16px] border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                   />
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
-                  ['all', 'همه فعالیت‌ها'],
-                  ['received', 'دریافت‌ها'],
-                  ['paid', 'پرداخت‌ها'],
-                  ['settled', 'تسویه‌ها'],
+                  ['all', 'همه'],
+                  ['received', 'سهم من'],
+                  ['paid', 'پرداخت من'],
+                  ['settled', 'تسویه‌شده'],
                 ].map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setSelectedType(value as ActivityFilter)}
                     className={[
-                      'h-10 rounded-2xl px-4 text-sm font-semibold transition',
+                      'h-10 rounded-[16px] px-4 text-sm font-bold transition',
                       selectedType === value
                         ? 'bg-emerald-600 text-white shadow-[0_10px_24px_rgba(16,185,129,0.2)]'
                         : 'border border-border bg-white text-slate-600 hover:bg-slate-50',
@@ -789,30 +913,39 @@ export function ActivitiesPage() {
             </div>
 
             {error ? (
-              <div className="rounded-3xl border border-rose-100 bg-rose-50 p-6 text-center text-sm font-semibold text-rose-600">
+              <div className="rounded-[20px] border border-rose-100 bg-rose-50 p-5 text-center text-sm font-bold text-rose-600">
                 {error}
               </div>
             ) : null}
 
             {loadingGroups || loadingExpenses ? (
-              <div className="flex min-h-[240px] items-center justify-center rounded-3xl border border-border bg-white p-8 text-muted shadow-soft">
+              <div className="flex min-h-[220px] items-center justify-center rounded-[24px] border border-border bg-white p-8 text-muted shadow-soft">
                 <Loader2 className="ml-2 h-5 w-5 animate-spin" />
-                در حال دریافت فعالیت‌ها از بک‌اند...
+                در حال دریافت فعالیت‌ها...
               </div>
             ) : null}
 
-            {!loadingGroups && !loadingExpenses && filteredExpenses.length === 0 ? (
+            {!loadingGroups && !loadingExpenses && filteredExpenses.length === 0 && !hasActiveFilters ? (
               <EmptyState onCreate={openCreateModal} />
+            ) : null}
+
+            {!loadingGroups && !loadingExpenses && filteredExpenses.length === 0 && hasActiveFilters ? (
+              <FilterEmptyState onReset={resetFilters} />
             ) : null}
 
             {!loadingGroups && !loadingExpenses && filteredExpenses.length > 0 ? (
               <div className="space-y-6">
                 {Object.entries(groupedExpenses).map(([dateLabel, dateExpenses]) => (
                   <div key={dateLabel} className="space-y-3">
-                    <h2 className="text-right text-lg font-extrabold text-text">{dateLabel}</h2>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                        {toPersianNumber(dateExpenses.length)} مورد
+                      </span>
+                      <h2 className="text-right text-base font-extrabold text-text sm:text-lg">{dateLabel}</h2>
+                    </div>
 
-                    <div className="overflow-hidden rounded-3xl border border-border bg-white shadow-soft">
-                      {dateExpenses.map((expense, index) => {
+                    <div className="grid gap-3">
+                      {dateExpenses.map((expense) => {
                         const kind = getExpenseKind(expense, currentUserId);
                         const total = getExpenseTotal(expense);
                         const amount = kind === 'paid' ? -total : total;
@@ -821,51 +954,68 @@ export function ActivitiesPage() {
                         );
 
                         return (
-                          <div
+                          <article
                             key={expense.id}
-                            className={[
-                              'grid gap-4 px-5 py-4 md:grid-cols-[160px_minmax(0,1fr)_180px] md:items-center',
-                              index !== 0 ? 'border-t border-border' : '',
-                            ].join(' ')}
+                            className="rounded-[22px] border border-border bg-white p-4 shadow-panel transition hover:border-emerald-200 hover:shadow-soft sm:p-5"
                           >
-                            <div className="flex items-center gap-2 md:justify-start">
-                              <span
-                                className={[
-                                  'text-lg font-extrabold',
-                                  amount >= 0 ? 'text-emerald-600' : 'text-rose-500',
-                                ].join(' ')}
-                              >
-                                {formatSignedMoney(amount)}
-                              </span>
-                            </div>
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_190px] lg:items-start">
+                              <div className="flex min-w-0 items-start gap-3 text-right">
+                                <div
+                                  className={cn(
+                                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px]',
+                                    kind === 'paid' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600',
+                                  )}
+                                >
+                                  {kind === 'paid' ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                                </div>
 
-                            <div className="flex min-w-0 items-center gap-3 text-right">
-                              <div
-                                className={[
-                                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl',
-                                  kind === 'paid' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600',
-                                ].join(' ')}
-                              >
-                                {kind === 'paid' ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                              </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <h3 className="min-w-0 break-words text-base font-extrabold leading-7 text-text">
+                                      {expense.title || 'هزینه بدون عنوان'}
+                                    </h3>
+                                    <span className={cn('shrink-0 rounded-full border px-3 py-1 text-xs font-bold', getExpenseStatusClassName(expense.status))}>
+                                      {getExpenseStatusLabel(expense.status)}
+                                    </span>
+                                  </div>
 
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-base font-bold text-text">{expense.title}</div>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                                  <span>{expense.groupTitle || 'گروه'}</span>
-                                  <span>•</span>
-                                  <span>پرداخت‌کننده: {getParticipantName(payerParticipant)}</span>
-                                  <span>•</span>
-                                  <span>{formatTime(expense.expense_date || expense.created_at)}</span>
+                                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-6 text-muted">
+                                    <span>{expense.groupTitle || 'گروه'}</span>
+                                    <span>پرداخت‌کننده: {getParticipantName(payerParticipant)}</span>
+                                    <span>{formatTime(expense.expense_date || expense.created_at)}</span>
+                                  </div>
+
+                                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                                    <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-600">
+                                      {getSplitMethodLabel(expense.split_method)}
+                                    </span>
+                                    <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-600">
+                                      {getParticipantCountLabel(expense)}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
+
+                              <div className="flex items-center justify-between gap-3 rounded-[16px] bg-slate-50 px-4 py-3 lg:flex-col lg:items-end lg:justify-center lg:bg-transparent lg:p-0">
+                                <span
+                                  className={cn(
+                                    'text-lg font-black sm:text-xl',
+                                    amount >= 0 ? 'text-emerald-600' : 'text-rose-500',
+                                  )}
+                                >
+                                  {formatSignedMoney(amount)}
+                                </span>
+                                <span className="rounded-full border border-border bg-white px-3 py-1 text-xs font-bold text-slate-600">
+                                  {getExpenseKindLabel(kind)}
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-end gap-2">
+                            <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-3 sm:justify-end">
                               <button
                                 type="button"
                                 onClick={() => openDetailModal(expense)}
-                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-slate-50 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[12px] bg-slate-50 px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-100 sm:flex-none"
                               >
                                 <Eye className="h-3.5 w-3.5" />
                                 جزئیات
@@ -874,7 +1024,7 @@ export function ActivitiesPage() {
                               <button
                                 type="button"
                                 onClick={() => openEditModal(expense)}
-                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[12px] bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 sm:flex-none"
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
                                 ویرایش
@@ -883,13 +1033,13 @@ export function ActivitiesPage() {
                               <button
                                 type="button"
                                 onClick={() => setDeleteTarget(expense)}
-                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-rose-50 px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-100"
+                                className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[12px] bg-rose-50 px-3 text-xs font-bold text-rose-600 transition hover:bg-rose-100 sm:flex-none"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                                 حذف
                               </button>
                             </div>
-                          </div>
+                          </article>
                         );
                       })}
                     </div>
@@ -903,19 +1053,19 @@ export function ActivitiesPage() {
       </div>
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-[840px] overflow-y-auto rounded-[28px] border border-border bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[94vh] w-full max-w-[840px] overflow-y-auto rounded-t-[24px] border border-border bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.22)] sm:rounded-[24px] sm:p-6">
             <div className="mb-6 flex items-start justify-between gap-4">
               <div className="text-right">
                 <h2 className="text-2xl font-extrabold text-text">
                   {modalMode === 'create' ? 'ثبت هزینه جدید' : 'ویرایش هزینه'}
                 </h2>
-                <p className="mt-2 text-sm text-muted">فرم مطابق قرارداد amount_minor در expense-service ارسال می‌شود.</p>
+                <p className="mt-2 text-sm leading-6 text-muted">گروه، پرداخت‌کننده، مبلغ و اعضای شریک در هزینه را مشخص کنید.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-600 transition hover:bg-slate-100"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-slate-50 text-slate-600 transition hover:bg-slate-100"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -979,13 +1129,13 @@ export function ActivitiesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-text">مبلغ پایه</label>
+                  <label className="mb-2 block text-sm font-semibold text-text">مبلغ هزینه</label>
                   <input
                     dir="ltr"
                     inputMode="numeric"
                     value={form.baseAmountMinor}
                     onChange={(event) => setForm((prev) => ({ ...prev, baseAmountMinor: event.target.value }))}
-                    placeholder="900000"
+                    placeholder="۹۰۰۰۰۰"
                     className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                   />
                 </div>
@@ -1101,7 +1251,7 @@ export function ActivitiesPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-text">لینک رسید / فایل رسید</label>
+                <label className="mb-2 block text-sm font-semibold text-text">لینک رسید</label>
                 <input
                   dir="ltr"
                   value={form.receiptUrl}
@@ -1135,17 +1285,17 @@ export function ActivitiesPage() {
       ) : null}
 
       {detailExpense || detailLoading ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-[620px] rounded-[28px] border border-border bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="max-h-[94vh] w-full max-w-[620px] overflow-y-auto rounded-t-[24px] border border-border bg-white p-4 shadow-[0_24px_80px_rgba(15,23,42,0.22)] sm:rounded-[24px] sm:p-6">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div className="text-right">
                 <h2 className="text-2xl font-extrabold text-text">جزئیات هزینه</h2>
-                <p className="mt-2 text-sm text-muted">خوانده شده از GET /api/v1/expenses/{'{expense_id}'}/</p>
+                <p className="mt-2 text-sm leading-6 text-muted">جزئیات مبلغ، وضعیت و سهم هر شرکت‌کننده.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setDetailExpense(null)}
-                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-600 transition hover:bg-slate-100"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-slate-50 text-slate-600 transition hover:bg-slate-100"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1160,27 +1310,27 @@ export function ActivitiesPage() {
 
             {detailExpense ? (
               <div className="space-y-4 text-right">
-                <div className="rounded-3xl bg-emerald-50 p-5">
+                <div className="rounded-[20px] bg-emerald-50 p-5">
                   <h3 className="text-xl font-extrabold text-text">{detailExpense.title}</h3>
                   <p className="mt-2 text-sm leading-7 text-muted">{detailExpense.description || 'بدون توضیح'}</p>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-border p-4">
-                    <span className="text-xs text-muted">مبلغ پایه</span>
+                  <div className="rounded-[16px] border border-border p-4">
+                    <span className="text-xs text-muted">مبلغ هزینه</span>
                     <div className="mt-2 font-extrabold text-text">{formatMoney(detailExpense.base_amount_minor)}</div>
                   </div>
-                  <div className="rounded-2xl border border-border p-4">
+                  <div className="rounded-[16px] border border-border p-4">
                     <span className="text-xs text-muted">مبلغ کل</span>
                     <div className="mt-2 font-extrabold text-emerald-600">{formatMoney(getExpenseTotal(detailExpense))}</div>
                   </div>
-                  <div className="rounded-2xl border border-border p-4">
+                  <div className="rounded-[16px] border border-border p-4">
                     <span className="text-xs text-muted">روش تقسیم</span>
-                    <div className="mt-2 font-extrabold text-text">{detailExpense.split_method || '—'}</div>
+                    <div className="mt-2 font-extrabold text-text">{getSplitMethodLabel(detailExpense.split_method)}</div>
                   </div>
-                  <div className="rounded-2xl border border-border p-4">
+                  <div className="rounded-[16px] border border-border p-4">
                     <span className="text-xs text-muted">وضعیت</span>
-                    <div className="mt-2 font-extrabold text-text">{detailExpense.status || '—'}</div>
+                    <div className="mt-2 font-extrabold text-text">{getExpenseStatusLabel(detailExpense.status)}</div>
                   </div>
                 </div>
 
@@ -1188,7 +1338,7 @@ export function ActivitiesPage() {
                   <h4 className="mb-3 font-extrabold text-text">شرکت‌کننده‌ها</h4>
                   <div className="space-y-2">
                     {(detailExpense.participants || []).map((participant) => (
-                      <div key={participant.user_id} className="flex items-center justify-between rounded-2xl border border-border px-4 py-3 text-sm">
+                      <div key={participant.user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-[16px] border border-border px-4 py-3 text-sm">
                         <span className="font-semibold text-text">{getParticipantName(participant)}</span>
                         <span className="font-bold text-emerald-600">{formatMoney(participant.total_share_minor || participant.base_share_minor || 0)}</span>
                       </div>
@@ -1202,28 +1352,28 @@ export function ActivitiesPage() {
       ) : null}
 
       {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-[420px] rounded-[28px] border border-rose-100 bg-white p-6 text-right shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="w-full max-w-[420px] rounded-t-[24px] border border-rose-100 bg-white p-5 text-right shadow-[0_24px_80px_rgba(15,23,42,0.22)] sm:rounded-[24px] sm:p-6">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[16px] bg-rose-50 text-rose-600">
               <Trash2 className="h-5 w-5" />
             </div>
             <h2 className="text-xl font-extrabold text-text">حذف هزینه</h2>
             <p className="mt-2 text-sm leading-7 text-muted">
-              هزینه «{deleteTarget.title}» به صورت soft delete حذف می‌شود. ادامه می‌دهی؟
+              هزینه «{deleteTarget.title}» از فهرست فعالیت‌ها حذف می‌شود. این کار را انجام می‌دهید؟
             </p>
 
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="h-11 flex-1 rounded-2xl border border-border bg-white text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                className="h-11 flex-1 rounded-[16px] border border-border bg-white text-sm font-bold text-slate-700 transition hover:bg-slate-50"
               >
                 انصراف
               </button>
               <button
                 type="button"
                 onClick={handleDeleteExpense}
-                className="h-11 flex-1 rounded-2xl bg-rose-600 text-sm font-semibold text-white transition hover:bg-rose-700"
+                className="h-11 flex-1 rounded-[16px] bg-rose-600 text-sm font-bold text-white transition hover:bg-rose-700"
               >
                 حذف شود
               </button>
