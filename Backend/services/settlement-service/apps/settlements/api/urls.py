@@ -14,6 +14,7 @@ from apps.settlements.api.views import (
     HealthView,
     ManualItemReminderView,
     MyBalanceView,
+    MySettlementsView,
     ReminderDetailView,
     RunGroupReminderView,
     GenerateSettlementPlanView,
@@ -41,6 +42,11 @@ urlpatterns = [
         "groups/<uuid:group_id>/settlements/",
         GroupSettlementsView.as_view(),
         name="group_settlements",
+    ),
+    path(
+        "settlements/me/",
+        MySettlementsView.as_view(),
+        name="my_settlements",
     ),
     path(
         "groups/<uuid:group_id>/reminder-settings/",

@@ -57,6 +57,14 @@ class ListGroupSettlementsUseCase:
         )
 
 
+class ListMySettlementsUseCase:
+    def __init__(self, settlement_service=None):
+        self.settlement_service = settlement_service or SettlementService()
+
+    def execute(self, user, filters=None):
+        return self.settlement_service.list_my_settlements(user.sub, filters=filters)
+
+
 class ConfirmSettlementUseCase:
     def __init__(self, settlement_service=None):
         self.settlement_service = settlement_service or SettlementService()

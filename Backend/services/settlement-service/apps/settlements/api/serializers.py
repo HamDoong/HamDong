@@ -85,6 +85,56 @@ class ManualSettlementListResponseSerializer(serializers.Serializer):
     settlements = ManualSettlementItemSerializer(many=True)
 
 
+class MySettlementsQuerySerializer(serializers.Serializer):
+    direction = serializers.ChoiceField(choices=["PAY", "RECEIVE"], required=False)
+    status = serializers.ChoiceField(
+        choices=[
+            "PENDING",
+            "REPORTED",
+            "CONFIRMED",
+            "REJECTED",
+            "CANCELLED",
+            "PENDING_CONFIRMATION",
+        ],
+        required=False,
+    )    
+    action_required = serializers.BooleanField(required=False)
+    group_id = serializers.UUIDField(required=False)
+    cursor = serializers.CharField(required=False)
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100)
+
+
+class SettlementFeedGroupSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    title = serializers.CharField()
+
+
+class SettlementFeedCounterpartySerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    art_name = serializers.CharField(allow_null=True, required=False)
+
+
+class SettlementFeedItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    source_type = serializers.CharField()
+    source_id = serializers.UUIDField()
+    group = SettlementFeedGroupSerializer()
+    counterparty = SettlementFeedCounterpartySerializer()
+    direction = serializers.ChoiceField(choices=["PAY", "RECEIVE"])
+    amount_minor = serializers.IntegerField()
+    currency = serializers.CharField()
+    status = serializers.CharField()
+    action_required = serializers.CharField(allow_null=True, required=False)
+    allowed_actions = serializers.ListField(child=serializers.CharField())
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+
+class MySettlementsResponseSerializer(serializers.Serializer):
+    results = SettlementFeedItemSerializer(many=True)
+    next_cursor = serializers.CharField(allow_null=True, required=False)
+
+
 class MessageSerializer(serializers.Serializer):
     message = serializers.CharField()
 

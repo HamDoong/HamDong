@@ -8,26 +8,28 @@ from rest_framework.views import APIView
 from apps.settlements.api.serializers import (
     GroupBalancesResponseSerializer,
     GroupDebtsResponseSerializer,
-    ManualSettlementCreateSerializer,
-    ManualSettlementItemSerializer,
-    ManualSettlementListResponseSerializer,
     GroupRunReminderRequestSerializer,
     GroupRunReminderResponseSerializer,
     ManualReminderSendResponseSerializer,
     ManualReminderSendSerializer,
+    ManualSettlementCreateSerializer,
+    ManualSettlementItemSerializer,
+    ManualSettlementListResponseSerializer,
     MessageSerializer,
+    MessageWithManualSettlementSerializer,
+    MyBalanceResponseSerializer,
+    MySettlementsQuerySerializer,
+    MySettlementsResponseSerializer,
     ReminderDetailSerializer,
     ReminderHistoryItemSerializer,
     ReminderHistoryListSerializer,
     ReminderSettingsPatchSerializer,
     ReminderSettingsSerializer,
-    MyBalanceResponseSerializer,
-    MessageWithManualSettlementSerializer,
+    SettlementPaymentOptionsResponseSerializer,
     SettlementPlanDetailSerializer,
     SettlementPlanGenerateSerializer,
     SettlementPlanRejectItemSerializer,
     SettlementPlanReportPaidSerializer,
-    SettlementPaymentOptionsResponseSerializer,
     SettlementRejectSerializer,
 )
 from datetime import datetime
@@ -40,6 +42,7 @@ from apps.settlements.application.use_cases import (
     GetGroupDebtsUseCase,
     GetMyBalanceUseCase,
     ListGroupSettlementsUseCase,
+    ListMySettlementsUseCase,
     RejectSettlementUseCase,
 )
 from apps.settlements.application.reminder_use_cases import (
@@ -224,6 +227,79 @@ class GroupSettlementsView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class MySettlementsView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Settlements"],
+        parameters=[
+            OpenApiParameter(
+                name="direction",
+                type=str,
+                enum=["PAY", "RECEIVE"],
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="status",
+                type=str,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="action_required",
+                type=bool,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="group_id",
+                type=str,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="cursor",
+                type=str,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: MySettlementsResponseSerializer},
+    )
+    def get(self, request, *args, **kwargs):
+        serializer = MySettlementsQuerySerializer(
+            data={
+                key: request.query_params.get(key)
+                for key in (
+                    "direction",
+                    "status",
+                    "action_required",
+                    "group_id",
+                    "cursor",
+                    "page_size",
+                )
+                if key in request.query_params
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            results, next_cursor = ListMySettlementsUseCase().execute(
+                request.user,
+                filters=serializer.validated_data,
+            )
+        except SettlementServiceError as exc:
+            return _error_response(exc)
+        return Response({"results": results, "next_cursor": next_cursor})
 
 
 class ConfirmSettlementView(APIView):
