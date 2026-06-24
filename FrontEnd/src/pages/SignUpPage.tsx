@@ -10,10 +10,10 @@ import {
 import { isApiError } from '../lib/api';
 import { getFriendlyApiErrorMessage } from '../lib/userMessages';
 import {
-  requestLoginOtp,
+  requestSignupOtp,
   setInitialPassword,
   updateSignupProfile,
-  verifyLoginOtp,
+  verifySignupOtp,
 } from '../lib/authApi';
 import {
   AuthShowcase,
@@ -43,7 +43,9 @@ function getSignUpErrorMessage(error: unknown) {
     const code = body?.error?.code;
 
     if (code === 'INVALID_EMAIL') return 'ایمیل را درست وارد کن.';
-    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل را درست وارد کن.';
+    if (code === 'INVALID_REQUEST' && body?.error?.details?.email) {
+      return 'ایمیل را درست وارد کن.';
+    }
 
     return getFriendlyApiErrorMessage(error, {
       defaultMessage: 'ثبت‌نام انجام نشد. دوباره تلاش کن.',
@@ -54,9 +56,13 @@ function getSignUpErrorMessage(error: unknown) {
         OTP_EXPIRED: 'زمان این کد تمام شده است. یک کد جدید بگیر.',
         OTP_IN_COOLDOWN: 'برای دریافت کد جدید کمی صبر کن.',
         OTP_RATE_LIMITED: 'درخواست‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
+        OTP_MAX_ATTEMPTS_EXCEEDED: 'تعداد تلاش‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
+        EMAIL_ALREADY_EXISTS: 'برای این ایمیل قبلاً حساب ساخته شده است. از صفحه ورود استفاده کن.',
+        USER_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد.',
+        ACCOUNT_DEACTIVATED: 'این حساب غیرفعال شده است.',
         ART_NAME_ALREADY_EXISTS: 'این نام کاربری قبلاً انتخاب شده است.',
         INVALID_ART_NAME: 'نام کاربری باید بین ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.',
-        PASSWORD_ALREADY_SET: 'برای این ایمیل قبلاً حساب ساخته شده است. از صفحه ورود استفاده کن.',
+        PASSWORD_ALREADY_SET: 'برای این ایمیل قبلاً رمز ثبت شده است. از صفحه ورود استفاده کن.',
         WEAK_PASSWORD: 'رمز عبور انتخابی خیلی ضعیف است.',
         PASSWORD_CONFIRMATION_MISMATCH: 'رمز عبور و تکرار آن یکسان نیستند.',
       },
@@ -82,6 +88,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
   const [requestingOtp, setRequestingOtp] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [completingProfile, setCompletingProfile] = useState(false);
+
   const PasswordIcon = passwordVisible ? Eye : EyeOff;
   const RepeatPasswordIcon = repeatPasswordVisible ? Eye : EyeOff;
 
@@ -138,7 +145,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     resetFeedback();
 
     try {
-      await requestLoginOtp(normalizedEmail);
+      await requestSignupOtp(normalizedEmail);
       setOtpRequested(true);
       setOtpVerified(false);
       setStep('otp');
@@ -163,10 +170,11 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 
     try {
       if (!otpVerified) {
-        await verifyLoginOtp({
+        await verifySignupOtp({
           email: normalizedEmail,
           code: normalizedOtpCode,
         });
+
         setOtpVerified(true);
       }
 
@@ -211,6 +219,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
       data-step={step}
       onSubmit={(event) => {
         event.preventDefault();
+
         if (step === 'account') {
           void handleRequestOtp();
         } else if (step === 'otp') {
@@ -235,14 +244,31 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 
       <div className="signup-step-indicator" aria-label="مرحله ثبت‌نام">
         <span className={step === 'account' ? 'is-active' : 'is-complete'}>۱</span>
-        <i className={step === 'otp' || step === 'profile' ? 'is-complete' : undefined} aria-hidden="true" />
-        <span className={step === 'otp' ? 'is-active' : step === 'profile' ? 'is-complete' : undefined}>۲</span>
+        <i
+          className={step === 'otp' || step === 'profile' ? 'is-complete' : undefined}
+          aria-hidden="true"
+        />
+        <span
+          className={
+            step === 'otp'
+              ? 'is-active'
+              : step === 'profile'
+                ? 'is-complete'
+                : undefined
+          }
+        >
+          ۲
+        </span>
         <i className={step === 'profile' ? 'is-complete' : undefined} aria-hidden="true" />
         <span className={step === 'profile' ? 'is-active' : undefined}>۳</span>
       </div>
 
       <div className="signup-slide-window">
-        <div className={`signup-slide-track ${step === 'otp' ? 'is-otp' : step === 'profile' ? 'is-profile' : ''}`}>
+        <div
+          className={`signup-slide-track ${
+            step === 'otp' ? 'is-otp' : step === 'profile' ? 'is-profile' : ''
+          }`}
+        >
           <div className="signup-slide" aria-hidden={step !== 'account'}>
             <label className="login-field">
               <span>ایمیل</span>
@@ -256,7 +282,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                     setEmail(event.target.value);
                     setOtpRequested(false);
                     setOtpVerified(false);
-                      resetFeedback();
+                    resetFeedback();
                   }}
                   placeholder="name@example.com"
                   aria-label="ایمیل"
@@ -317,7 +343,11 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                 <button
                   type="button"
                   className="login-password-toggle"
-                  aria-label={repeatPasswordVisible ? 'پنهان کردن تکرار رمز عبور' : 'نمایش تکرار رمز عبور'}
+                  aria-label={
+                    repeatPasswordVisible
+                      ? 'پنهان کردن تکرار رمز عبور'
+                      : 'نمایش تکرار رمز عبور'
+                  }
                   aria-pressed={repeatPasswordVisible}
                   onClick={() => setRepeatPasswordVisible((visible) => !visible)}
                 >
@@ -325,7 +355,6 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                 </button>
               </div>
             </label>
-
           </div>
 
           <div className="signup-slide" aria-hidden={step !== 'otp'}>
@@ -360,7 +389,11 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                 disabled={requestingOtp || submitting}
                 onClick={() => void handleRequestOtp()}
               >
-                {requestingOtp ? 'در حال ارسال...' : otpRequested ? 'ارسال دوباره کد' : 'دریافت دوباره کد'}
+                {requestingOtp
+                  ? 'در حال ارسال...'
+                  : otpRequested
+                    ? 'ارسال دوباره کد'
+                    : 'دریافت دوباره کد'}
               </button>
 
               <button
@@ -404,14 +437,18 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
       </div>
 
       {formError ? (
-        <p className="login-form-message login-form-message-error" id="signup-form-error" role="alert">
+        <p
+          className="login-form-message login-form-message-error"
+          id="signup-form-error"
+          role="alert"
+        >
           {formError}
         </p>
       ) : null}
 
       {statusMessage ? (
         <p className="login-form-message login-form-message-success">
-          {statusMessage ? <span>{statusMessage}</span> : null}
+          <span>{statusMessage}</span>
         </p>
       ) : null}
 
@@ -438,7 +475,9 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 
       <p className="login-register">
         حساب کاربری دارید؟
-        <button type="button" onClick={onLogin}>وارد شوید</button>
+        <button type="button" onClick={onLogin}>
+          وارد شوید
+        </button>
       </p>
     </form>
   );
@@ -450,6 +489,7 @@ export function SignUpPage({ onLogin, onSignUp }: SignUpPageProps) {
       <div className="auth-page-theme-toggle">
         <ThemeToggle className="h-11 w-11 rounded-full sm:h-12 sm:w-12" />
       </div>
+
       <section className="login-main">
         <AuthShowcase />
 
@@ -457,6 +497,7 @@ export function SignUpPage({ onLogin, onSignUp }: SignUpPageProps) {
           <SignUpForm onLogin={onLogin} onSignUp={onSignUp} />
         </div>
       </section>
+
       <LoginFooter />
     </main>
   );

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
+import { uploadReceipt, openMediaFile } from '../lib/mediaApi';
 import { getFriendlyApiErrorMessage, humanizeMachineLabel } from '../lib/userMessages';
 import {
   createGroupExpense,
@@ -298,6 +299,8 @@ export function GroupDetailPage({
   const [expenseTitle, setExpenseTitle] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
+  const [expenseReceiptFile, setExpenseReceiptFile] = useState<File | null>(null);
+  const [expenseReceiptFileName, setExpenseReceiptFileName] = useState('');
   const [expensePayerId, setExpensePayerId] = useState('');
   const [expenseParticipantIds, setExpenseParticipantIds] = useState<string[]>([]);
   const [manualReceiverId, setManualReceiverId] = useState('');
@@ -659,6 +662,33 @@ export function GroupDetailPage({
     );
   }
 
+  async function handleOpenExpenseReceipt(expense: Pick<BackendExpense, 'receipt_file_id' | 'receipt_url'>) {
+    try {
+      if (expense.receipt_file_id) {
+        await openMediaFile(expense.receipt_file_id);
+        return;
+      }
+
+      if (expense.receipt_url) {
+        window.open(expense.receipt_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      notify({
+        type: 'info',
+        title: 'رسیدی ثبت نشده',
+        description: 'برای این هزینه هنوز رسیدی وجود ندارد.',
+      });
+    } catch (receiptError) {
+      console.error(receiptError);
+      notify({
+        type: 'error',
+        title: 'نمایش رسید ناموفق بود',
+        description: 'دسترسی به فایل رسید ممکن نیست یا فایل پیدا نشد.',
+      });
+    }
+  }
+
   async function handleCreateExpense() {
     const amountMinor = parseAmountToMinor(expenseAmount);
 
@@ -685,6 +715,10 @@ export function GroupDetailPage({
     try {
       setExpenseSaving(true);
 
+      const uploadedReceipt = expenseReceiptFile
+        ? await uploadReceipt({ groupId, file: expenseReceiptFile })
+        : null;
+
       await createGroupExpense(groupId, {
         title: expenseTitle,
         description: expenseDescription,
@@ -693,20 +727,31 @@ export function GroupDetailPage({
         currency: 'IRR',
         split_method: 'EQUAL',
         participant_user_ids: expenseParticipantIds,
+        receipt_file_id: uploadedReceipt?.id,
       });
 
       setExpenseTitle('');
       setExpenseAmount('');
       setExpenseDescription('');
+      setExpenseReceiptFile(null);
+      setExpenseReceiptFileName('');
       await loadExpenses();
       notify({
         type: 'success',
         title: 'هزینه ثبت شد',
-        description: 'مبلغ بین اعضای انتخاب‌شده تقسیم شد و در گزارش گروه نمایش داده می‌شود.',
+        description: uploadedReceipt
+          ? 'هزینه و رسید آن با موفقیت ثبت شدند.'
+          : 'مبلغ بین اعضای انتخاب‌شده تقسیم شد و در گزارش گروه نمایش داده می‌شود.',
       });
     } catch (err) {
       console.error(err);
-      notify({ type: 'error', title: 'ثبت هزینه ناموفق بود', description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.' });
+      notify({
+        type: 'error',
+        title: 'ثبت هزینه ناموفق بود',
+        description: expenseReceiptFile
+          ? 'اگر رسید انتخاب کرده‌ای، مطمئن شو فایل jpg، png، webp یا pdf و کمتر از ۵ مگابایت است.'
+          : getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+      });
     } finally {
       setExpenseSaving(false);
     }
@@ -981,6 +1026,7 @@ export function GroupDetailPage({
                 <div><label className="mb-2 block text-sm font-semibold text-text">روش تقسیم</label><div className="flex h-12 w-full items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700"><span>تقسیم مساوی</span><span className="text-xs font-medium text-emerald-600">بین اعضای انتخاب‌شده</span></div></div>
               </div>
               <div className="mt-4"><label className="mb-2 block text-sm font-semibold text-text">توضیح هزینه</label><textarea dir="rtl" value={expenseDescription} onChange={(event) => setExpenseDescription(event.target.value)} placeholder="اگر خواستی توضیح کوتاهی بنویس..." className="min-h-[84px] w-full resize-none rounded-2xl border border-border bg-white px-4 py-3 text-sm leading-7 text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10" /></div>
+              <div className="mt-4"><label className="mb-2 block text-sm font-semibold text-text">رسید هزینه</label><div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/35 p-3"><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { const file = event.target.files?.[0] || null; setExpenseReceiptFile(file); setExpenseReceiptFileName(file?.name || ''); }} className="block w-full cursor-pointer rounded-xl border border-emerald-100 bg-white text-sm text-slate-600 file:ml-4 file:cursor-pointer file:border-0 file:bg-emerald-600 file:px-4 file:py-3 file:text-sm file:font-bold file:text-white hover:file:bg-emerald-700" /><div className="mt-2 text-right text-xs text-muted">{expenseReceiptFileName ? `فایل انتخاب‌شده: ${expenseReceiptFileName}` : 'فرمت‌های مجاز: jpg، png، webp، pdf'}</div></div></div>
               <div className="mt-4 rounded-2xl border border-border bg-slate-50 p-4"><div className="mb-3 text-right text-sm font-semibold text-text">این هزینه بین چه کسانی تقسیم شود؟</div><div className="grid gap-2 sm:grid-cols-2">{members.map((member) => { const userId = getMemberUserId(member); const selected = expenseParticipantIds.includes(userId); return <button key={userId} type="button" onClick={() => toggleExpenseParticipant(userId)} className={["flex items-center justify-between rounded-2xl border px-3 py-3 text-right text-sm transition", selected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border bg-white text-slate-600 hover:bg-slate-50'].join(' ')}><span className="font-semibold">{getMemberName(member)}</span><span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-emerald-600">{selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}</span></button>; })}</div></div>
               <div className="mt-5 flex justify-end"><button type="button" onClick={handleCreateExpense} disabled={expenseSaving || members.length === 0} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(0,168,107,0.22)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60">{expenseSaving ? <InlineLoader label="در حال ثبت..." /> : <><Plus className="h-4.5 w-4.5" /> ثبت و تقسیم هزینه</>}</button></div>
             </div>
@@ -1276,7 +1322,29 @@ export function GroupDetailPage({
               <div className="mb-6 flex items-center justify-between"><div className="text-right"><h2 className="text-2xl font-bold text-text">هزینه‌های ثبت‌شده</h2><p className="mt-1 text-sm text-muted">جزئیات خرج‌های گروه و حذف هزینه‌های اشتباه.</p></div><div className="rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">{activeExpenses.length.toLocaleString('fa-IR')} هزینه</div></div>
               {expensesLoading ? <div className="rounded-2xl border border-border bg-slate-50 p-5 text-center text-sm text-muted">در حال دریافت هزینه‌ها...</div> : null}
               {!expensesLoading && activeExpenses.length === 0 ? <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted">هنوز هزینه‌ای در این گروه ثبت نشده است.</div> : null}
-              <div className="overflow-hidden rounded-2xl border border-border">{activeExpenses.map((expense, index, list) => <div key={expense.id} className={["flex flex-col gap-4 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between", index !== list.length - 1 ? 'border-b border-border/80' : ''].join(' ')}><div className="flex min-w-0 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><ReceiptText className="h-5 w-5" /></div><div className="min-w-0 text-right"><div className="truncate text-base font-bold text-text">{expense.title}</div><div className="mt-1 text-sm text-muted">پرداخت‌کننده: {getUserDisplayFromId(expense.payer_user_id, members)} • {toPersianDate(expense.expense_date || expense.created_at)}</div></div></div><div className="flex items-center justify-between gap-3 sm:justify-end"><div className="text-left"><div className="text-lg font-extrabold text-emerald-600">{formatMoney(getExpenseTotal(expense))}</div><div className="mt-1 text-xs text-muted">تقسیم مساوی</div></div><button type="button" onClick={() => handleDeleteExpense(expense)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-50 px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-100"><X className="h-4 w-4" />حذف</button></div></div>)}</div>
+              <div className="overflow-hidden rounded-2xl border border-border">
+                {activeExpenses.map((expense, index, list) => (
+                  <div key={expense.id} className={["flex flex-col gap-4 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between", index !== list.length - 1 ? 'border-b border-border/80' : ''].join(' ')}>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600"><ReceiptText className="h-5 w-5" /></div>
+                      <div className="min-w-0 text-right">
+                        <div className="truncate text-base font-bold text-text">{expense.title}</div>
+                        <div className="mt-1 text-sm text-muted">پرداخت‌کننده: {getUserDisplayFromId(expense.payer_user_id, members)} • {toPersianDate(expense.expense_date || expense.created_at)}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+                      <div className="text-left">
+                        <div className="text-lg font-extrabold text-emerald-600">{formatMoney(getExpenseTotal(expense))}</div>
+                        <div className="mt-1 text-xs text-muted">تقسیم مساوی</div>
+                      </div>
+                      {expense.receipt_file_id || expense.receipt_url ? (
+                        <button type="button" onClick={() => handleOpenExpenseReceipt(expense)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-sky-50 px-3 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"><ReceiptText className="h-4 w-4" />رسید</button>
+                      ) : null}
+                      <button type="button" onClick={() => handleDeleteExpense(expense)} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-50 px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-100"><X className="h-4 w-4" />حذف</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">

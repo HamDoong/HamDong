@@ -1,8 +1,8 @@
 import { apiRequest } from './api';
 
-export type ExpenseSplitMethod = 'EQUAL' | 'CUSTOM';
+export type ExpenseSplitMethod = 'EQUAL' | 'CUSTOM_AMOUNT';
 export type ExpenseStatus = 'ACTIVE' | 'DELETED' | 'CANCELLED' | string;
-export type FeeType = 'NONE' | 'PERCENTAGE' | 'AMOUNT' | string;
+export type FeeType = 'NONE' | 'PERCENTAGE' | 'FIXED' | string;
 
 export interface ExpenseParticipant {
   user_id: string;

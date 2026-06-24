@@ -36,6 +36,7 @@ import {
   type BackendGroupMember,
 } from '../lib/groupApi';
 import { getCurrentUser } from '../lib/userApi';
+import { uploadReceipt, openMediaFile } from '../lib/mediaApi';
 import { humanizeMachineLabel } from '../lib/userMessages';
 
 type ActivityFilter = 'all' | 'received' | 'paid' | 'settled';
@@ -58,6 +59,9 @@ interface ExpenseFormState {
   taxAmountMinor: string;
   serviceFeeAmountMinor: string;
   expenseDate: string;
+  receiptFile: File | null;
+  receiptFileId: string;
+  receiptFileName: string;
   receiptUrl: string;
 }
 
@@ -80,6 +84,9 @@ const defaultFormState: ExpenseFormState = {
   taxAmountMinor: '0',
   serviceFeeAmountMinor: '0',
   expenseDate: '',
+  receiptFile: null,
+  receiptFileId: '',
+  receiptFileName: '',
   receiptUrl: '',
 };
 
@@ -655,12 +662,15 @@ export function ActivitiesPage() {
         payerUserId: detail.payer_user_id || '',
         baseAmountMinor: String(detail.base_amount_minor ?? 0),
         currency: detail.currency || 'IRR',
-        splitMethod: detail.split_method === 'CUSTOM' ? 'CUSTOM' : 'EQUAL',
+        splitMethod: detail.split_method === 'CUSTOM_AMOUNT' ? 'CUSTOM_AMOUNT' : 'EQUAL',
         participantUserIds: participantIds,
         customShares: makeShareInputs(detail.participants),
         taxAmountMinor: String(detail.tax_amount_minor ?? 0),
         serviceFeeAmountMinor: String(detail.service_fee_amount_minor ?? 0),
         expenseDate: isoToDateTimeLocal(detail.expense_date || detail.created_at),
+        receiptFile: null,
+        receiptFileId: detail.receipt_file_id || '',
+        receiptFileName: '',
         receiptUrl: detail.receipt_url || '',
       });
     } catch (loadError) {
@@ -704,7 +714,7 @@ export function ActivitiesPage() {
     });
   }
 
-  function buildExpensePayload() {
+  function buildExpensePayload(receiptFileId?: string) {
     const baseAmountMinor = parseAmount(form.baseAmountMinor);
     const taxAmountMinor = parseAmount(form.taxAmountMinor);
     const serviceFeeAmountMinor = parseAmount(form.serviceFeeAmountMinor);
@@ -722,14 +732,51 @@ export function ActivitiesPage() {
       currency: form.currency || 'IRR',
       split_method: form.splitMethod,
       participant_user_ids: form.splitMethod === 'EQUAL' ? form.participantUserIds : undefined,
-      participants: form.splitMethod === 'CUSTOM' ? participants : undefined,
-      tax_type: taxAmountMinor > 0 ? 'AMOUNT' : 'NONE',
+      participants: form.splitMethod === 'CUSTOM_AMOUNT' ? participants : undefined,
+      tax_type: taxAmountMinor > 0 ? 'FIXED' : 'NONE',
       tax_amount_minor: taxAmountMinor,
-      service_fee_type: serviceFeeAmountMinor > 0 ? 'AMOUNT' : 'NONE',
+      service_fee_type: serviceFeeAmountMinor > 0 ? 'FIXED' : 'NONE',
       service_fee_amount_minor: serviceFeeAmountMinor,
       expense_date: dateInputToIso(form.expenseDate),
+      receipt_file_id: receiptFileId || form.receiptFileId || undefined,
       receipt_url: form.receiptUrl || undefined,
     };
+  }
+
+  async function uploadSelectedReceipt() {
+    if (!form.receiptFile) {
+      return form.receiptFileId || undefined;
+    }
+
+    const uploadedReceipt = await uploadReceipt({
+      groupId: form.groupId,
+      file: form.receiptFile,
+    });
+
+    return uploadedReceipt.id;
+  }
+
+  async function handleOpenReceipt(expense: Pick<BackendExpense, 'receipt_file_id' | 'receipt_url'>) {
+    try {
+      if (expense.receipt_file_id) {
+        await openMediaFile(expense.receipt_file_id);
+        return;
+      }
+
+      if (expense.receipt_url) {
+        window.open(expense.receipt_url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      showToast({ tone: 'info', title: 'رسیدی برای این هزینه ثبت نشده' });
+    } catch (receiptError) {
+      console.error(receiptError);
+      showToast({
+        tone: 'error',
+        title: 'نمایش رسید ناموفق بود',
+        message: 'دسترسی به فایل رسید ممکن نیست یا فایل پیدا نشد.',
+      });
+    }
   }
 
   async function handleSubmitExpense(event: FormEvent<HTMLFormElement>) {
@@ -758,7 +805,8 @@ export function ActivitiesPage() {
     try {
       setSubmitting(true);
 
-      const payload = buildExpensePayload();
+      const receiptFileId = await uploadSelectedReceipt();
+      const payload = buildExpensePayload(receiptFileId);
 
       if (modalMode === 'edit' && editingExpenseId) {
         await updateExpense(editingExpenseId, payload);
@@ -775,7 +823,7 @@ export function ActivitiesPage() {
       showToast({
         tone: 'error',
         title: 'ثبت هزینه ناموفق بود',
-        message: 'لطفاً دوباره تلاش کن. اگر مشکل ادامه داشت، چند لحظه بعد امتحان کن.',
+        message: form.receiptFile ? 'اگر رسید انتخاب کرده‌ای، مطمئن شو فایل jpg، png، webp یا pdf و کمتر از ۵ مگابایت است.' : 'لطفاً دوباره تلاش کن. اگر مشکل ادامه داشت، چند لحظه بعد امتحان کن.',
       });
     } finally {
       setSubmitting(false);
@@ -1175,7 +1223,7 @@ export function ActivitiesPage() {
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-2 md:flex md:flex-wrap md:items-center md:justify-end">
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:flex-wrap md:items-center md:justify-end">
                             <button
                               type="button"
                               onClick={() => openDetailModal(expense)}
@@ -1193,6 +1241,16 @@ export function ActivitiesPage() {
                               <Edit3 className="h-3.5 w-3.5" />
                               ویرایش
                             </button>
+
+                            {expense.receipt_file_id || expense.receipt_url ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenReceipt(expense)}
+                                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-[14px] bg-sky-50 px-3 text-xs font-semibold text-sky-700 transition hover:bg-sky-100"
+                              >
+                                رسید
+                              </button>
+                            ) : null}
 
                             <button
                               type="button"
@@ -1365,7 +1423,7 @@ export function ActivitiesPage() {
                     className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
                   >
                     <option value="EQUAL">مساوی</option>
-                    <option value="CUSTOM">سفارشی</option>
+                    <option value="CUSTOM_AMOUNT">سفارشی</option>
                   </select>
                 </div>
 
@@ -1459,7 +1517,7 @@ export function ActivitiesPage() {
                           </span>
                         </label>
 
-                        {form.splitMethod === 'CUSTOM' && checked ? (
+                        {form.splitMethod === 'CUSTOM_AMOUNT' && checked ? (
                           <input
                             dir="ltr"
                             inputMode="numeric"
@@ -1488,15 +1546,42 @@ export function ActivitiesPage() {
                   رسید هزینه
                 </label>
 
-                <input
-                  dir="ltr"
-                  value={form.receiptUrl}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, receiptUrl: event.target.value }))
-                  }
-                  placeholder="لینک رسید را وارد کن"
-                  className="h-12 w-full rounded-2xl border border-border bg-white px-4 text-left text-sm text-text outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-                />
+                <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/35 p-3">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+
+                      setForm((prev) => ({
+                        ...prev,
+                        receiptFile: file,
+                        receiptFileName: file?.name || '',
+                      }));
+                    }}
+                    className="block w-full cursor-pointer rounded-xl border border-emerald-100 bg-white text-sm text-slate-600 file:ml-4 file:cursor-pointer file:border-0 file:bg-emerald-600 file:px-4 file:py-3 file:text-sm file:font-bold file:text-white hover:file:bg-emerald-700"
+                  />
+
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                    <span>
+                      {form.receiptFileName
+                        ? `فایل انتخاب‌شده: ${form.receiptFileName}`
+                        : form.receiptFileId
+                          ? 'رسید قبلی برای این هزینه ثبت شده است.'
+                          : 'فرمت‌های مجاز: jpg، png، webp، pdf'}
+                    </span>
+
+                    {form.receiptFileId ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReceipt({ receipt_file_id: form.receiptFileId })}
+                        className="rounded-xl bg-white px-3 py-1.5 font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
+                      >
+                        مشاهده رسید فعلی
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -1596,6 +1681,25 @@ export function ActivitiesPage() {
                     </div>
                   </div>
                 </div>
+
+                {detailExpense.receipt_file_id || detailExpense.receipt_url ? (
+                  <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-sky-700">رسید هزینه</span>
+                        <div className="mt-1 text-sm font-semibold text-text">برای این هزینه رسید ثبت شده است.</div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReceipt(detailExpense)}
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-sky-600 px-4 text-xs font-bold text-white transition hover:bg-sky-700"
+                      >
+                        مشاهده رسید
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div>
                   <h4 className="mb-3 font-extrabold text-text">شرکت‌کننده‌ها</h4>
