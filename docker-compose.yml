@@ -12,6 +12,7 @@ services:
     - settlement-service
     - media-service
     - notification-service
+    - dashboard-service
   
   identity-service:
     build: ./Backend/services/identity-service
@@ -778,6 +779,89 @@ services:
       rabbitmq:
         condition: service_started
   
+  dashboard-service:
+    build: ./Backend/services/dashboard-service
+    env_file: ./.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DASHBOARD_DB_NAME:-dashboard_db}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      SETTLEMENT_SERVICE_URL: ${SETTLEMENT_SERVICE_URL:-http://settlement-service:8000}
+      GROUP_SERVICE_URL: ${GROUP_SERVICE_URL:-http://group-service:8000}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8000}
+    ports:
+    - 8007:8000
+    volumes:
+    - ./Backend/services/dashboard-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      group-service:
+        condition: service_started
+      expense-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+  
+  dashboard-consumer:
+    build: ./Backend/services/dashboard-service
+    env_file: ./.env
+    command:
+    - python
+    - manage.py
+    - consume_events
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DASHBOARD_DB_NAME:-dashboard_db}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      group-service:
+        condition: service_started
+      expense-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     env_file: ./.env
