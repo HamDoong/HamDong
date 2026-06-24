@@ -11,7 +11,7 @@ from django.conf import settings
 from django.db import models
 from django.utils.dateparse import parse_datetime
 
-from apps.expenses.domain.models import GroupMemberProjection, GroupProjection, UserProjection
+from apps.expenses.domain.models import BankCardProjection, GroupMemberProjection, GroupProjection, UserProjection
 from apps.expenses.infrastructure.event_envelope import validate_event_envelope
 from apps.expenses.infrastructure.repositories import InboxRepository
 
@@ -20,6 +20,23 @@ logger = logging.getLogger(__name__)
 
 class ExpenseEventConsumer:
     def process_identity_event(self, event_type: str, payload: Dict[str, Any]) -> bool:
+        if event_type in {"UserBankCardCreated", "UserBankCardUpdated", "UserBankCardDeactivated"}:
+            card_id = uuid.UUID(str(payload.get("card_id")))
+            user_id = uuid.UUID(str(payload.get("user_id")))
+            defaults = {
+                "user_id": user_id,
+                "holder_name": payload.get("holder_name") or "",
+                "bank_name": payload.get("bank_name"),
+                "card_number_last4": payload.get("card_number_last4") or "",
+                "masked_card_number": payload.get("masked_card_number") or "",
+                "is_default": payload.get("is_default", False),
+                "is_active": payload.get("is_active", True),
+            }
+            BankCardProjection.objects.update_or_create(card_id=card_id, defaults=defaults)
+            if defaults["is_default"]:
+                BankCardProjection.objects.filter(user_id=user_id, is_active=True).exclude(card_id=card_id).update(is_default=False)
+            return True
+
         uid = uuid.UUID(str(payload.get("user_id")))
         defaults = {
             "email": payload.get("email", ""),
@@ -170,7 +187,13 @@ class _BaseConsumer:
 class IdentityConsumer(_BaseConsumer):
     exchange_setting = "IDENTITY_RABBITMQ_EXCHANGE"
     queue_setting = "EXPENSE_IDENTITY_QUEUE"
-    routing_keys = ["identity.user.created", "identity.user.updated"]
+    routing_keys = [
+        "identity.user.created",
+        "identity.user.updated",
+        "identity.user_bank_card.created",
+        "identity.user_bank_card.updated",
+        "identity.user_bank_card.deactivated",
+    ]
 
 
 class GroupConsumer(_BaseConsumer):

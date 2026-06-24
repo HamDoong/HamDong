@@ -779,6 +779,7 @@
 .login-password-toggle:focus-visible,
 .login-submit:focus-visible,
 .login-secondary-action:focus-visible,
+.auth-step-back-button:focus-visible,
 .login-auth-tabs button:focus-visible,
 .login-social-grid button:focus-visible,
 .login-register button:focus-visible,
@@ -809,6 +810,68 @@
     color 180ms ease,
     transform 180ms var(--auth-ease);
   animation: auth-content-rise 520ms var(--auth-ease-out) 520ms both;
+}
+
+
+.auth-step-note {
+  margin: 1rem 0 0;
+  color: #596579;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.8;
+  animation: auth-content-rise 520ms var(--auth-ease-out) 430ms both;
+}
+
+.auth-step-note span {
+  color: #17213a;
+  font-weight: 900;
+}
+
+.auth-step-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.85rem;
+  animation: auth-content-rise 520ms var(--auth-ease-out) 520ms both;
+}
+
+.auth-step-action-button {
+  margin-top: 0;
+}
+
+.auth-step-back-button {
+  display: inline-flex;
+  min-width: fit-content;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem 1rem;
+  color: #526176;
+  background: transparent;
+  border: 1px solid #d8dee8;
+  border-radius: 0.72rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 900;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms var(--auth-ease);
+}
+
+.auth-step-back-button:hover {
+  color: #17213a;
+  background: #f8fafc;
+  border-color: #c8d2df;
+  transform: translateY(-1px);
+}
+
+.auth-step-back-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
 }
 
 .login-secondary-action::before {
@@ -1955,6 +2018,27 @@ html.dark .login-password-toggle:focus-visible .login-input-icon {
   color: rgb(var(--color-text));
 }
 
+
+html.dark .auth-step-note {
+  color: var(--text-secondary);
+}
+
+html.dark .auth-step-note span {
+  color: var(--text-primary);
+}
+
+html.dark .auth-step-back-button {
+  color: var(--text-secondary);
+  background: rgba(10, 24, 38, 0.42);
+  border-color: rgb(var(--color-border) / 0.95);
+}
+
+html.dark .auth-step-back-button:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
 html.dark .login-secondary-action {
   color: var(--brand-primary-light);
   background: var(--surface-active);
@@ -2030,6 +2114,17 @@ html.dark .login-wallet-asset {
     width: 11.5rem;
     bottom: 1.15rem;
     left: 46%;
+  }
+}
+
+
+@media (max-width: 640px) {
+  .auth-step-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-step-back-button {
+    width: 100%;
   }
 }
 

@@ -16,6 +16,21 @@ class ExpenseParticipantResponseSerializer(serializers.Serializer):
     is_included = serializers.BooleanField()
 
 
+class ExpensePaymentOptionResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    type = serializers.CharField()
+    masked_card_number = serializers.CharField()
+    card_number_last4 = serializers.CharField()
+    bank_name = serializers.CharField(allow_null=True)
+    holder_name = serializers.CharField()
+    is_default = serializers.BooleanField()
+
+
+class ExpenseActorSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    art_name = serializers.CharField(allow_null=True)
+
+
 class ExpenseResponseSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     group_id = serializers.UUIDField()
@@ -23,6 +38,7 @@ class ExpenseResponseSerializer(serializers.Serializer):
     description = serializers.CharField(allow_null=True)
     payer_user_id = serializers.UUIDField()
     created_by_user_id = serializers.UUIDField()
+    created_by = ExpenseActorSerializer(required=False)
     currency = serializers.CharField()
     base_amount_minor = serializers.IntegerField()
     tax_amount_minor = serializers.IntegerField()
@@ -31,6 +47,7 @@ class ExpenseResponseSerializer(serializers.Serializer):
     split_method = serializers.CharField()
     status = serializers.CharField()
     participants = ExpenseParticipantResponseSerializer(many=True)
+    payment_options = ExpensePaymentOptionResponseSerializer(many=True, required=False)
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
     expense_date = serializers.DateTimeField(required=False)
@@ -46,6 +63,10 @@ def serialize_expense(expense) -> dict:
             "description": expense.description,
             "payer_user_id": expense.payer_user_id,
             "created_by_user_id": expense.created_by_user_id,
+            "created_by": {
+                "user_id": expense.created_by_user_id,
+                "art_name": getattr(expense, "created_by_art_name", None),
+            },
             "currency": expense.currency,
             "base_amount_minor": expense.base_amount_minor,
             "tax_amount_minor": expense.tax_amount_minor,
@@ -65,6 +86,18 @@ def serialize_expense(expense) -> dict:
                     "is_included": participant.is_included,
                 }
                 for participant in expense.participants.all()
+            ],
+            "payment_options": [
+                {
+                    "id": option.bank_card_id,
+                    "type": "BANK_CARD",
+                    "masked_card_number": option.masked_card_number,
+                    "card_number_last4": option.card_number_last4,
+                    "bank_name": option.bank_name,
+                    "holder_name": option.holder_name,
+                    "is_default": option.is_default,
+                }
+                for option in expense.payment_options.all()
             ],
             "created_at": expense.created_at,
             "updated_at": expense.updated_at,

@@ -123,6 +123,14 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     return cleanArtName;
   }
 
+  function handleBackToAccountStep() {
+    setStep('account');
+    setOtpRequested(false);
+    setOtpVerified(false);
+    setOtpCode('');
+    resetFeedback();
+  }
+
   async function handleRequestOtp() {
     if (!validateAccountFields()) return;
 
@@ -130,11 +138,11 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     resetFeedback();
 
     try {
-      const response = await requestLoginOtp(normalizedEmail);
+      await requestLoginOtp(normalizedEmail);
       setOtpRequested(true);
       setOtpVerified(false);
       setStep('otp');
-      setStatusMessage('کد تایید به ایمیلت ارسال شد.')
+      setStatusMessage('کد تایید به ایمیلت ارسال شد.');
     } catch (error) {
       setFormError(getSignUpErrorMessage(error));
     } finally {
@@ -345,14 +353,25 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
               </div>
             </label>
 
-            <button
-              type="button"
-              className="login-secondary-action"
-              disabled={requestingOtp || submitting}
-              onClick={() => void handleRequestOtp()}
-            >
-              {requestingOtp ? 'در حال ارسال...' : otpRequested ? 'ارسال دوباره کد' : 'دریافت دوباره کد'}
-            </button>
+            <div className="auth-step-actions">
+              <button
+                type="button"
+                className="login-secondary-action auth-step-action-button"
+                disabled={requestingOtp || submitting}
+                onClick={() => void handleRequestOtp()}
+              >
+                {requestingOtp ? 'در حال ارسال...' : otpRequested ? 'ارسال دوباره کد' : 'دریافت دوباره کد'}
+              </button>
+
+              <button
+                type="button"
+                className="auth-step-back-button"
+                disabled={requestingOtp || submitting}
+                onClick={handleBackToAccountStep}
+              >
+                ویرایش ایمیل
+              </button>
+            </div>
           </div>
 
           <div className="signup-slide" aria-hidden={step !== 'profile'}>

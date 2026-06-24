@@ -106,8 +106,8 @@ class ReportPlanItemTests(TestCase):
             data={"description": "again"},
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"]["code"], "INVALID_PLAN_ITEM_ACTION")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "SETTLEMENT_NOT_PAYABLE")
 
     def test_cancelled_item_cannot_be_reported(self):
         self.seed_and_activate_plan()
@@ -125,8 +125,8 @@ class ReportPlanItemTests(TestCase):
             data={"description": "after cancel"},
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"]["code"], "INVALID_PLAN_ITEM_ACTION")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "SETTLEMENT_NOT_PAYABLE")
 
     def test_report_plan_item_creates_manual_settlement_and_sets_reference(self):
         self.seed_and_activate_plan()

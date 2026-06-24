@@ -8,9 +8,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.groups.domain import rules
+from apps.groups.application.member_display import resolve_user_art_name
 from apps.groups.domain.models import Group, GroupInvite, GroupMember
 from apps.groups.infrastructure.rabbitmq_publisher import RabbitMQPublisher
-from apps.groups.infrastructure.repositories import GroupInviteRepository, GroupMemberRepository, GroupRepository
+from apps.groups.infrastructure.repositories import GroupInviteRepository, GroupMemberRepository, GroupRepository, UserProjectionRepository
 
 
 def _build_title(title=None, title_parts=None):
@@ -41,12 +42,14 @@ class CreateGroupUseCase:
             created_by_email=creator.email,
             member_count=1,
         )
+        creator_projection = UserProjectionRepository.get_by_identity_id(creator.sub)
+        creator_art_name = resolve_user_art_name(creator, projection=creator_projection)
 
         GroupMemberRepository.add_owner(
             group=group,
             user_id=creator.sub,
             email=creator.email,
-            art_name=getattr(creator, "art_name", None),
+            art_name=creator_art_name,
         )
         self.publisher.publish("GroupCreated", {"group_id": str(group.id), "created_by": creator.sub}, "group.created")
         self.publisher.publish(
@@ -55,7 +58,7 @@ class CreateGroupUseCase:
                 "group_id": str(group.id),
                 "user_id": str(creator.sub),
                 "email": creator.email,
-                "art_name": getattr(creator, "art_name", None),
+                "art_name": creator_art_name,
                 "role": "OWNER",
                 "status": "ACTIVE",
                 "join_reason": "NEW_JOIN",
@@ -277,6 +280,10 @@ class InviteService:
             raise PermissionError("INVITE_MAX_USES_REACHED")
 
         member = GroupMember.objects.filter(group=invite.group, user_id=user.sub).first()
+        resolved_art_name = resolve_user_art_name(
+            user,
+            projection=UserProjectionRepository.get_by_identity_id(user.sub),
+        )
         join_reason = "NEW_JOIN"
 
         if member and member.status == "ACTIVE":
@@ -292,19 +299,19 @@ class InviteService:
             member.removed_at = None
             member.joined_at = timezone.now()
             member.email = user.email
-            member.art_name_snapshot = getattr(user, "art_name", None)
-            member.save(
-                update_fields=[
-                    "status",
-                    "role",
-                    "left_at",
-                    "removed_at",
-                    "joined_at",
-                    "email",
-                    "art_name_snapshot",
-                    "updated_at",
-                ]
-            )
+            update_fields = [
+                "status",
+                "role",
+                "left_at",
+                "removed_at",
+                "joined_at",
+                "email",
+                "updated_at",
+            ]
+            if resolved_art_name:
+                member.art_name_snapshot = resolved_art_name
+                update_fields.append("art_name_snapshot")
+            member.save(update_fields=update_fields)
         elif member and member.status == "LEFT":
             join_reason = "REJOIN_AFTER_LEFT"
             member.status = "ACTIVE"
@@ -312,24 +319,24 @@ class InviteService:
             member.left_at = None
             member.joined_at = timezone.now()
             member.email = user.email
-            member.art_name_snapshot = getattr(user, "art_name", None)
-            member.save(
-                update_fields=[
-                    "status",
-                    "role",
-                    "left_at",
-                    "joined_at",
-                    "email",
-                    "art_name_snapshot",
-                    "updated_at",
-                ]
-            )
+            update_fields = [
+                "status",
+                "role",
+                "left_at",
+                "joined_at",
+                "email",
+                "updated_at",
+            ]
+            if resolved_art_name:
+                member.art_name_snapshot = resolved_art_name
+                update_fields.append("art_name_snapshot")
+            member.save(update_fields=update_fields)
         else:
             member = GroupMember.objects.create(
                 group=invite.group,
                 user_id=user.sub,
                 email=user.email,
-                art_name_snapshot=getattr(user, "art_name", None),
+                art_name_snapshot=resolved_art_name,
                 role="MEMBER",
                 status="ACTIVE",
             )
@@ -345,7 +352,7 @@ class InviteService:
                 "group_id": str(invite.group.id),
                 "user_id": str(user.sub),
                 "email": member.email,
-                "art_name": member.art_name_snapshot,
+                "art_name": resolved_art_name or member.art_name_snapshot,
                 "role": member.role,
                 "status": member.status,
                 "join_reason": join_reason,

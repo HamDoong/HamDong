@@ -16,6 +16,8 @@ _ALLOWED_NAME_PUNCTUATION = {"'", "-", ".", "(", ")"}
 _ALLOWED_BIO_CONTROLS = {"\n", "\r", "\t"}
 _ALLOWED_PROFILE_FORMAT_CHARS = {"\u200c"}
 
+VALID_OTP_PURPOSES = ("LOGIN", "SIGNUP")
+
 class EmailRule:
     """Validate, normalize, and mask email addresses."""
 
@@ -60,6 +62,16 @@ class OtpRule:
     @staticmethod
     def is_valid_length(code: str, length: int = 6) -> bool:
         return len(code) == length and code.isdigit()
+
+
+class OtpPurposeRule:
+    """Strict purpose validation for OTP flows."""
+
+    VALID_PURPOSES = VALID_OTP_PURPOSES
+
+    @classmethod
+    def is_valid(cls, purpose: object) -> bool:
+        return isinstance(purpose, str) and purpose in cls.VALID_PURPOSES
 
 
 class ArtNameRule:

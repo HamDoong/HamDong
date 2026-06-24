@@ -26,6 +26,28 @@ class UserProjection(models.Model):
         db_table = "expenses_userprojection"
 
 
+
+class BankCardProjection(models.Model):
+    """Safe bank card projection consumed from identity-service events."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    card_id = models.UUIDField(unique=True)
+    user_id = models.UUIDField(db_index=True)
+    holder_name = models.CharField(max_length=150)
+    bank_name = models.CharField(max_length=100, null=True, blank=True)
+    card_number_last4 = models.CharField(max_length=4)
+    masked_card_number = models.CharField(max_length=24)
+    is_default = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "expenses_bankcardprojection"
+        indexes = [models.Index(fields=["user_id", "is_active"]), models.Index(fields=["user_id", "is_default"])]
+
+
+
 class GroupProjection(models.Model):
     """Group projection for expense-service. Consumed from group-service events."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -146,6 +168,26 @@ class Expense(models.Model):
 
     class Meta:
         db_table = "expenses_expense"
+
+
+
+class ExpensePaymentOption(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    expense = models.ForeignKey("Expense", related_name="payment_options", on_delete=models.CASCADE)
+    bank_card_id = models.UUIDField(db_index=True)
+    holder_name = models.CharField(max_length=150)
+    bank_name = models.CharField(max_length=100, null=True, blank=True)
+    card_number_last4 = models.CharField(max_length=4)
+    masked_card_number = models.CharField(max_length=24)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "expenses_expensepaymentoption"
+        constraints = [
+            models.UniqueConstraint(fields=["expense", "bank_card_id"], name="uniq_expense_payment_option")
+        ]
+
 
 
 class ExpenseParticipant(models.Model):
