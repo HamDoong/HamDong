@@ -6,3 +6,5 @@ SELECT 'CREATE DATABASE media_db' WHERE NOT EXISTS (SELECT FROM pg_database WHER
 SELECT 'CREATE DATABASE notification_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'notification_db')\gexec
 
 SELECT 'CREATE DATABASE dashboard_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'dashboard_db')\gexec
+
+SELECT 'CREATE DATABASE wallet_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'wallet_db')\gexec

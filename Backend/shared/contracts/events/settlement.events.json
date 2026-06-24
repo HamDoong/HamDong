@@ -84,7 +84,9 @@
         "group_id",
         "currency",
         "transaction_count",
-        "total_debt_minor"
+        "total_debt_minor",
+        "status",
+        "items"
       ]
     },
     {
@@ -93,7 +95,8 @@
       "payload_keys": [
         "plan_id",
         "group_id",
-        "activated_by_user_id"
+        "activated_by_user_id",
+        "status"
       ]
     },
     {
@@ -102,7 +105,8 @@
       "payload_keys": [
         "plan_id",
         "group_id",
-        "cancelled_by_user_id"
+        "cancelled_by_user_id",
+        "status"
       ]
     },
     {
@@ -110,7 +114,8 @@
       "routing_key": "settlement.plan.expired",
       "payload_keys": [
         "plan_id",
-        "group_id"
+        "group_id",
+        "status"
       ]
     },
     {
@@ -119,7 +124,8 @@
       "payload_keys": [
         "plan_id",
         "group_id",
-        "completed_at"
+        "completed_at",
+        "status"
       ]
     },
     {
@@ -132,7 +138,9 @@
         "payer_user_id",
         "receiver_user_id",
         "amount_minor",
-        "manual_settlement_id"
+        "manual_settlement_id",
+        "currency",
+        "status"
       ]
     },
     {
@@ -144,7 +152,10 @@
         "group_id",
         "payer_user_id",
         "receiver_user_id",
-        "amount_minor"
+        "amount_minor",
+        "currency",
+        "status",
+        "wallet_transaction_id"
       ]
     },
     {
@@ -156,7 +167,9 @@
         "group_id",
         "payer_user_id",
         "receiver_user_id",
-        "amount_minor"
+        "amount_minor",
+        "currency",
+        "status"
       ]
     },
     {

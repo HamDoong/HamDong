@@ -147,6 +147,21 @@ class SettlementPlanService:
             )
         return options
 
+
+    def _serialize_projection_items(self, items):
+        return [
+            {
+                "item_id": str(item.id),
+                "payer_user_id": str(item.payer_user_id),
+                "receiver_user_id": str(item.receiver_user_id),
+                "amount_minor": item.amount_minor,
+                "currency": item.currency,
+                "status": item.status,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in items
+        ]
+
     def _plan_payload(self, plan, items):
         return {
             "id": str(plan.id),
@@ -238,6 +253,8 @@ class SettlementPlanService:
                 plan.currency,
                 plan.transaction_count,
                 plan.total_debt_minor,
+                status=plan.status,
+                items=self._serialize_projection_items(items),
             ),
             "settlement.plan.generated",
         )
@@ -281,7 +298,7 @@ class SettlementPlanService:
                 event_type=SettlementPlanEventTypeChoices.PLAN_EXPIRED,
             )
             self._publish(
-                SettlementPlanExpired(plan.id, plan.group_id),
+                SettlementPlanExpired(plan.id, plan.group_id, status=SettlementPlanStatusChoices.EXPIRED),
                 "settlement.plan.expired",
             )
             plan._expired = True
@@ -293,7 +310,12 @@ class SettlementPlanService:
             event_type=SettlementPlanEventTypeChoices.PLAN_ACTIVATED,
         )
         self._publish(
-            SettlementPlanActivated(plan.id, plan.group_id, member.user_id),
+            SettlementPlanActivated(
+                plan.id,
+                plan.group_id,
+                member.user_id,
+                status=SettlementPlanStatusChoices.ACTIVE,
+            ),
             "settlement.plan.activated",
         )
         plan._expired = False
@@ -346,7 +368,12 @@ class SettlementPlanService:
             event_type=SettlementPlanEventTypeChoices.PLAN_CANCELLED,
         )
         self._publish(
-            SettlementPlanCancelled(plan.id, plan.group_id, member.user_id),
+            SettlementPlanCancelled(
+                plan.id,
+                plan.group_id,
+                member.user_id,
+                status=SettlementPlanStatusChoices.CANCELLED,
+            ),
             "settlement.plan.cancelled",
         )
         return plan
@@ -471,6 +498,8 @@ class SettlementPlanService:
                 item.receiver_user_id,
                 item.amount_minor,
                 settlement.id,
+                currency=item.currency,
+                status=SettlementPlanItemStatusChoices.REPORTED,
             ),
             "settlement.plan_item.reported",
         )
@@ -507,6 +536,8 @@ class SettlementPlanService:
                 item.payer_user_id,
                 item.receiver_user_id,
                 item.amount_minor,
+                currency=item.currency,
+                status=SettlementPlanItemStatusChoices.CONFIRMED,
             ),
             "settlement.plan_item.confirmed",
         )
@@ -521,10 +552,76 @@ class SettlementPlanService:
                 event_type=SettlementPlanEventTypeChoices.PLAN_COMPLETED,
             )
             self._publish(
-                SettlementPlanCompleted(plan.id, plan.group_id, plan.completed_at),
+                SettlementPlanCompleted(
+                    plan.id,
+                    plan.group_id,
+                    plan.completed_at,
+                    status=SettlementPlanStatusChoices.COMPLETED,
+                ),
                 "settlement.plan.completed",
             )
         return item, settlement
+
+
+    @transaction.atomic
+    def apply_wallet_payment(self, item_id, wallet_transaction_id, paid_at=None):
+        item = SettlementPlanItemRepository.get(item_id)
+        if not item:
+            raise InvalidPlanItemActionError()
+        plan = SettlementPlanRepository.get(item.settlement_plan_id)
+        if not plan:
+            raise SettlementPlanNotFoundError()
+        if plan.status != SettlementPlanStatusChoices.ACTIVE:
+            raise SettlementNotPayableError()
+        if item.status == SettlementPlanItemStatusChoices.CONFIRMED:
+            return item, plan
+        if item.status not in {
+            SettlementPlanItemStatusChoices.PENDING,
+            SettlementPlanItemStatusChoices.REJECTED,
+        }:
+            raise SettlementNotPayableError()
+        SettlementPlanItemRepository.mark_confirmed(item)
+        self.balance_service.recalculate_group(plan.group_id, currency=plan.currency)
+        SettlementPlanEventLogRepository.create(
+            settlement_plan_id=plan.id,
+            settlement_plan_item_id=item.id,
+            actor_user_id=item.payer_user_id,
+            event_type=SettlementPlanEventTypeChoices.ITEM_CONFIRMED,
+            metadata={"wallet_transaction_id": str(wallet_transaction_id)},
+        )
+        self._publish(
+            SettlementPlanItemConfirmed(
+                plan.id,
+                item.id,
+                plan.group_id,
+                item.payer_user_id,
+                item.receiver_user_id,
+                item.amount_minor,
+                currency=item.currency,
+                status=SettlementPlanItemStatusChoices.CONFIRMED,
+                wallet_transaction_id=wallet_transaction_id,
+            ),
+            "settlement.plan_item.confirmed",
+        )
+        items = list(SettlementPlanItemRepository.list_by_plan(plan.id))
+        if items and all(entry.status == SettlementPlanItemStatusChoices.CONFIRMED for entry in items):
+            SettlementPlanRepository.mark_completed(plan)
+            SettlementPlanEventLogRepository.create(
+                settlement_plan_id=plan.id,
+                actor_user_id=item.payer_user_id,
+                event_type=SettlementPlanEventTypeChoices.PLAN_COMPLETED,
+                metadata={"wallet_transaction_id": str(wallet_transaction_id)},
+            )
+            self._publish(
+                SettlementPlanCompleted(
+                    plan.id,
+                    plan.group_id,
+                    plan.completed_at,
+                    status=SettlementPlanStatusChoices.COMPLETED,
+                ),
+                "settlement.plan.completed",
+            )
+        return item, plan
 
     @transaction.atomic
     def reject_plan_item(self, item_id, user_id, reason=None):
@@ -557,6 +654,8 @@ class SettlementPlanService:
                 item.payer_user_id,
                 item.receiver_user_id,
                 item.amount_minor,
+                currency=item.currency,
+                status=SettlementPlanItemStatusChoices.REJECTED,
             ),
             "settlement.plan_item.rejected",
         )

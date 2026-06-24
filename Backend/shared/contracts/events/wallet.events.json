@@ -1,0 +1,19 @@
+{
+  "$schema": "../schemas/event_envelope.schema.json",
+  "service": "wallet-service",
+  "events": [
+    {
+      "event_type": "WalletSettlementPaid",
+      "routing_key": "wallet.settlement.paid",
+      "payload_keys": [
+        "wallet_transaction_id",
+        "settlement_plan_item_id",
+        "payer_user_id",
+        "payee_user_id",
+        "amount_minor",
+        "currency",
+        "paid_at"
+      ]
+    }
+  ]
+}

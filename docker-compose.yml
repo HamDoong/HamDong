@@ -13,6 +13,7 @@ services:
     - media-service
     - notification-service
     - dashboard-service
+    - wallet-service
   
   identity-service:
     build: ./Backend/services/identity-service
@@ -778,7 +779,65 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
+  wallet-consumer:
+    build: ./Backend/services/wallet-service
+    env_file: ./.env
+    command: ["python", "manage.py", "consume_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${WALLET_DB_NAME:-wallet_db}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      SETTLEMENT_RABBITMQ_EXCHANGE: ${SETTLEMENT_RABBITMQ_EXCHANGE:-hamdong.settlement}
+      WALLET_IDENTITY_QUEUE: ${WALLET_IDENTITY_QUEUE:-wallet.identity.user_events}
+      WALLET_SETTLEMENT_QUEUE: ${WALLET_SETTLEMENT_QUEUE:-wallet.settlement.events}
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+
+  wallet-outbox-dispatcher:
+    build: ./Backend/services/wallet-service
+    env_file: ./.env
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${WALLET_DB_NAME:-wallet_db}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      WALLET_RABBITMQ_EXCHANGE: ${WALLET_RABBITMQ_EXCHANGE:-hamdong.wallet}
+      EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+      EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+      EVENT_RETRY_DELAY_SECONDS: ${EVENT_RETRY_DELAY_SECONDS:-10,30,60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
   dashboard-service:
     build: ./Backend/services/dashboard-service
     env_file: ./.env
@@ -824,7 +883,52 @@ services:
         condition: service_started
       notification-service:
         condition: service_started
-  
+
+  wallet-service:
+    build: ./Backend/services/wallet-service
+    env_file: ./.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${WALLET_DB_NAME:-wallet_db}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      SETTLEMENT_RABBITMQ_EXCHANGE: ${SETTLEMENT_RABBITMQ_EXCHANGE:-hamdong.settlement}
+      WALLET_RABBITMQ_EXCHANGE: ${WALLET_RABBITMQ_EXCHANGE:-hamdong.wallet}
+      WALLET_IDENTITY_QUEUE: ${WALLET_IDENTITY_QUEUE:-wallet.identity.user_events}
+      WALLET_SETTLEMENT_QUEUE: ${WALLET_SETTLEMENT_QUEUE:-wallet.settlement.events}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
+      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
+      IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-hamdong-internal-token}
+    ports:
+    - 8008:8000
+    volumes:
+    - ./Backend/services/wallet-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+
   dashboard-consumer:
     build: ./Backend/services/dashboard-service
     env_file: ./.env

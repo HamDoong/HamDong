@@ -1,3 +1,4 @@
+
 import uuid
 from datetime import datetime, timezone
 
@@ -159,7 +160,15 @@ class DebtLedgerUpdated(DomainEvent):
 
 class SettlementPlanGenerated(DomainEvent):
     def __init__(
-        self, plan_id, group_id, currency, transaction_count, total_debt_minor
+        self,
+        plan_id,
+        group_id,
+        currency,
+        transaction_count,
+        total_debt_minor,
+        *,
+        status="DRAFT",
+        items=None,
     ):
         super().__init__(
             "SettlementPlanGenerated",
@@ -169,39 +178,43 @@ class SettlementPlanGenerated(DomainEvent):
                 "currency": currency,
                 "transaction_count": transaction_count,
                 "total_debt_minor": total_debt_minor,
+                "status": status,
+                "items": items or [],
             },
         )
 
 
 class SettlementPlanActivated(DomainEvent):
-    def __init__(self, plan_id, group_id, activated_by_user_id):
+    def __init__(self, plan_id, group_id, activated_by_user_id, *, status="ACTIVE"):
         super().__init__(
             "SettlementPlanActivated",
             {
                 "plan_id": str(plan_id),
                 "group_id": str(group_id),
                 "activated_by_user_id": str(activated_by_user_id),
+                "status": status,
             },
         )
 
 
 class SettlementPlanCancelled(DomainEvent):
-    def __init__(self, plan_id, group_id, cancelled_by_user_id):
+    def __init__(self, plan_id, group_id, cancelled_by_user_id, *, status="CANCELLED"):
         super().__init__(
             "SettlementPlanCancelled",
             {
                 "plan_id": str(plan_id),
                 "group_id": str(group_id),
                 "cancelled_by_user_id": str(cancelled_by_user_id),
+                "status": status,
             },
         )
 
 
 class SettlementPlanExpired(DomainEvent):
-    def __init__(self, plan_id, group_id):
+    def __init__(self, plan_id, group_id, *, status="EXPIRED"):
         super().__init__(
             "SettlementPlanExpired",
-            {"plan_id": str(plan_id), "group_id": str(group_id)},
+            {"plan_id": str(plan_id), "group_id": str(group_id), "status": status},
         )
 
 
@@ -215,6 +228,9 @@ class SettlementPlanItemReported(DomainEvent):
         receiver_user_id,
         amount_minor,
         manual_settlement_id,
+        *,
+        currency="IRR",
+        status="REPORTED",
     ):
         super().__init__(
             "SettlementPlanItemReported",
@@ -225,6 +241,8 @@ class SettlementPlanItemReported(DomainEvent):
                 "payer_user_id": str(payer_user_id),
                 "receiver_user_id": str(receiver_user_id),
                 "amount_minor": amount_minor,
+                "currency": currency,
+                "status": status,
                 "manual_settlement_id": str(manual_settlement_id),
             },
         )
@@ -232,24 +250,45 @@ class SettlementPlanItemReported(DomainEvent):
 
 class SettlementPlanItemConfirmed(DomainEvent):
     def __init__(
-        self, plan_id, item_id, group_id, payer_user_id, receiver_user_id, amount_minor
+        self,
+        plan_id,
+        item_id,
+        group_id,
+        payer_user_id,
+        receiver_user_id,
+        amount_minor,
+        *,
+        currency="IRR",
+        status="CONFIRMED",
+        wallet_transaction_id=None,
     ):
-        super().__init__(
-            "SettlementPlanItemConfirmed",
-            {
-                "plan_id": str(plan_id),
-                "item_id": str(item_id),
-                "group_id": str(group_id),
-                "payer_user_id": str(payer_user_id),
-                "receiver_user_id": str(receiver_user_id),
-                "amount_minor": amount_minor,
-            },
-        )
+        data = {
+            "plan_id": str(plan_id),
+            "item_id": str(item_id),
+            "group_id": str(group_id),
+            "payer_user_id": str(payer_user_id),
+            "receiver_user_id": str(receiver_user_id),
+            "amount_minor": amount_minor,
+            "currency": currency,
+            "status": status,
+        }
+        if wallet_transaction_id is not None:
+            data["wallet_transaction_id"] = str(wallet_transaction_id)
+        super().__init__("SettlementPlanItemConfirmed", data)
 
 
 class SettlementPlanItemRejected(DomainEvent):
     def __init__(
-        self, plan_id, item_id, group_id, payer_user_id, receiver_user_id, amount_minor
+        self,
+        plan_id,
+        item_id,
+        group_id,
+        payer_user_id,
+        receiver_user_id,
+        amount_minor,
+        *,
+        currency="IRR",
+        status="REJECTED",
     ):
         super().__init__(
             "SettlementPlanItemRejected",
@@ -260,17 +299,20 @@ class SettlementPlanItemRejected(DomainEvent):
                 "payer_user_id": str(payer_user_id),
                 "receiver_user_id": str(receiver_user_id),
                 "amount_minor": amount_minor,
+                "currency": currency,
+                "status": status,
             },
         )
 
 
 class SettlementPlanCompleted(DomainEvent):
-    def __init__(self, plan_id, group_id, completed_at):
+    def __init__(self, plan_id, group_id, completed_at, *, status="COMPLETED"):
         super().__init__(
             "SettlementPlanCompleted",
             {
                 "plan_id": str(plan_id),
                 "group_id": str(group_id),
                 "completed_at": completed_at.isoformat(),
+                "status": status,
             },
         )

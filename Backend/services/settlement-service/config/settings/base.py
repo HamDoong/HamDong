@@ -32,6 +32,7 @@ SETTLEMENT_RABBITMQ_EXCHANGE = env(
 NOTIFICATION_RABBITMQ_EXCHANGE = env(
     "NOTIFICATION_RABBITMQ_EXCHANGE", default="hamdong.notification"
 )
+WALLET_RABBITMQ_EXCHANGE = env("WALLET_RABBITMQ_EXCHANGE", default="hamdong.wallet")
 SETTLEMENT_IDENTITY_QUEUE = env(
     "SETTLEMENT_IDENTITY_QUEUE", default="settlement.identity.user_events"
 )
@@ -44,6 +45,7 @@ SETTLEMENT_EXPENSE_QUEUE = env(
 SETTLEMENT_NOTIFICATION_QUEUE = env(
     "SETTLEMENT_NOTIFICATION_QUEUE", default="settlement.notification.events"
 )
+SETTLEMENT_WALLET_QUEUE = env("SETTLEMENT_WALLET_QUEUE", default="settlement.wallet.events")
 IDENTITY_JWKS_URL = env(
     "IDENTITY_JWKS_URL",
     default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json",
