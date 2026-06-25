@@ -124,10 +124,13 @@ SPECTACULAR_SETTINGS = {
 }
 
 IDENTITY_RABBITMQ_EXCHANGE = env("IDENTITY_RABBITMQ_EXCHANGE", default="hamdong.identity")
+GROUP_RABBITMQ_EXCHANGE = env("GROUP_RABBITMQ_EXCHANGE", default="hamdong.group")
 NOTIFICATION_RABBITMQ_EXCHANGE = env("NOTIFICATION_RABBITMQ_EXCHANGE", default="hamdong.notification")
 IDENTITY_OTP_QUEUE = env("IDENTITY_OTP_QUEUE", default="notification.identity.otp.requested")
 IDENTITY_OTP_DLX = env("IDENTITY_OTP_DLX", default="notification.identity.otp.requested.dlx")
 IDENTITY_OTP_DLQ = env("IDENTITY_OTP_DLQ", default="notification.identity.otp.requested.dlq")
+NOTIFICATION_GROUP_DIRECT_INVITE_QUEUE = env("NOTIFICATION_GROUP_DIRECT_INVITE_QUEUE", default="notification.group.direct_invites")
+EVENT_DLQ_SUFFIX = env("EVENT_DLQ_SUFFIX", default=".dlq")
 
 EMAIL_PROVIDER = env("EMAIL_PROVIDER", default="fake")
 EMAIL_TEMPLATE_OTP_LOGIN = env("EMAIL_TEMPLATE_OTP_LOGIN", default="OTP_LOGIN")

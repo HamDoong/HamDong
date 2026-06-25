@@ -14,7 +14,7 @@ services:
     - notification-service
     - dashboard-service
     - wallet-service
-  
+
   identity-service:
     build: ./Backend/services/identity-service
     env_file: ./.env
@@ -47,7 +47,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   group-service:
     build: ./Backend/services/group-service
     env_file: ./.env
@@ -80,7 +80,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   group-consumer:
     build: ./Backend/services/group-service
     env_file: ./.env
@@ -111,7 +111,7 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_started
-  
+
   settlement-service:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -170,7 +170,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   settlement-consumer:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -227,7 +227,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   settlement-outbox-dispatcher:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -258,7 +258,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   settlement-reminder-scheduler:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -293,7 +293,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   media-service:
     build: ./Backend/services/media-service
     env_file: ./.env
@@ -392,7 +392,7 @@ services:
         condition: service_started
       group-service:
         condition: service_started
-  
+
   notification-service:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -454,7 +454,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   notification-consumer:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -512,7 +512,51 @@ services:
         condition: service_started
       redis:
         condition: service_started
-  
+
+  notification-group-consumer:
+    build: ./Backend/services/notification-service
+    env_file: ./.env
+    command: ["python", "manage.py", "consume_group_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+      NOTIFICATION_DB_NAME: ${NOTIFICATION_DB_NAME}
+      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+      NOTIFICATION_GROUP_DIRECT_INVITE_QUEUE: ${NOTIFICATION_GROUP_DIRECT_INVITE_QUEUE:-notification.group.direct_invites}
+      EVENT_DLQ_SUFFIX: ${EVENT_DLQ_SUFFIX:-.dlq}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-fake}
+      EMAIL_OTP_MAX_RETRIES: ${EMAIL_OTP_MAX_RETRIES:-3}
+      EMAIL_OTP_RETRY_DELAYS_SECONDS: ${EMAIL_OTP_RETRY_DELAYS_SECONDS:-5,15,30}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+      EMAIL_USE_SSL: ${EMAIL_USE_SSL:-false}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+      EMAIL_TIMEOUT_SECONDS: ${EMAIL_TIMEOUT_SECONDS:-20}
+      DEFAULT_FROM_EMAIL: "${DEFAULT_FROM_EMAIL}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+
   notification-reminder-consumer:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -566,7 +610,7 @@ services:
         condition: service_started
       redis:
         condition: service_started
-  
+
   expense-service:
     build: ./Backend/services/expense-service
     env_file: ./.env
@@ -603,7 +647,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   expense-consumer:
     build: ./Backend/services/expense-service
     env_file: ./.env
@@ -639,7 +683,7 @@ services:
         condition: service_started
       group-service:
         condition: service_started
-  
+
   identity-outbox-dispatcher:
     build: ./Backend/services/identity-service
     env_file: ./.env
@@ -667,7 +711,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   group-outbox-dispatcher:
     build: ./Backend/services/group-service
     env_file: ./.env
@@ -695,7 +739,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   expense-outbox-dispatcher:
     build: ./Backend/services/expense-service
     env_file: ./.env
@@ -723,7 +767,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   media-outbox-dispatcher:
     build: ./Backend/services/media-service
     env_file: ./.env
@@ -751,7 +795,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   notification-outbox-dispatcher:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -985,12 +1029,12 @@ services:
     volumes:
     - postgres_data:/var/lib/postgresql/data
     - ./Backend/infra/postgres/init:/docker-entrypoint-initdb.d
-  
+
   redis:
     image: redis:7-alpine
     ports:
     - 6379:6379
-  
+
   rabbitmq:
     image: rabbitmq:3-management
     environment:

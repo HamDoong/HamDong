@@ -93,6 +93,20 @@ class InternalAPIClient:
         payload = self._get(self.group_service_url, "/api/v1/groups/mine/", token)
         return payload if isinstance(payload, list) else payload.get("results", [])
 
+    def list_group_invitations(self, token: str | None) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        cursor = None
+        while True:
+            params: dict[str, Any] = {"page_size": 100, "status": "PENDING"}
+            if cursor:
+                params["cursor"] = cursor
+            payload = self._get(self.group_service_url, "/api/v1/users/me/group-invitations/", token, params=params)
+            results.extend(payload.get("results", []))
+            cursor = payload.get("next_cursor")
+            if not cursor:
+                break
+        return results
+
     def get_unread_counts(self, token: str | None) -> dict[str, int]:
         payload = self._get(self.notification_service_url, "/api/v1/notifications/unread-count/", token)
         return {
@@ -241,6 +255,45 @@ class DashboardAggregationService:
             "allowed_actions": allowed_actions,
         }
 
+
+    def _build_group_invitation_action(self, invite: dict[str, Any]) -> dict[str, Any] | None:
+        if str(invite.get("status") or "") != "PENDING":
+            return None
+        invitation_id = str(invite.get("id"))
+        group = invite.get("group") or {}
+        invited_by = invite.get("invited_by") or {}
+        created_at = invite.get("created_at")
+        stable_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"dashboard-action:group-invitation:{invitation_id}:RESPOND_TO_GROUP_INVITATION"))
+        return {
+            "id": stable_id,
+            "type": "RESPOND_TO_GROUP_INVITATION",
+            "priority": "HIGH",
+            "title": f"Respond to invitation for {group.get('title') or 'your group'}",
+            "description": f"{invited_by.get('art_name') or 'A group admin'} invited you to join {group.get('title') or 'a group'}.",
+            "group": group,
+            "source": {
+                "service": "group-service",
+                "type": "DIRECT_GROUP_INVITATION",
+                "id": invitation_id,
+            },
+            "amount_minor": None,
+            "currency": None,
+            "created_at": created_at,
+            "due_at": invite.get("expires_at"),
+            "allowed_actions": [
+                {
+                    "key": "ACCEPT",
+                    "method": "POST",
+                    "path": f"/api/v1/group-invitations/{invitation_id}/accept/",
+                },
+                {
+                    "key": "REJECT",
+                    "method": "POST",
+                    "path": f"/api/v1/group-invitations/{invitation_id}/reject/",
+                },
+            ],
+        }
+
     def _build_notification_action(self, notification: dict[str, Any]) -> dict[str, Any]:
         notification_id = str(notification.get("id"))
         priority = str(notification.get("priority") or "HIGH")
@@ -304,10 +357,15 @@ class DashboardAggregationService:
         filters = filters or {}
         settlements = self._safe(lambda: self.api_client.list_all_settlements(token), [])
         notifications = self._safe(lambda: self.api_client.list_important_notifications(token), [])
+        invitations = self._safe(lambda: self.api_client.list_group_invitations(token), [])
 
         items = []
         for settlement in settlements:
             action = self._build_settlement_action(settlement)
+            if action:
+                items.append(action)
+        for invitation in invitations:
+            action = self._build_group_invitation_action(invitation)
             if action:
                 items.append(action)
         for notification in notifications:

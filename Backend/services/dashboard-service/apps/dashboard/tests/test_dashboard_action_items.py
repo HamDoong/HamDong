@@ -13,12 +13,16 @@ from apps.dashboard.tests.helpers import api_client, auth_user
 
 
 class FakeActionClient:
-    def __init__(self, settlements=None, notifications=None):
+    def __init__(self, settlements=None, notifications=None, invitations=None):
         self._settlements = settlements or []
         self._notifications = notifications or []
+        self._invitations = invitations or []
 
     def list_all_settlements(self, token, action_required=None):
         return list(self._settlements)
+
+    def list_group_invitations(self, token):
+        return list(self._invitations)
 
     def list_important_notifications(self, token):
         return list(self._notifications)
@@ -37,6 +41,17 @@ class DashboardActionItemsTests(TestCase):
 
     def _url(self):
         return reverse("dashboard_action_items")
+
+
+    def _invite(self, *, group_id=None, created_at=None, invite_id=None):
+        return {
+            "id": str(invite_id or uuid4()),
+            "group": {"id": str(group_id or uuid4()), "title": "سفر شمال"},
+            "invited_by": {"user_id": str(uuid4()), "art_name": "ali_artist"},
+            "status": "PENDING",
+            "expires_at": timezone.now().isoformat(),
+            "created_at": created_at or timezone.now().isoformat(),
+        }
 
     def _settlement(self, *, direction="PAY", status="PENDING", action_required="PAY", group_id=None, created_at=None):
         source_id = uuid4()
@@ -67,6 +82,7 @@ class DashboardActionItemsTests(TestCase):
                 self._settlement(direction="RECEIVE", status="REPORTED", action_required="CONFIRM", group_id=group_id, created_at=earlier),
                 self._settlement(direction="PAY", status="REJECTED", action_required=None, group_id=group_id, created_at=earlier),
             ],
+            invitations=[self._invite(group_id=group_id, created_at=latest)],
             notifications=[
                 {
                     "id": str(uuid4()),
@@ -81,12 +97,13 @@ class DashboardActionItemsTests(TestCase):
         response = self.client.get(self._url())
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(len(data["results"]), 4)
+        self.assertEqual(len(data["results"]), 5)
         types = {item["type"] for item in data["results"]}
         self.assertIn("PAY_DEBT", types)
         self.assertIn("CONFIRM_RECEIVED_PAYMENT", types)
         self.assertIn("REVIEW_REJECTED_PAYMENT", types)
         self.assertIn("VIEW_IMPORTANT_NOTIFICATION", types)
+        self.assertIn("RESPOND_TO_GROUP_INVITATION", types)
 
     @patch("apps.dashboard.application.dashboard_service.InternalAPIClient")
     def test_action_items_support_filters_and_pagination(self, client_cls):
@@ -116,6 +133,22 @@ class DashboardActionItemsTests(TestCase):
         response_filtered = self.client.get(self._url(), {"type": "CONFIRM_RECEIVED_PAYMENT"})
         self.assertEqual(response_filtered.status_code, 200)
         self.assertEqual(response_filtered.json()["results"][0]["type"], "CONFIRM_RECEIVED_PAYMENT")
+
+
+    @patch("apps.dashboard.application.dashboard_service.InternalAPIClient")
+    def test_direct_invitation_action_exposes_accept_and_reject(self, client_cls):
+        group_id = uuid4()
+        client_cls.return_value = FakeActionClient(invitations=[self._invite(group_id=group_id)])
+
+        response = self.client.get(self._url(), {"type": "RESPOND_TO_GROUP_INVITATION"})
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["results"][0]
+        self.assertEqual(item["type"], "RESPOND_TO_GROUP_INVITATION")
+        paths = {action["path"] for action in item["allowed_actions"]}
+        self.assertEqual(paths, {
+            f"/api/v1/group-invitations/{item['source']['id']}/accept/",
+            f"/api/v1/group-invitations/{item['source']['id']}/reject/",
+        })
 
     @patch("apps.dashboard.application.dashboard_service.InternalAPIClient")
     def test_invalid_query_returns_400(self, client_cls):
