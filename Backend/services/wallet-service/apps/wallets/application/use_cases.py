@@ -80,3 +80,47 @@ class CancelWithdrawalUseCase:
 
     def execute(self, user, withdrawal_id):
         return self.service.cancel_withdrawal(user.id, withdrawal_id)
+
+
+class CreatePaymentIntentUseCase:
+    def __init__(self, service: WalletService | None = None):
+        self.service = service or WalletService()
+
+    def execute(self, user, payload):
+        return self.service.create_payment_intent(
+            user.id,
+            purpose=payload["purpose"],
+            amount_minor=payload["amount_minor"],
+            currency=payload["currency"],
+            provider=payload["provider"],
+            idempotency_key=payload["idempotency_key"],
+        )
+
+
+class GetPaymentIntentUseCase:
+    def __init__(self, service: WalletService | None = None):
+        self.service = service or WalletService()
+
+    def execute(self, user, payment_intent_id):
+        return self.service.get_payment_intent(user.id, payment_intent_id)
+
+
+class HandleGatewayCallbackUseCase:
+    def __init__(self, service: WalletService | None = None):
+        self.service = service or WalletService()
+
+    def execute(self, provider: str, payload: dict, *, method: str = "POST"):
+        return self.service.handle_gateway_callback(provider, payload, method=method)
+
+
+class VerifyPaymentIntentUseCase:
+    def __init__(self, service: WalletService | None = None):
+        self.service = service or WalletService()
+
+    def execute(self, user, provider: str, payload: dict):
+        return self.service.verify_payment_intent(
+            user.id,
+            provider=provider,
+            payment_intent_id=payload["payment_intent_id"],
+            provider_reference=payload.get("provider_reference"),
+        )

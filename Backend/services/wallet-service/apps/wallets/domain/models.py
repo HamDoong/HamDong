@@ -64,6 +64,34 @@ class TopUpStatusChoices(models.TextChoices):
     CANCELLED = "CANCELLED", "Cancelled"
 
 
+class PaymentProviderChoices(models.TextChoices):
+    FAKE = "FAKE", "Fake Provider"
+
+
+class PaymentPurposeChoices(models.TextChoices):
+    WALLET_TOP_UP = "WALLET_TOP_UP", "Wallet Top Up"
+    SETTLEMENT_PAYMENT = "SETTLEMENT_PAYMENT", "Settlement Payment"
+
+
+class PaymentIntentStatusChoices(models.TextChoices):
+    REDIRECT_REQUIRED = "REDIRECT_REQUIRED", "Redirect Required"
+    CALLBACK_RECEIVED = "CALLBACK_RECEIVED", "Callback Received"
+    PROCESSING = "PROCESSING", "Processing"
+    SUCCEEDED = "SUCCEEDED", "Succeeded"
+    FAILED = "FAILED", "Failed"
+    RETRYABLE = "RETRYABLE", "Retryable"
+    EXPIRED = "EXPIRED", "Expired"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class GatewayTransactionStatusChoices(models.TextChoices):
+    CALLBACK_RECEIVED = "CALLBACK_RECEIVED", "Callback Received"
+    VERIFYING = "VERIFYING", "Verifying"
+    SUCCEEDED = "SUCCEEDED", "Succeeded"
+    FAILED = "FAILED", "Failed"
+    RETRYABLE = "RETRYABLE", "Retryable"
+
+
 class SettlementItemStatusChoices(models.TextChoices):
     PENDING = "PENDING", "Pending"
     REPORTED = "REPORTED", "Reported"
@@ -181,6 +209,63 @@ class LedgerEntry(models.Model):
         ]
 
 
+class PaymentIntent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name="payment_intents")
+    purpose = models.CharField(max_length=32, choices=PaymentPurposeChoices.choices, default=PaymentPurposeChoices.WALLET_TOP_UP)
+    amount_minor = models.BigIntegerField()
+    currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
+    provider = models.CharField(max_length=32, choices=PaymentProviderChoices.choices, default=PaymentProviderChoices.FAKE)
+    idempotency_key = models.CharField(max_length=255, db_index=True)
+    status = models.CharField(max_length=32, choices=PaymentIntentStatusChoices.choices, default=PaymentIntentStatusChoices.REDIRECT_REQUIRED)
+    payment_url = models.URLField(max_length=500)
+    expires_at = models.DateTimeField()
+    last_callback_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    provider_reference = models.CharField(max_length=255, null=True, blank=True)
+    failure_reason = models.CharField(max_length=255, null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "wallet_payment_intents"
+        constraints = [
+            models.UniqueConstraint(fields=["wallet", "idempotency_key"], name="wallet_payment_intent_unique_wallet_idempotency"),
+        ]
+        indexes = [
+            models.Index(fields=["wallet", "status"]),
+            models.Index(fields=["provider", "status"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+
+class GatewayTransaction(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    payment_intent = models.OneToOneField(PaymentIntent, on_delete=models.CASCADE, related_name="gateway_transaction")
+    provider = models.CharField(max_length=32, choices=PaymentProviderChoices.choices, default=PaymentProviderChoices.FAKE)
+    provider_reference = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    status = models.CharField(max_length=32, choices=GatewayTransactionStatusChoices.choices, default=GatewayTransactionStatusChoices.CALLBACK_RECEIVED)
+    callback_count = models.PositiveIntegerField(default=0)
+    provider_amount_minor = models.BigIntegerField(null=True, blank=True)
+    provider_currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
+    provider_status = models.CharField(max_length=64, null=True, blank=True)
+    last_callback_payload = models.JSONField(default=dict, blank=True)
+    last_verify_response = models.JSONField(default=dict, blank=True)
+    last_callback_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_attempts = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "wallet_gateway_transactions"
+        indexes = [
+            models.Index(fields=["provider", "status"]),
+            models.Index(fields=["provider", "provider_reference"]),
+        ]
+
+
 class Withdrawal(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name="withdrawals")
@@ -212,16 +297,46 @@ class Withdrawal(models.Model):
 class TopUp(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name="topups")
+    payment_intent = models.OneToOneField(PaymentIntent, on_delete=models.PROTECT, related_name="top_up", null=True, blank=True)
+    gateway_transaction = models.OneToOneField(GatewayTransaction, on_delete=models.PROTECT, related_name="top_up", null=True, blank=True)
+    wallet_transaction = models.OneToOneField(WalletTransaction, on_delete=models.PROTECT, related_name="top_up_record", null=True, blank=True)
     amount_minor = models.BigIntegerField()
     currency = models.CharField(max_length=3, choices=CurrencyChoices.choices, default=CurrencyChoices.IRR)
     status = models.CharField(max_length=20, choices=TopUpStatusChoices.choices, default=TopUpStatusChoices.PENDING)
-    provider = models.CharField(max_length=64, default="FAKE")
+    provider = models.CharField(max_length=64, choices=PaymentProviderChoices.choices, default=PaymentProviderChoices.FAKE)
+    provider_reference = models.CharField(max_length=255, null=True, blank=True, db_index=True)
     idempotency_key = models.CharField(max_length=255, db_index=True)
+    failure_reason = models.CharField(max_length=255, null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "wallet_topups"
+        constraints = [
+            models.UniqueConstraint(fields=["wallet", "idempotency_key"], name="wallet_topup_unique_wallet_idempotency"),
+        ]
+        indexes = [
+            models.Index(fields=["wallet", "status"]),
+        ]
+
+
+class PaymentCallbackLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=32, choices=PaymentProviderChoices.choices, default=PaymentProviderChoices.FAKE)
+    payment_intent = models.ForeignKey(PaymentIntent, on_delete=models.SET_NULL, null=True, blank=True, related_name="callback_logs")
+    provider_reference = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    method = models.CharField(max_length=8)
+    payload = models.JSONField(default=dict)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "wallet_payment_callback_logs"
+        indexes = [
+            models.Index(fields=["provider", "provider_reference"]),
+            models.Index(fields=["payment_intent", "received_at"]),
+        ]
 
 
 class SettlementItemProjection(models.Model):
@@ -274,6 +389,7 @@ class OutboxMessage(models.Model):
         db_table = "wallet_outbox_messages"
         indexes = [
             models.Index(fields=["status", "available_at"]),
+            models.Index(fields=["aggregate_type", "aggregate_id"]),
             models.Index(fields=["routing_key"]),
         ]
 
@@ -293,4 +409,7 @@ class InboxMessage(models.Model):
 
     class Meta:
         db_table = "wallet_inbox_messages"
-        indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
+        indexes = [
+            models.Index(fields=["event_type"]),
+            models.Index(fields=["routing_key"]),
+        ]

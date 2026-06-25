@@ -12,7 +12,7 @@ httpx
 pybreaker
 ruff
 black
-pytest
+pytest==8.3.5
 pytest-django
 debugpy
 PyJWT>=2.8

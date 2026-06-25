@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
 from typing import Iterable
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
@@ -13,21 +14,28 @@ from django.utils import timezone
 
 from apps.wallets.domain.models import (
     CurrencyChoices,
+    GatewayTransaction,
+    GatewayTransactionStatusChoices,
     InboxMessage,
     InboxMessageStatusChoices,
     LedgerEntry,
     LedgerEntryTypeChoices,
     OutboxMessage,
     OutboxMessageStatusChoices,
+    PaymentCallbackLog,
+    PaymentIntent,
+    PaymentIntentStatusChoices,
+    PaymentProviderChoices,
+    PaymentPurposeChoices,
     SettlementItemProjection,
     SettlementItemStatusChoices,
     SettlementPlanStatusChoices,
     TopUp,
+    TopUpStatusChoices,
     UserProjection,
     Wallet,
     WalletStatusChoices,
     WalletTransaction,
-    WalletTransactionDirectionChoices,
     WalletTransactionStatusChoices,
     WalletTransactionTypeChoices,
     Withdrawal,
@@ -44,6 +52,8 @@ def normalize_uuid(value):
 
 
 def coerce_datetime(value):
+    if value in (None, ""):
+        return None
     if isinstance(value, datetime):
         return value
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -123,6 +133,7 @@ class WalletRepository:
             WalletTransactionTypeChoices.TRANSFER_RECEIVED,
             WalletTransactionTypeChoices.SETTLEMENT_RECEIVED,
             WalletTransactionTypeChoices.REFUND,
+            WalletTransactionTypeChoices.ADJUSTMENT,
         ]
         outflow_types = [
             WalletTransactionTypeChoices.WITHDRAWAL,
@@ -130,8 +141,8 @@ class WalletRepository:
             WalletTransactionTypeChoices.SETTLEMENT_PAYMENT,
         ]
         tx_agg = wallet.transactions.aggregate(
-            total_inflow=Coalesce(Sum("amount_minor", filter=Q(status=WalletTransactionStatusChoices.COMPLETED, type__in=inflow_types)), 0),
-            total_outflow=Coalesce(Sum("amount_minor", filter=Q(status=WalletTransactionStatusChoices.COMPLETED, type__in=outflow_types)), 0),
+            total_inflow=Coalesce(Sum("amount_minor", filter=Q(status=WalletTransactionStatusChoices.COMPLETED, type__in=inflow_types, direction="IN")), 0),
+            total_outflow=Coalesce(Sum("amount_minor", filter=Q(status=WalletTransactionStatusChoices.COMPLETED, type__in=outflow_types, direction="OUT")), 0),
         )
         Wallet.objects.filter(pk=wallet.pk).update(
             available_balance_minor=available,
@@ -194,7 +205,7 @@ class SettlementItemProjectionRepository:
     @staticmethod
     def upsert_from_generated(plan_id, group_id, currency, plan_status, items: list[dict], occurred_at):
         rows = []
-        occurred = coerce_datetime(occurred_at)
+        occurred = coerce_datetime(occurred_at) or timezone.now()
         for item in items or []:
             item_id = normalize_uuid(item.get("item_id") or item.get("id"))
             if not item_id:
@@ -208,7 +219,7 @@ class SettlementItemProjectionRepository:
                 "currency": item.get("currency") or currency or CurrencyChoices.IRR,
                 "item_status": item.get("status") or SettlementItemStatusChoices.PENDING,
                 "plan_status": plan_status or SettlementPlanStatusChoices.DRAFT,
-                "created_at": coerce_datetime(item.get("created_at") or occurred),
+                "created_at": coerce_datetime(item.get("created_at") or occurred) or occurred,
                 "updated_at": occurred,
             }
             row, _ = SettlementItemProjection.objects.update_or_create(item_id=item_id, defaults=defaults)
@@ -219,14 +230,14 @@ class SettlementItemProjectionRepository:
     def update_plan_status(plan_id, plan_status, occurred_at):
         return SettlementItemProjection.objects.filter(plan_id=normalize_uuid(plan_id)).update(
             plan_status=plan_status,
-            updated_at=coerce_datetime(occurred_at),
+            updated_at=coerce_datetime(occurred_at) or timezone.now(),
         )
 
     @staticmethod
     def update_item_status(item_id, item_status, occurred_at):
         return SettlementItemProjection.objects.filter(item_id=normalize_uuid(item_id)).update(
             item_status=item_status,
-            updated_at=coerce_datetime(occurred_at),
+            updated_at=coerce_datetime(occurred_at) or timezone.now(),
         )
 
     @staticmethod
@@ -275,7 +286,238 @@ class WithdrawalRepository:
 
     @staticmethod
     def pending_for_wallet(wallet: Wallet):
-        return Withdrawal.objects.filter(wallet=wallet, status__in=[WithdrawalStatusChoices.PENDING, WithdrawalStatusChoices.PROCESSING]).order_by("-created_at", "-id")
+        return Withdrawal.objects.filter(
+            wallet=wallet,
+            status__in=[WithdrawalStatusChoices.PENDING, WithdrawalStatusChoices.PROCESSING],
+        ).order_by("-created_at", "-id")
+
+
+class PaymentIntentRepository:
+    @staticmethod
+    def get_by_wallet_and_idempotency(wallet: Wallet, idempotency_key: str):
+        return PaymentIntent.objects.filter(wallet=wallet, idempotency_key=idempotency_key).first()
+
+    @staticmethod
+    def create(**kwargs):
+        return PaymentIntent.objects.create(**kwargs)
+
+    @staticmethod
+    def get_for_wallet(wallet: Wallet, payment_intent_id):
+        return PaymentIntent.objects.filter(wallet=wallet, id=normalize_uuid(payment_intent_id)).select_related("wallet").first()
+
+    @staticmethod
+    def get_for_wallet_update(wallet: Wallet, payment_intent_id):
+        return PaymentIntent.objects.select_for_update().filter(wallet=wallet, id=normalize_uuid(payment_intent_id)).select_related("wallet").first()
+
+    @staticmethod
+    def set_status(intent: PaymentIntent, status: str, *, failure_reason: str | None = None, provider_reference: str | None = None, verified_at=None):
+        if failure_reason is not None:
+            intent.failure_reason = failure_reason
+        if provider_reference:
+            intent.provider_reference = provider_reference
+        if verified_at is not None:
+            intent.verified_at = verified_at
+        intent.status = status
+        intent.updated_at = timezone.now()
+        fields = ["status", "updated_at"]
+        if failure_reason is not None:
+            fields.append("failure_reason")
+        if provider_reference:
+            fields.append("provider_reference")
+        if verified_at is not None:
+            fields.append("verified_at")
+        intent.save(update_fields=fields)
+        return intent
+
+    @staticmethod
+    def mark_callback_received(intent: PaymentIntent, *, provider_reference: str | None = None, callback_at=None):
+        intent.status = PaymentIntentStatusChoices.CALLBACK_RECEIVED
+        intent.last_callback_at = callback_at or timezone.now()
+        if provider_reference:
+            intent.provider_reference = provider_reference
+        intent.save(update_fields=["status", "last_callback_at", "provider_reference", "updated_at"])
+        return intent
+
+
+class GatewayTransactionRepository:
+    @staticmethod
+    def get_or_create_for_intent(payment_intent: PaymentIntent, defaults: dict | None = None):
+        defaults = defaults or {}
+        obj, _ = GatewayTransaction.objects.get_or_create(payment_intent=payment_intent, defaults=defaults)
+        return obj
+
+    @staticmethod
+    def get_for_intent(payment_intent: PaymentIntent):
+        return GatewayTransaction.objects.filter(payment_intent=payment_intent).first()
+
+    @staticmethod
+    def find_by_provider_reference(provider: str, provider_reference: str):
+        if not provider_reference:
+            return None
+        return GatewayTransaction.objects.filter(provider=provider, provider_reference=provider_reference).select_related("payment_intent").first()
+
+    @staticmethod
+    def lock_for_intent(payment_intent: PaymentIntent):
+        return GatewayTransaction.objects.select_for_update().filter(payment_intent=payment_intent).first()
+
+    @staticmethod
+    def record_callback(payment_intent: PaymentIntent, *, provider: str, provider_reference: str | None, provider_amount_minor: int | None, provider_currency: str | None, provider_status: str | None, payload: dict, callback_at=None):
+        obj, created = GatewayTransaction.objects.select_for_update().get_or_create(
+            payment_intent=payment_intent,
+            defaults={
+                "provider": provider,
+                "provider_reference": provider_reference,
+                "status": GatewayTransactionStatusChoices.CALLBACK_RECEIVED,
+                "provider_amount_minor": provider_amount_minor,
+                "provider_currency": provider_currency or CurrencyChoices.IRR,
+                "provider_status": provider_status,
+                "last_callback_payload": payload,
+                "last_callback_at": callback_at or timezone.now(),
+                "callback_count": 1,
+            },
+        )
+        updates = []
+        obj.provider = provider
+        if provider_reference:
+            obj.provider_reference = provider_reference
+            updates.append("provider_reference")
+        if provider_amount_minor is not None:
+            obj.provider_amount_minor = int(provider_amount_minor)
+            updates.append("provider_amount_minor")
+        if provider_currency:
+            obj.provider_currency = provider_currency
+            updates.append("provider_currency")
+        if provider_status:
+            obj.provider_status = provider_status
+            updates.append("provider_status")
+        obj.last_callback_payload = payload
+        obj.last_callback_at = callback_at or timezone.now()
+        obj.status = GatewayTransactionStatusChoices.CALLBACK_RECEIVED
+        obj.callback_count = 1 if created else int(obj.callback_count or 0) + 1
+        obj.save(update_fields=list(set(updates + ["provider", "last_callback_payload", "last_callback_at", "status", "callback_count", "updated_at"])))
+        return obj
+
+    @staticmethod
+    def record_verification(
+        gateway_tx: GatewayTransaction,
+        *,
+        status: str,
+        provider_reference: str | None = None,
+        provider_amount_minor: int | None = None,
+        provider_currency: str | None = None,
+        provider_status: str | None = None,
+        response_payload: dict | None = None,
+        verified_at=None,
+    ):
+        if provider_reference:
+            gateway_tx.provider_reference = provider_reference
+        if provider_amount_minor is not None:
+            gateway_tx.provider_amount_minor = int(provider_amount_minor)
+        if provider_currency:
+            gateway_tx.provider_currency = provider_currency
+        if provider_status:
+            gateway_tx.provider_status = provider_status
+        gateway_tx.status = status
+        gateway_tx.last_verify_response = response_payload or {}
+        gateway_tx.verification_attempts = int(gateway_tx.verification_attempts or 0) + 1
+        gateway_tx.verified_at = verified_at
+        gateway_tx.save(
+            update_fields=[
+                "provider_reference",
+                "provider_amount_minor",
+                "provider_currency",
+                "provider_status",
+                "status",
+                "last_verify_response",
+                "verification_attempts",
+                "verified_at",
+                "updated_at",
+            ]
+        )
+        return gateway_tx
+
+
+class TopUpRepository:
+    @staticmethod
+    def create(**kwargs):
+        return TopUp.objects.create(**kwargs)
+
+    @staticmethod
+    def get_by_payment_intent(payment_intent: PaymentIntent):
+        return TopUp.objects.filter(payment_intent=payment_intent).first()
+
+    @staticmethod
+    def get_by_wallet_and_idempotency(wallet: Wallet, idempotency_key: str):
+        return TopUp.objects.filter(wallet=wallet, idempotency_key=idempotency_key).first()
+
+    @staticmethod
+    def get_or_create_for_intent(payment_intent: PaymentIntent, defaults: dict | None = None):
+        defaults = defaults or {}
+        top_up, _ = TopUp.objects.get_or_create(payment_intent=payment_intent, defaults=defaults)
+        return top_up
+
+    @staticmethod
+    def mark_completed(top_up: TopUp, *, wallet_transaction: WalletTransaction, gateway_transaction: GatewayTransaction | None = None, provider_reference: str | None = None, completed_at=None):
+        top_up.status = TopUpStatusChoices.COMPLETED
+        top_up.wallet_transaction = wallet_transaction
+        top_up.gateway_transaction = gateway_transaction
+        if provider_reference:
+            top_up.provider_reference = provider_reference
+        top_up.completed_at = completed_at or timezone.now()
+        top_up.failed_at = None
+        top_up.failure_reason = None
+        top_up.save(
+            update_fields=[
+                "status",
+                "wallet_transaction",
+                "gateway_transaction",
+                "provider_reference",
+                "completed_at",
+                "failed_at",
+                "failure_reason",
+                "updated_at",
+            ]
+        )
+        return top_up
+
+    @staticmethod
+    def mark_failed(top_up: TopUp, *, gateway_transaction: GatewayTransaction | None = None, provider_reference: str | None = None, reason: str, failed_at=None):
+        top_up.status = TopUpStatusChoices.FAILED
+        top_up.gateway_transaction = gateway_transaction
+        if provider_reference:
+            top_up.provider_reference = provider_reference
+        top_up.failure_reason = reason
+        top_up.failed_at = failed_at or timezone.now()
+        top_up.save(
+            update_fields=[
+                "status",
+                "gateway_transaction",
+                "provider_reference",
+                "failure_reason",
+                "failed_at",
+                "updated_at",
+            ]
+        )
+        return top_up
+
+    @staticmethod
+    def mark_processing(top_up: TopUp, *, gateway_transaction: GatewayTransaction | None = None, provider_reference: str | None = None):
+        top_up.status = TopUpStatusChoices.PROCESSING
+        top_up.gateway_transaction = gateway_transaction
+        if provider_reference:
+            top_up.provider_reference = provider_reference
+        top_up.save(update_fields=["status", "gateway_transaction", "provider_reference", "updated_at"])
+        return top_up
+
+
+class PaymentCallbackLogRepository:
+    @staticmethod
+    def create(**kwargs):
+        return PaymentCallbackLog.objects.create(**kwargs)
+
+    @staticmethod
+    def last_for_intent(payment_intent: PaymentIntent):
+        return PaymentCallbackLog.objects.filter(payment_intent=payment_intent).order_by("-received_at").first()
 
 
 class OutboxRepository:
@@ -322,7 +564,7 @@ class OutboxRepository:
         message.status = OutboxMessageStatusChoices.FAILED
         message.retry_count += 1
         message.last_error = error
-        retry_delays = str(getattr(__import__("django.conf").conf.settings, "EVENT_RETRY_DELAY_SECONDS", "10,30,60")).split(",")
+        retry_delays = str(getattr(settings, "EVENT_RETRY_DELAY_SECONDS", "10,30,60")).split(",")
         delay = int(retry_delays[min(message.retry_count - 1, len(retry_delays) - 1)].strip() or 10)
         message.available_at = timezone.now() + timedelta(seconds=delay)
         message.save(update_fields=["status", "retry_count", "last_error", "available_at", "updated_at"])

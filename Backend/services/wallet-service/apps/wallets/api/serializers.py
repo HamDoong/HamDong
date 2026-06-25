@@ -28,6 +28,23 @@ TRANSACTION_STATUSES = [
     "FAILED",
     "CANCELLED",
 ]
+PAYMENT_PURPOSES = [
+    "WALLET_TOP_UP",
+    "SETTLEMENT_PAYMENT",
+]
+PAYMENT_PROVIDERS = [
+    "FAKE",
+]
+PAYMENT_INTENT_STATUSES = [
+    "REDIRECT_REQUIRED",
+    "CALLBACK_RECEIVED",
+    "PROCESSING",
+    "SUCCEEDED",
+    "FAILED",
+    "RETRYABLE",
+    "EXPIRED",
+    "CANCELLED",
+]
 
 
 class WalletSerializer(serializers.Serializer):
@@ -151,6 +168,91 @@ class WalletSummaryResponseSerializer(serializers.Serializer):
     recent_transactions = WalletTransactionItemSerializer(many=True)
     pending_withdrawals = WithdrawalItemSerializer(many=True)
     generated_at = serializers.DateTimeField()
+
+
+class PaymentIntentCreateSerializer(serializers.Serializer):
+    purpose = serializers.ChoiceField(choices=PAYMENT_PURPOSES)
+    amount_minor = serializers.IntegerField()
+    currency = serializers.CharField()
+    provider = serializers.ChoiceField(choices=PAYMENT_PROVIDERS)
+    idempotency_key = serializers.CharField(max_length=255)
+
+    def validate_amount_minor(self, value):
+        if int(value) <= 0:
+            raise serializers.ValidationError("Amount must be greater than zero.")
+        return int(value)
+
+    def validate_currency(self, value):
+        if value != "IRR":
+            raise serializers.ValidationError("Only IRR currency is supported in this phase.")
+        return value
+
+    def validate_idempotency_key(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("This field may not be blank.")
+        return value.strip()
+
+
+class PaymentIntentSerializer(serializers.Serializer):
+    payment_intent_id = serializers.UUIDField()
+    purpose = serializers.ChoiceField(choices=PAYMENT_PURPOSES)
+    amount_minor = serializers.IntegerField()
+    currency = serializers.CharField()
+    provider = serializers.ChoiceField(choices=PAYMENT_PROVIDERS)
+    status = serializers.ChoiceField(choices=PAYMENT_INTENT_STATUSES)
+    payment_url = serializers.URLField()
+    expires_at = serializers.DateTimeField()
+    provider_reference = serializers.CharField(allow_null=True, required=False)
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+    verified_at = serializers.DateTimeField(allow_null=True, required=False)
+    top_up_id = serializers.UUIDField(allow_null=True, required=False)
+    wallet_transaction_id = serializers.UUIDField(allow_null=True, required=False)
+    failure_reason = serializers.CharField(allow_null=True, required=False)
+    provider_status = serializers.CharField(allow_null=True, required=False)
+
+
+class PaymentIntentVerifySerializer(serializers.Serializer):
+    payment_intent_id = serializers.UUIDField()
+    provider_reference = serializers.CharField(required=False, allow_blank=False)
+
+    def validate_provider_reference(self, value):
+        return value.strip()
+
+
+class PaymentIntentVerifyResponseSerializer(serializers.Serializer):
+    payment_intent_id = serializers.UUIDField()
+    top_up_id = serializers.UUIDField(allow_null=True, required=False)
+    wallet_transaction_id = serializers.UUIDField(allow_null=True, required=False)
+    status = serializers.ChoiceField(choices=PAYMENT_INTENT_STATUSES)
+    amount_minor = serializers.IntegerField()
+    currency = serializers.CharField()
+    provider = serializers.ChoiceField(choices=PAYMENT_PROVIDERS)
+    provider_reference = serializers.CharField(allow_null=True, required=False)
+    verified_at = serializers.DateTimeField(allow_null=True, required=False)
+    wallet_balance_minor = serializers.IntegerField()
+    failure_reason = serializers.CharField(allow_null=True, required=False)
+
+
+class PaymentGatewayCallbackSerializer(serializers.Serializer):
+    payment_intent_id = serializers.UUIDField(required=False)
+    provider_reference = serializers.CharField(required=False, allow_blank=False)
+    amount_minor = serializers.IntegerField(required=False)
+    currency = serializers.CharField(required=False)
+    result = serializers.CharField(required=False)
+    status = serializers.CharField(required=False)
+    reference = serializers.CharField(required=False)
+    ref = serializers.CharField(required=False)
+    authority = serializers.CharField(required=False)
+
+    def validate_currency(self, value):
+        if value != "IRR":
+            raise serializers.ValidationError("Only IRR currency is supported in this phase.")
+        return value
+
+
+class CallbackAcceptedSerializer(serializers.Serializer):
+    message = serializers.CharField()
 
 
 class MessageSerializer(serializers.Serializer):

@@ -2,13 +2,19 @@
 from __future__ import annotations
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.wallets.api.serializers import (
+    CallbackAcceptedSerializer,
     MessageSerializer,
+    PaymentGatewayCallbackSerializer,
+    PaymentIntentCreateSerializer,
+    PaymentIntentSerializer,
+    PaymentIntentVerifyResponseSerializer,
+    PaymentIntentVerifySerializer,
     WalletSerializer,
     WalletSettlementPayRequestSerializer,
     WalletSettlementPayResponseSerializer,
@@ -22,14 +28,18 @@ from apps.wallets.api.serializers import (
 )
 from apps.wallets.application.use_cases import (
     CancelWithdrawalUseCase,
+    CreatePaymentIntentUseCase,
     CreateWithdrawalUseCase,
     GetMyWalletUseCase,
+    GetPaymentIntentUseCase,
     GetWalletSummaryUseCase,
     GetWalletTransactionUseCase,
     GetWithdrawalUseCase,
+    HandleGatewayCallbackUseCase,
     ListWalletTransactionsUseCase,
     ListWithdrawalsUseCase,
     PaySettlementItemWithWalletUseCase,
+    VerifyPaymentIntentUseCase,
 )
 from apps.wallets.domain.rules import WalletServiceError
 from apps.wallets.infrastructure.jwt_authentication import JWTAuthentication
@@ -163,10 +173,10 @@ class WalletWithdrawalListCreateView(APIView):
     @extend_schema(tags=["Wallet"], responses={200: WithdrawalListResponseSerializer})
     def get(self, request, *args, **kwargs):
         try:
-            payload = ListWithdrawalsUseCase().execute(request.user)
+            rows = ListWithdrawalsUseCase().execute(request.user)
         except WalletServiceError as exc:
             return _error_response(exc)
-        return Response({"results": payload})
+        return Response({"results": rows})
 
     @extend_schema(tags=["Wallet"], request=WithdrawalCreateSerializer, responses={200: WithdrawalItemSerializer})
     def post(self, request, *args, **kwargs):
@@ -201,6 +211,97 @@ class WalletWithdrawalCancelView(APIView):
     def post(self, request, withdrawal_id, *args, **kwargs):
         try:
             payload = CancelWithdrawalUseCase().execute(request.user, withdrawal_id)
+        except WalletServiceError as exc:
+            return _error_response(exc)
+        return Response(payload)
+
+
+class PaymentIntentListCreateView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Payments"], request=PaymentIntentCreateSerializer, responses={201: PaymentIntentSerializer})
+    def post(self, request, *args, **kwargs):
+        serializer = PaymentIntentCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=400)
+        try:
+            payload = CreatePaymentIntentUseCase().execute(request.user, serializer.validated_data)
+        except WalletServiceError as exc:
+            return _error_response(exc)
+        status_code = 200 if payload.get("status") != "REDIRECT_REQUIRED" else 201
+        return Response(payload, status=status_code)
+
+
+class PaymentIntentDetailView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Payments"], responses={200: PaymentIntentSerializer})
+    def get(self, request, payment_intent_id, *args, **kwargs):
+        try:
+            payload = GetPaymentIntentUseCase().execute(request.user, payment_intent_id)
+        except WalletServiceError as exc:
+            return _error_response(exc)
+        return Response(payload)
+
+
+class PaymentGatewayCallbackView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    @extend_schema(
+        tags=["Payments"],
+        parameters=[
+            OpenApiParameter("payment_intent_id", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("provider_reference", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("amount_minor", int, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("currency", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("result", str, OpenApiParameter.QUERY, required=False),
+        ],
+        responses={200: CallbackAcceptedSerializer},
+    )
+    def get(self, request, provider, *args, **kwargs):
+        serializer = PaymentGatewayCallbackSerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=400)
+        try:
+            payload = HandleGatewayCallbackUseCase().execute(provider, serializer.validated_data, method="GET")
+        except WalletServiceError as exc:
+            return _error_response(exc)
+        return Response(payload)
+
+    @extend_schema(
+        tags=["Payments"],
+        request=PaymentGatewayCallbackSerializer,
+        responses={200: CallbackAcceptedSerializer},
+    )
+    def post(self, request, provider, *args, **kwargs):
+        serializer = PaymentGatewayCallbackSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=400)
+        try:
+            payload = HandleGatewayCallbackUseCase().execute(provider, serializer.validated_data, method="POST")
+        except WalletServiceError as exc:
+            return _error_response(exc)
+        return Response(payload)
+
+
+class PaymentGatewayVerifyView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Payments"],
+        request=PaymentIntentVerifySerializer,
+        responses={200: PaymentIntentVerifyResponseSerializer},
+    )
+    def post(self, request, provider, *args, **kwargs):
+        serializer = PaymentIntentVerifySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=400)
+        try:
+            payload = VerifyPaymentIntentUseCase().execute(request.user, provider, serializer.validated_data)
         except WalletServiceError as exc:
             return _error_response(exc)
         return Response(payload)

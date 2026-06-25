@@ -89,6 +89,51 @@ class WithdrawalStateError(WalletServiceError):
         super().__init__(message, code="WITHDRAWAL_STATE_ERROR", status_code=409)
 
 
+class InvalidProviderError(WalletServiceError):
+    def __init__(self, message: str = "Unsupported payment provider."):
+        super().__init__(message, code="INVALID_PROVIDER", status_code=400)
+
+
+class PaymentIntentNotFoundError(WalletServiceError):
+    def __init__(self, message: str = "Payment intent not found."):
+        super().__init__(message, code="PAYMENT_INTENT_NOT_FOUND", status_code=404)
+
+
+class PaymentIntentForbiddenError(WalletServiceError):
+    def __init__(self, message: str = "You are not allowed to access this payment intent."):
+        super().__init__(message, code="PAYMENT_INTENT_FORBIDDEN", status_code=403)
+
+
+class PaymentIntentExpiredError(WalletServiceError):
+    def __init__(self, message: str = "Payment intent has expired."):
+        super().__init__(message, code="PAYMENT_INTENT_EXPIRED", status_code=409)
+
+
+class PaymentIntentStateError(WalletServiceError):
+    def __init__(self, message: str = "Payment intent cannot transition to the requested state."):
+        super().__init__(message, code="PAYMENT_INTENT_STATE_ERROR", status_code=409)
+
+
+class PaymentVerificationFailedError(WalletServiceError):
+    def __init__(self, message: str = "Payment verification failed."):
+        super().__init__(message, code="PAYMENT_VERIFY_FAILED", status_code=409)
+
+
+class PaymentVerificationRetryableError(WalletServiceError):
+    def __init__(self, message: str = "Payment verification should be retried."):
+        super().__init__(message, code="PAYMENT_VERIFY_RETRYABLE", status_code=409)
+
+
+class ProviderReferenceConflictError(WalletServiceError):
+    def __init__(self, message: str = "Provider reference is already linked to another payment intent."):
+        super().__init__(message, code="PROVIDER_REFERENCE_CONFLICT", status_code=409)
+
+
+class UnsupportedPaymentPurposeError(WalletServiceError):
+    def __init__(self, message: str = "Unsupported payment purpose."):
+        super().__init__(message, code="UNSUPPORTED_PAYMENT_PURPOSE", status_code=400)
+
+
 def ensure_positive_amount(amount_minor: int) -> int:
     if int(amount_minor) <= 0:
         raise InvalidAmountError()

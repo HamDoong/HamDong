@@ -45,6 +45,9 @@ INTERNAL_HTTP_TIMEOUT_SECONDS = env.float("INTERNAL_HTTP_TIMEOUT_SECONDS", defau
 DEFAULT_CURRENCY = env("DEFAULT_CURRENCY", default="IRR")
 MAX_WALLET_OPERATION_AMOUNT_MINOR = env.int("MAX_WALLET_OPERATION_AMOUNT_MINOR", default=100000000000)
 
+PAYMENT_INTENT_EXPIRES_IN_MINUTES = env.int("PAYMENT_INTENT_EXPIRES_IN_MINUTES", default=30)
+FAKE_PAYMENT_PROVIDER_BASE_URL = env("FAKE_PAYMENT_PROVIDER_BASE_URL", default="https://fake-gateway/pay")
+
 EVENT_OUTBOX_BATCH_SIZE = env.int("EVENT_OUTBOX_BATCH_SIZE", default=50)
 EVENT_OUTBOX_POLL_INTERVAL_SECONDS = env.int("EVENT_OUTBOX_POLL_INTERVAL_SECONDS", default=5)
 EVENT_MAX_RETRY_COUNT = env.int("EVENT_MAX_RETRY_COUNT", default=5)
@@ -97,14 +100,14 @@ db_engine = os.environ.get("DJANGO_DB_ENGINE", "django.db.backends.postgresql")
 db_name = os.environ.get("DJANGO_TEST_DB_NAME") if os.environ.get("PYTEST_CURRENT_TEST") else POSTGRES_DB
 DATABASES = {
     "default": {
-        "ENGINE": db_engine,
-        "NAME": db_name,
-        "USER": POSTGRES_USER,
-        "PASSWORD": POSTGRES_PASSWORD,
-        "HOST": POSTGRES_HOST,
-        "PORT": POSTGRES_PORT,
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env("POSTGRES_DB", default="wallet_db"),
+        "USER": env("POSTGRES_USER", default="postgres"),
+        "PASSWORD": env("POSTGRES_PASSWORD", default="postgres"),
+        "HOST": env("POSTGRES_HOST", default="postgres"),
+        "PORT": env("POSTGRES_PORT", default="5432"),
         "TEST": {
-            "NAME": os.environ.get("DJANGO_TEST_DB_NAME", POSTGRES_DB),
+            "NAME": env("POSTGRES_TEST_DB", default="test_wallet_db"),
         },
     }
 }
@@ -130,7 +133,7 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "HamDong Wallet Service API",
-    "DESCRIPTION": "Wallet and payment preparation endpoints.",
+    "DESCRIPTION": "Wallet and payment endpoints.",
     "VERSION": SERVICE_VERSION,
 }
 
