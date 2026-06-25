@@ -10,7 +10,15 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.identity.domain.models import OutboxMessage, OutboxMessageStatusChoices, RefreshToken, User, UserBankCard
+from apps.identity.domain.models import (
+    OutboxMessage,
+    OutboxMessageStatusChoices,
+    PasswordResetChallenge,
+    PasswordResetToken,
+    RefreshToken,
+    User,
+    UserBankCard,
+)
 
 
 class UserRepository:
@@ -81,14 +89,19 @@ class RefreshTokenRepository:
         token_hash: str,
         jti: str,
         lifetime_seconds: int,
+        *,
+        remember_me: bool = False,
         **kwargs,
     ) -> RefreshToken:
-        expires_at = timezone.now() + timedelta(seconds=lifetime_seconds)
+        now = timezone.now()
+        expires_at = now + timedelta(seconds=lifetime_seconds)
         return RefreshToken.objects.create(
             user=user,
             token_hash=token_hash,
             jti=jti,
+            remember_me=remember_me,
             expires_at=expires_at,
+            last_used_at=now,
             **kwargs,
         )
 
@@ -102,6 +115,29 @@ class RefreshTokenRepository:
     @staticmethod
     def get_by_jti(jti: str) -> Optional[RefreshToken]:
         return RefreshToken.objects.filter(jti=jti, revoked_at__isnull=True).first()
+
+    @staticmethod
+    def get_any_by_token_hash(token_hash: str) -> Optional[RefreshToken]:
+        return RefreshToken.objects.filter(token_hash=token_hash).first()
+
+    @staticmethod
+    def get_any_by_id_for_user(session_id: str, user: User) -> Optional[RefreshToken]:
+        return RefreshToken.objects.filter(id=session_id, user=user).first()
+
+    @staticmethod
+    def list_active_sessions(user: User):
+        now = timezone.now()
+        return RefreshToken.objects.filter(
+            user=user,
+            revoked_at__isnull=True,
+            expires_at__gt=now,
+        ).order_by("-created_at")
+
+    @staticmethod
+    def touch(refresh_token: RefreshToken) -> RefreshToken:
+        refresh_token.last_used_at = timezone.now()
+        refresh_token.save(update_fields=["last_used_at", "updated_at"])
+        return refresh_token
 
     @staticmethod
     def revoke(refresh_token: RefreshToken) -> RefreshToken:
@@ -137,6 +173,78 @@ class RefreshTokenRepository:
             revoked_at__isnull=True,
             expires_at__gt=timezone.now(),
         )
+
+
+class PasswordResetChallengeRepository:
+    @staticmethod
+    def hash_secret(raw_value: str) -> str:
+        return hashlib.sha256(raw_value.encode()).hexdigest()
+
+    @staticmethod
+    def expire_open_challenges(email: str) -> int:
+        now = timezone.now()
+        return PasswordResetChallenge.objects.filter(
+            email=email,
+            status__in=[
+                PasswordResetChallenge.StatusChoices.PENDING,
+                PasswordResetChallenge.StatusChoices.VERIFIED,
+            ],
+        ).update(
+            status=PasswordResetChallenge.StatusChoices.EXPIRED,
+            updated_at=now,
+        )
+
+    @staticmethod
+    def create(*, user: User | None, email: str, otp_hash: str, expires_at, max_attempts: int) -> PasswordResetChallenge:
+        return PasswordResetChallenge.objects.create(
+            user=user,
+            email=email,
+            otp_hash=otp_hash,
+            expires_at=expires_at,
+            max_attempts=max_attempts,
+        )
+
+    @staticmethod
+    def latest_for_email(email: str) -> Optional[PasswordResetChallenge]:
+        return PasswordResetChallenge.objects.filter(email=email).order_by("-created_at").first()
+
+    @staticmethod
+    def save(challenge: PasswordResetChallenge, *, update_fields: list[str]) -> PasswordResetChallenge:
+        challenge.save(update_fields=update_fields + ["updated_at"])
+        return challenge
+
+
+class PasswordResetTokenRepository:
+    @staticmethod
+    def hash_secret(raw_value: str) -> str:
+        return hashlib.sha256(raw_value.encode()).hexdigest()
+
+    @staticmethod
+    def invalidate_open_tokens_for_user(user: User) -> int:
+        now = timezone.now()
+        return PasswordResetToken.objects.filter(
+            user=user,
+            used_at__isnull=True,
+        ).update(used_at=now, updated_at=now)
+
+    @staticmethod
+    def create(*, challenge: PasswordResetChallenge, user: User, token_hash: str, expires_at) -> PasswordResetToken:
+        return PasswordResetToken.objects.create(
+            challenge=challenge,
+            user=user,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+
+    @staticmethod
+    def get_any_by_token_hash(token_hash: str) -> Optional[PasswordResetToken]:
+        return PasswordResetToken.objects.filter(token_hash=token_hash).select_related("user", "challenge").first()
+
+    @staticmethod
+    def mark_used(reset_token: PasswordResetToken) -> PasswordResetToken:
+        reset_token.used_at = timezone.now()
+        reset_token.save(update_fields=["used_at", "updated_at"])
+        return reset_token
 
 
 class OutboxRepository:

@@ -19,13 +19,18 @@ from apps.identity.api.serializers import (
     CreateUserBankCardSerializer,
     DeactivateAccountResponseSerializer,
     DeactivateAccountSerializer,
+    ForgotPasswordRequestSerializer,
+    ForgotPasswordVerifySerializer,
     InternalPaymentContextBankCardsRequestSerializer,
     LogoutSerializer,
     PasswordChangeSerializer,
     PasswordLoginSerializer,
+    PasswordResetSerializer,
     PasswordSetSerializer,
     RefreshTokenSerializer,
     RequestOtpSerializer,
+    SessionListResponseSerializer,
+    SessionSerializer,
     UpdateUserSerializer,
     UpdateUserBankCardSerializer,
     UserBankCardListResponseSerializer,
@@ -38,10 +43,16 @@ from apps.identity.application.token_service import TokenService
 from apps.identity.application.use_cases import (
     ChangePasswordUseCase,
     DeactivateAccountUseCase,
+    DeleteAllSessionsUseCase,
+    DeleteSessionUseCase,
+    ForgotPasswordRequestUseCase,
+    ForgotPasswordVerifyUseCase,
     LogoutUseCase,
     PasswordLoginUseCase,
+    PasswordResetUseCase,
     RefreshTokenUseCase,
     RequestOtpUseCase,
+    SessionListUseCase,
     SetPasswordUseCase,
     UpdateProfileUseCase,
     VerifyOtpUseCase,
@@ -68,6 +79,23 @@ MessageResponseSerializer = inline_serializer(
         "message": serializers.CharField(),
     },
 )
+
+ResetTokenResponseSerializer = inline_serializer(
+    name="ResetTokenResponseSerializer",
+    fields={
+        "reset_token": serializers.CharField(),
+        "expires_in_seconds": serializers.IntegerField(),
+    },
+)
+
+DeleteAllSessionsResponseSerializer = inline_serializer(
+    name="DeleteAllSessionsResponseSerializer",
+    fields={
+        "message": serializers.CharField(),
+        "revoked_count": serializers.IntegerField(),
+    },
+)
+
 
 
 def _error_response(code: str, message: str, http_status: int, details=None) -> Response:
@@ -271,6 +299,202 @@ class LogoutView(APIView):
         return Response({"message": "Logged out successfully."}, status=status.HTTP_200_OK)
 
 
+class ForgotPasswordRequestView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Request a password-reset verification code",
+        request=ForgotPasswordRequestSerializer,
+        responses={
+            200: MessageResponseSerializer,
+            429: OpenApiResponse(description="Too many password-reset requests"),
+        },
+        examples=[
+            OpenApiExample(
+                "Forgot password request",
+                value={"email": "user@example.com"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Generic success response",
+                value={"message": "If the account exists, a verification code has been sent."},
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request):
+        serializer = ForgotPasswordRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+
+        success, error_code, debug_otp = ForgotPasswordRequestUseCase().execute(serializer.validated_data["email"])
+        if not success:
+            if error_code == "OTP_RATE_LIMITED":
+                return _error_response("OTP_RATE_LIMITED", "Too many password reset requests. Please try again later.", status.HTTP_429_TOO_MANY_REQUESTS)
+            if error_code == "OTP_IN_COOLDOWN":
+                return _error_response("OTP_IN_COOLDOWN", "Please wait before requesting a new verification code.", status.HTTP_429_TOO_MANY_REQUESTS)
+            if error_code == "INVALID_EMAIL":
+                return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST)
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {"message": "If the account exists, a verification code has been sent."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ForgotPasswordVerifyView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Verify a password-reset OTP",
+        request=ForgotPasswordVerifySerializer,
+        responses={
+            200: ResetTokenResponseSerializer,
+            400: OpenApiResponse(description="Invalid or expired OTP"),
+            429: OpenApiResponse(description="Too many invalid OTP attempts"),
+        },
+        examples=[
+            OpenApiExample(
+                "Verify reset OTP",
+                value={"email": "user@example.com", "otp": "123456"},
+                request_only=True,
+            )
+        ],
+    )
+    def post(self, request):
+        serializer = ForgotPasswordVerifySerializer(data=request.data)
+        if not serializer.is_valid():
+            if "email" in serializer.errors and request.data.get("email"):
+                return _error_response("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            if "otp" in serializer.errors:
+                return _error_response("INVALID_OTP", "The OTP code is invalid.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+
+        success, error_code, token_data = ForgotPasswordVerifyUseCase().execute(
+            serializer.validated_data["email"],
+            serializer.validated_data["otp"],
+        )
+        if not success:
+            mapping = {
+                "INVALID_EMAIL": ("INVALID_EMAIL", "Invalid email format.", status.HTTP_400_BAD_REQUEST),
+                "INVALID_OTP": ("INVALID_OTP", "The OTP code is invalid.", status.HTTP_400_BAD_REQUEST),
+                "OTP_EXPIRED": ("OTP_EXPIRED", "The OTP code has expired.", status.HTTP_400_BAD_REQUEST),
+                "OTP_ALREADY_USED": ("OTP_ALREADY_USED", "The OTP code has already been used.", status.HTTP_400_BAD_REQUEST),
+                "OTP_MAX_ATTEMPTS_EXCEEDED": ("OTP_MAX_ATTEMPTS_EXCEEDED", "Maximum OTP verification attempts exceeded.", status.HTTP_429_TOO_MANY_REQUESTS),
+            }
+            code, message, http_status = mapping.get(error_code, ("INVALID_OTP", "The OTP code is invalid.", status.HTTP_400_BAD_REQUEST))
+            return _error_response(code, message, http_status)
+        return Response(token_data, status=status.HTTP_200_OK)
+
+
+class PasswordResetView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Reset password with a one-time reset token",
+        request=PasswordResetSerializer,
+        responses={
+            200: MessageResponseSerializer,
+            400: OpenApiResponse(description="Invalid reset token or password"),
+        },
+        examples=[
+            OpenApiExample(
+                "Reset password",
+                value={
+                    "reset_token": "one-time-reset-token",
+                    "new_password": "StrongPassword123!",
+                    "new_password_confirm": "StrongPassword123!",
+                },
+                request_only=True,
+            )
+        ],
+    )
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response("INVALID_REQUEST", "Invalid request data.", status.HTTP_400_BAD_REQUEST, serializer.errors)
+
+        success, error_code = PasswordResetUseCase().execute(
+            reset_token=serializer.validated_data["reset_token"],
+            new_password=serializer.validated_data["new_password"],
+            new_password_confirm=serializer.validated_data["new_password_confirm"],
+        )
+        if not success:
+            mapping = {
+                "PASSWORD_CONFIRMATION_MISMATCH": ("PASSWORD_CONFIRMATION_MISMATCH", "Password confirmation does not match.", status.HTTP_400_BAD_REQUEST),
+                "WEAK_PASSWORD": ("WEAK_PASSWORD", "Password does not meet security requirements.", status.HTTP_400_BAD_REQUEST),
+                "INVALID_RESET_TOKEN": ("INVALID_RESET_TOKEN", "The provided reset token is invalid.", status.HTTP_400_BAD_REQUEST),
+                "RESET_TOKEN_USED": ("RESET_TOKEN_USED", "The provided reset token has already been used.", status.HTTP_400_BAD_REQUEST),
+                "RESET_TOKEN_EXPIRED": ("RESET_TOKEN_EXPIRED", "The provided reset token has expired.", status.HTTP_400_BAD_REQUEST),
+            }
+            code, message, http_status = mapping[error_code]
+            return _error_response(code, message, http_status)
+        return Response({"message": "Password reset successfully."}, status=status.HTTP_200_OK)
+
+
+class SessionsView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="List active sessions",
+        responses={200: SessionListResponseSerializer},
+    )
+    def get(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        results = SessionListUseCase().execute(user=user, current_jti=getattr(request.user, "token_jti", None))
+        return Response({"results": results}, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Delete all other active sessions",
+        responses={200: DeleteAllSessionsResponseSerializer},
+    )
+    def delete(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        revoked_count = DeleteAllSessionsUseCase().execute(user=user, current_jti=getattr(request.user, "token_jti", None))
+        return Response(
+            {
+                "message": "All other sessions revoked successfully.",
+                "revoked_count": revoked_count,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SessionDetailView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Delete one session",
+        responses={204: OpenApiResponse(description="Session revoked"), 404: OpenApiResponse(description="Session not found")},
+    )
+    def delete(self, request, session_id):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return _error_response("USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND)
+        success = DeleteSessionUseCase().execute(user=user, session_id=str(session_id))
+        if not success:
+            return _error_response("SESSION_NOT_FOUND", "Session not found.", status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class PasswordSetView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -328,6 +552,7 @@ class PasswordLoginView(APIView):
             serializer.validated_data["password"],
             user_agent,
             ip_address,
+            remember_me=serializer.validated_data.get("remember_me", False),
         )
         if not success:
             return _error_response("INVALID_CREDENTIALS", "Invalid username or password.", status.HTTP_401_UNAUTHORIZED)

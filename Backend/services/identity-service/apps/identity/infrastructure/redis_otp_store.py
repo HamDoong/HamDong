@@ -1,7 +1,8 @@
-"""Redis OTP storage implementation."""
+"""Redis-backed OTP storage with a test-friendly in-memory fallback."""
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 from datetime import datetime, timedelta
@@ -9,8 +10,72 @@ from typing import Any, Dict, Optional
 
 import redis
 from django.conf import settings
+from django.utils import timezone
 
 from apps.identity.domain.rules import OtpPurposeRule
+
+
+class InMemoryRedis:
+    """Small Redis subset for test environments where fakeredis is unavailable."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, tuple[str, datetime | None]] = {}
+
+    def _purge_expired(self) -> None:
+        now = timezone.now()
+        expired_keys = [key for key, (_, expires_at) in self._store.items() if expires_at is not None and expires_at <= now]
+        for key in expired_keys:
+            self._store.pop(key, None)
+
+    def get(self, key: str):
+        self._purge_expired()
+        item = self._store.get(key)
+        return item[0] if item else None
+
+    def setex(self, key: str, ttl_seconds: int, value: str) -> None:
+        self._store[key] = (value, timezone.now() + timedelta(seconds=ttl_seconds))
+
+    def incr(self, key: str) -> int:
+        self._purge_expired()
+        current = int(self.get(key) or 0) + 1
+        _, expires_at = self._store.get(key, (None, None))
+        self._store[key] = (str(current), expires_at)
+        return current
+
+    def expire(self, key: str, ttl_seconds: int) -> None:
+        self._purge_expired()
+        if key in self._store:
+            value, _ = self._store[key]
+            self._store[key] = (value, timezone.now() + timedelta(seconds=ttl_seconds))
+
+    def ttl(self, key: str) -> int:
+        self._purge_expired()
+        item = self._store.get(key)
+        if not item:
+            return -2
+        _, expires_at = item
+        if expires_at is None:
+            return -1
+        return max(0, int((expires_at - timezone.now()).total_seconds()))
+
+    def exists(self, key: str) -> int:
+        self._purge_expired()
+        return 1 if key in self._store else 0
+
+    def delete(self, *keys: str) -> int:
+        removed = 0
+        for key in keys:
+            if key in self._store:
+                removed += 1
+                self._store.pop(key, None)
+        return removed
+
+    def keys(self, pattern: str):
+        self._purge_expired()
+        return [key for key in self._store if fnmatch.fnmatch(key, pattern)]
+
+    def flushdb(self) -> None:
+        self._store.clear()
 
 
 class RedisOtpStore:
@@ -21,9 +86,12 @@ class RedisOtpStore:
     def __init__(self):
         if RedisOtpStore._shared_client is None:
             if str(getattr(settings, "REDIS_HOST", "")).lower() == "fakeredis":
-                import fakeredis
+                try:
+                    import fakeredis
 
-                RedisOtpStore._shared_client = fakeredis.FakeStrictRedis(decode_responses=True)
+                    RedisOtpStore._shared_client = fakeredis.FakeStrictRedis(decode_responses=True)
+                except ImportError:
+                    RedisOtpStore._shared_client = InMemoryRedis()
             else:
                 RedisOtpStore._shared_client = redis.Redis(
                     host=settings.REDIS_HOST,

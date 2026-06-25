@@ -98,13 +98,20 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_ALL_ORIGINS = True
 AUTH_USER_MODEL = "identity.User"
 
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
 JWT_ALGORITHM = env("JWT_ALGORITHM", default="RS256")
 JWT_ISSUER = env("JWT_ISSUER", default="hamdong.identity-service")
 JWT_AUDIENCE = env("JWT_AUDIENCE", default="hamdong.services")
 JWT_ACCESS_TOKEN_LIFETIME_SECONDS = env("JWT_ACCESS_TOKEN_LIFETIME_SECONDS", default=900, cast=int)
 JWT_REFRESH_TOKEN_LIFETIME_SECONDS = env("JWT_REFRESH_TOKEN_LIFETIME_SECONDS", default=604800, cast=int)
-JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", default="/app/keys/private.pem")
-JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH", default="/app/keys/public.pem")
+JWT_REMEMBER_ME_REFRESH_TOKEN_LIFETIME_SECONDS = env("JWT_REMEMBER_ME_REFRESH_TOKEN_LIFETIME_SECONDS", default=2592000, cast=int)
+JWT_PRIVATE_KEY_PATH = env("JWT_PRIVATE_KEY_PATH", default=str(BASE_DIR / "keys" / "private.pem"))
+JWT_PUBLIC_KEY_PATH = env("JWT_PUBLIC_KEY_PATH", default=str(BASE_DIR / "keys" / "public.pem"))
 
 OTP_LENGTH = env("OTP_LENGTH", default=6, cast=int)
 OTP_TTL_SECONDS = env("OTP_TTL_SECONDS", default=120, cast=int)
@@ -113,6 +120,8 @@ OTP_MAX_VERIFY_ATTEMPTS = env("OTP_MAX_VERIFY_ATTEMPTS", default=5, cast=int)
 OTP_MAX_REQUESTS_PER_WINDOW = env("OTP_MAX_REQUESTS_PER_WINDOW", default=3, cast=int)
 OTP_RATE_LIMIT_WINDOW_SECONDS = env("OTP_RATE_LIMIT_WINDOW_SECONDS", default=600, cast=int)
 OTP_DEBUG_RETURN_CODE = env.bool("OTP_DEBUG_RETURN_CODE", default=False)
+PASSWORD_RESET_OTP_TTL_SECONDS = env("PASSWORD_RESET_OTP_TTL_SECONDS", default=600, cast=int)
+PASSWORD_RESET_TOKEN_TTL_SECONDS = env("PASSWORD_RESET_TOKEN_TTL_SECONDS", default=600, cast=int)
 
 
 BANK_CARD_ENCRYPTION_KEY = env("BANK_CARD_ENCRYPTION_KEY", default="")

@@ -7,10 +7,11 @@ from typing import Any, Dict, Optional, Tuple
 
 from django.db import transaction
 
+from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.application.otp_service import OtpService
+from apps.identity.application.password_reset_service import PasswordResetService, SessionService
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
-from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.domain.events import PasswordChanged, SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
 from apps.identity.domain.models import User
 from apps.identity.domain.rules import ArtNameRule, EmailRule
@@ -178,6 +179,64 @@ class LogoutUseCase:
         return True, None
 
 
+class ForgotPasswordRequestUseCase:
+    def __init__(self):
+        self.service = PasswordResetService()
+
+    def execute(self, email: str) -> Tuple[bool, Optional[str], Optional[str]]:
+        return self.service.request_reset(email)
+
+
+class ForgotPasswordVerifyUseCase:
+    def __init__(self):
+        self.service = PasswordResetService()
+
+    def execute(self, email: str, otp: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        return self.service.verify_otp(email, otp)
+
+
+class PasswordResetUseCase:
+    def __init__(self):
+        self.service = PasswordResetService()
+
+    def execute(
+        self,
+        *,
+        reset_token: str,
+        new_password: str,
+        new_password_confirm: str,
+    ) -> Tuple[bool, Optional[str]]:
+        return self.service.reset_password(
+            reset_token=reset_token,
+            new_password=new_password,
+            new_password_confirm=new_password_confirm,
+        )
+
+
+class SessionListUseCase:
+    def __init__(self):
+        self.service = SessionService()
+
+    def execute(self, *, user: User, current_jti: str | None = None) -> list[dict]:
+        return self.service.list_sessions(user=user, current_jti=current_jti)
+
+
+class DeleteSessionUseCase:
+    def __init__(self):
+        self.service = SessionService()
+
+    def execute(self, *, user: User, session_id: str) -> bool:
+        return self.service.revoke_session(user=user, session_id=session_id)
+
+
+class DeleteAllSessionsUseCase:
+    def __init__(self):
+        self.service = SessionService()
+
+    def execute(self, *, user: User, current_jti: str | None = None) -> int:
+        return self.service.revoke_other_sessions(user=user, current_jti=current_jti)
+
+
 class UpdateProfileUseCase:
     """Use case for updating user profile."""
 
@@ -239,6 +298,8 @@ class PasswordLoginUseCase:
         password: str,
         user_agent: str = None,
         ip_address: str = None,
+        *,
+        remember_me: bool = False,
     ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
         normalized_art_name = ArtNameRule.normalize(art_name)
         user = UserRepository.get_by_art_name(normalized_art_name) if normalized_art_name else None
@@ -250,6 +311,7 @@ class PasswordLoginUseCase:
             user,
             user_agent=user_agent,
             ip_address=ip_address,
+            remember_me=remember_me,
         )
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")

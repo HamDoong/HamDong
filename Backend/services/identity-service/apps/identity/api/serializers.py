@@ -70,6 +70,20 @@ class TrimmedOptionalURLField(serializers.URLField):
         return super().to_internal_value(value)
 
 
+class StrictBooleanField(serializers.BooleanField):
+    default_error_messages = {
+        "invalid": "Must be a valid boolean.",
+    }
+
+    TRUE_VALUES = {True}
+    FALSE_VALUES = {False}
+
+    def to_internal_value(self, data):
+        if data is True or data is False:
+            return bool(data)
+        self.fail("invalid")
+
+
 class RequestOtpSerializer(serializers.Serializer):
     email = NormalizedEmailField(required=True)
     purpose = StrictOtpPurposeField()
@@ -102,12 +116,48 @@ class PasswordSetSerializer(serializers.Serializer):
 class PasswordLoginSerializer(serializers.Serializer):
     art_name = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
+    remember_me = StrictBooleanField(required=False, default=False)
 
 
 class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField(required=True, write_only=True)
     new_password = serializers.CharField(required=True, write_only=True)
     new_password_confirm = serializers.CharField(required=True, write_only=True)
+
+
+class ForgotPasswordRequestSerializer(serializers.Serializer):
+    email = NormalizedEmailField(required=True)
+
+
+class ForgotPasswordVerifySerializer(serializers.Serializer):
+    email = NormalizedEmailField(required=True)
+    otp = serializers.CharField(required=True, min_length=6, max_length=6)
+
+    def validate_otp(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError("OTP code must be numeric.")
+        return value
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    reset_token = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True)
+    new_password_confirm = serializers.CharField(required=True, write_only=True)
+
+
+class SessionSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    remember_me = serializers.BooleanField()
+    created_at = serializers.DateTimeField()
+    last_used_at = serializers.DateTimeField()
+    expires_at = serializers.DateTimeField()
+    is_current = serializers.BooleanField()
+    user_agent = serializers.CharField(allow_null=True)
+    ip_address = serializers.CharField(allow_null=True)
+
+
+class SessionListResponseSerializer(serializers.Serializer):
+    results = SessionSerializer(many=True)
 
 
 class UserSerializer(serializers.ModelSerializer):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 
 from django.contrib.auth.hashers import check_password as django_check_password
@@ -51,6 +52,29 @@ class User(models.Model):
     class Meta:
         db_table = "users"
         ordering = ["-created_at"]
+
+    def _generate_art_name(self) -> str:
+        base_source = (self.email or "user").split("@", 1)[0]
+        candidate = re.sub(r"\s+", "-", base_source.strip())
+        candidate = re.sub(r"[^\w\-\u0600-\u06FF]", "-", candidate, flags=re.UNICODE)
+        candidate = re.sub(r"-{2,}", "-", candidate).strip("-_")
+        candidate = candidate[:32] if candidate else ""
+        if not candidate or len(candidate) < 3:
+            candidate = f"user-{str(self.id or uuid.uuid4()).replace('-', '')[:8]}".lower()[:32]
+        unique_candidate = candidate
+        suffix = 1
+        while User.objects.exclude(pk=self.pk).filter(art_name=unique_candidate).exists():
+            suffix_token = f"-{suffix}"
+            unique_candidate = f"{candidate[: max(3, 32 - len(suffix_token))]}{suffix_token}"
+            suffix += 1
+        return unique_candidate
+
+    def save(self, *args, **kwargs):
+        if not self.art_name:
+            if not self.id:
+                self.id = uuid.uuid4()
+            self.art_name = self._generate_art_name()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"User({self.email})"
@@ -117,7 +141,7 @@ class UserBankCard(models.Model):
 
 
 class RefreshToken(models.Model):
-    """Refresh token model for token rotation and revocation."""
+    """Refresh token model for token rotation, session listing, and revocation."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -125,7 +149,9 @@ class RefreshToken(models.Model):
     )
     token_hash = models.CharField(max_length=255, unique=True)
     jti = models.UUIDField(unique=True, default=uuid.uuid4)
+    remember_me = models.BooleanField(default=False)
     expires_at = models.DateTimeField()
+    last_used_at = models.DateTimeField(default=timezone.now)
     revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -135,6 +161,9 @@ class RefreshToken(models.Model):
     class Meta:
         db_table = "refresh_tokens"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "revoked_at", "expires_at"]),
+        ]
 
     def __str__(self):
         return f"RefreshToken({self.user.email})"
@@ -142,6 +171,74 @@ class RefreshToken(models.Model):
     @property
     def is_revoked(self):
         return self.revoked_at is not None
+
+
+class PasswordResetChallenge(models.Model):
+    class StatusChoices(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        VERIFIED = "VERIFIED", "Verified"
+        USED = "USED", "Used"
+        EXPIRED = "EXPIRED", "Expired"
+        LOCKED = "LOCKED", "Locked"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_challenges",
+        null=True,
+        blank=True,
+    )
+    email = models.EmailField(max_length=254, db_index=True)
+    otp_hash = models.CharField(max_length=128)
+    status = models.CharField(max_length=20, choices=StatusChoices.choices, default=StatusChoices.PENDING)
+    attempt_count = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=5)
+    expires_at = models.DateTimeField()
+    verified_at = models.DateTimeField(null=True, blank=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "password_reset_challenges"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["email", "status", "created_at"]),
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        return f"PasswordResetChallenge({self.email}, {self.status})"
+
+
+class PasswordResetToken(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    challenge = models.ForeignKey(
+        PasswordResetChallenge,
+        on_delete=models.CASCADE,
+        related_name="reset_tokens",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_tokens",
+    )
+    token_hash = models.CharField(max_length=128, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "password_reset_tokens"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "expires_at", "used_at"]),
+        ]
+
+    def __str__(self):
+        return f"PasswordResetToken({self.user.email})"
 
 
 class OutboxMessageStatusChoices(models.TextChoices):

@@ -1,6 +1,17 @@
 from django.db import migrations
 
 
+def forwards(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        """
+        ALTER TABLE users
+        ALTER COLUMN legacy_phone_number DROP NOT NULL;
+        """
+    )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -8,11 +19,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="""
-                ALTER TABLE users
-                ALTER COLUMN legacy_phone_number DROP NOT NULL;
-            """,
-            reverse_sql=migrations.RunSQL.noop,
-        ),
+        migrations.RunPython(forwards, migrations.RunPython.noop),
     ]
