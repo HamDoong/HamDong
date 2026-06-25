@@ -129,6 +129,7 @@ IDENTITY_RABBITMQ_EXCHANGE = os.getenv("IDENTITY_RABBITMQ_EXCHANGE", "hamdong.id
 GROUP_RABBITMQ_EXCHANGE = os.getenv("GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
 MEDIA_IDENTITY_QUEUE = os.getenv("MEDIA_IDENTITY_QUEUE", "media.identity.user_events")
 MEDIA_GROUP_QUEUE = os.getenv("MEDIA_GROUP_QUEUE", "media.group.events")
+MEDIA_EXPENSE_QUEUE = os.getenv("MEDIA_EXPENSE_QUEUE", "media.expense.events")
 
 IDENTITY_JWKS_URL = os.getenv("IDENTITY_JWKS_URL", "")
 IDENTITY_PUBLIC_KEY_PATH = os.getenv("IDENTITY_PUBLIC_KEY_PATH", "")

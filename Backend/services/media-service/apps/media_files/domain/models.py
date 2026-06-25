@@ -33,6 +33,12 @@ class GroupMemberStatusChoices(models.TextChoices):
     REMOVED = "REMOVED", "Removed"
 
 
+class ExpenseStatusChoices(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    UPDATED = "UPDATED", "Updated"
+    DELETED = "DELETED", "Deleted"
+
+
 class MediaFileTypeChoices(models.TextChoices):
     RECEIPT = "RECEIPT", "Receipt"
     AVATAR = "AVATAR", "Avatar"
@@ -114,6 +120,24 @@ class GroupMemberProjection(models.Model):
         indexes = [models.Index(fields=["group_id"]), models.Index(fields=["user_id"])]
 
 
+class ExpenseProjection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    expense_id = models.UUIDField(unique=True)
+    group_id = models.UUIDField(db_index=True)
+    status = models.CharField(max_length=10, choices=ExpenseStatusChoices.choices, default=ExpenseStatusChoices.ACTIVE)
+    payer_user_id = models.UUIDField(null=True, blank=True)
+    created_by_user_id = models.UUIDField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+    last_event_id = models.UUIDField(null=True, blank=True)
+    last_event_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "media_expense_projections"
+        indexes = [models.Index(fields=["group_id"]), models.Index(fields=["status"])]
+
+
 class MediaFile(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     uploaded_by_user_id = models.UUIDField(db_index=True)
@@ -138,6 +162,11 @@ class MediaFile(models.Model):
 
     class Meta:
         db_table = "media_files"
+        indexes = [
+            models.Index(fields=["group_id", "created_at"]),
+            models.Index(fields=["related_expense_id", "created_at"]),
+            models.Index(fields=["uploaded_by_user_id", "created_at"]),
+        ]
 
 
 class MediaAccessLog(models.Model):
@@ -181,7 +210,6 @@ class OutboxMessage(models.Model):
         indexes = [models.Index(fields=["status", "available_at"]), models.Index(fields=["routing_key"])]
 
 
-
 class InboxMessageStatusChoices(models.TextChoices):
     PROCESSED = "PROCESSED", "Processed"
     FAILED = "FAILED", "Failed"
@@ -204,4 +232,3 @@ class InboxMessage(models.Model):
     class Meta:
         db_table = "media_inbox_messages"
         indexes = [models.Index(fields=["event_type"]), models.Index(fields=["routing_key"])]
-

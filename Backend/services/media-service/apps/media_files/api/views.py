@@ -1,20 +1,44 @@
 from django.conf import settings
 from django.http import FileResponse
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.media_files.api.serializers import MediaListResponseSerializer, MediaMetadataSerializer, MessageSerializer, ReceiptUploadSerializer
+from apps.media_files.api.serializers import (
+    ExpenseReceiptListQuerySerializer,
+    MediaListResponseSerializer,
+    MediaMetadataSerializer,
+    MessageSerializer,
+    ReceiptCursorListResponseSerializer,
+    ReceiptUploadSerializer,
+    UserReceiptListQuerySerializer,
+)
 from apps.media_files.application.file_validator import FileTooLargeError, GroupNotFoundError, InvalidFileTypeError, MediaFileNotFoundError, MediaPermissionDeniedError, NotGroupMemberError
-from apps.media_files.application.use_cases import DeleteMediaUseCase, DownloadMediaUseCase, GetMediaDetailUseCase, ListGroupMediaUseCase, UploadReceiptUseCase
+from apps.media_files.application.media_service import ExpenseNotFoundError, InvalidCursorError
+from apps.media_files.application.use_cases import (
+    DeleteMediaUseCase,
+    DownloadMediaUseCase,
+    GetMediaDetailUseCase,
+    ListExpenseReceiptsUseCase,
+    ListGroupMediaUseCase,
+    ListMyReceiptsUseCase,
+    UploadReceiptUseCase,
+)
 from apps.media_files.infrastructure.jwt_authentication import JWTAuthentication
 
 
 def _error_response(exc):
     return Response({"error": {"code": exc.code, "message": exc.message}}, status=exc.status_code)
+
+
+def _invalid_request_response(errors):
+    return Response(
+        {"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": errors}},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 class HealthView(APIView):
@@ -136,3 +160,73 @@ class ListGroupMediaView(APIView):
         return Response({"count": count, "results": results})
 
 
+class ExpenseReceiptListView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Media"],
+        summary="List receipts for an expense",
+        description="List active receipts attached to an expense for an authenticated active group member.",
+        parameters=[
+            OpenApiParameter("cursor", str, OpenApiParameter.QUERY),
+            OpenApiParameter("page_size", int, OpenApiParameter.QUERY),
+        ],
+        responses={200: ReceiptCursorListResponseSerializer},
+    )
+    def get(self, request, expense_id, *args, **kwargs):
+        serializer = ExpenseReceiptListQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return _invalid_request_response(serializer.errors)
+        try:
+            items, next_cursor = ListExpenseReceiptsUseCase().execute(
+                request.user,
+                expense_id,
+                cursor=serializer.validated_data.get("cursor"),
+                page_size=serializer.validated_data.get("page_size", 20),
+                request=request,
+            )
+        except (ExpenseNotFoundError, GroupNotFoundError, NotGroupMemberError, MediaPermissionDeniedError, InvalidCursorError) as exc:
+            return _error_response(exc)
+        payload = ListExpenseReceiptsUseCase().serialize(items)
+        return Response({"results": payload, "next_cursor": next_cursor})
+
+
+class MyReceiptListView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Media"],
+        summary="List my visible receipts",
+        description="List active receipts the current user may view across their active groups.",
+        parameters=[
+            OpenApiParameter("group_id", str, OpenApiParameter.QUERY),
+            OpenApiParameter("expense_id", str, OpenApiParameter.QUERY),
+            OpenApiParameter("uploaded_by_me", bool, OpenApiParameter.QUERY),
+            OpenApiParameter("from", str, OpenApiParameter.QUERY),
+            OpenApiParameter("to", str, OpenApiParameter.QUERY),
+            OpenApiParameter("cursor", str, OpenApiParameter.QUERY),
+            OpenApiParameter("page_size", int, OpenApiParameter.QUERY),
+        ],
+        responses={200: ReceiptCursorListResponseSerializer},
+    )
+    def get(self, request, *args, **kwargs):
+        query_data = {}
+        for key in ("group_id", "expense_id", "uploaded_by_me", "from", "to", "cursor", "page_size"):
+            if key in request.query_params:
+                query_data[key] = request.query_params.get(key)
+        serializer = UserReceiptListQuerySerializer(data=query_data)
+        if not serializer.is_valid():
+            return _invalid_request_response(serializer.errors)
+        filters = dict(serializer.validated_data)
+        if "from_date" in filters:
+            filters["from_date"] = serializer.start_of_day(filters["from_date"])
+        if "to_date" in filters:
+            filters["to_date"] = serializer.end_of_day(filters["to_date"])
+        try:
+            items, next_cursor = ListMyReceiptsUseCase().execute(request.user, filters, request=request)
+        except (ExpenseNotFoundError, GroupNotFoundError, NotGroupMemberError, MediaPermissionDeniedError, InvalidCursorError) as exc:
+            return _error_response(exc)
+        payload = ListMyReceiptsUseCase().serialize(items)
+        return Response({"results": payload, "next_cursor": next_cursor})

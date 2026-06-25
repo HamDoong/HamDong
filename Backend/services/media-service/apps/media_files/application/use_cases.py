@@ -1,12 +1,12 @@
 from django.db import transaction
 
 from apps.media_files.application.file_validator import MediaFileNotFoundError, MediaPermissionDeniedError, NotGroupMemberError
-from apps.media_files.application.media_service import MediaService
+from apps.media_files.application.media_service import ExpenseNotFoundError, InvalidCursorError, MediaService
 from apps.media_files.application.upload_service import UploadReceiptService
 from apps.media_files.domain.events import MediaDeleted
 from apps.media_files.domain.models import MediaAccessActionChoices
 from apps.media_files.infrastructure.rabbitmq_publisher import RabbitMQPublisher
-from apps.media_files.infrastructure.repositories import MediaFileRepository
+from apps.media_files.infrastructure.repositories import GroupMemberProjectionRepository, MediaFileRepository
 
 
 class UploadReceiptUseCase:
@@ -48,6 +48,70 @@ class ListGroupMediaUseCase:
         self.media_service._get_active_member_or_raise(group_id, user.sub)
         items, count = MediaFileRepository.list_group_media(group_id, file_type=file_type, page=page, page_size=page_size)
         return items, count
+
+
+class ListExpenseReceiptsUseCase:
+    def __init__(self, media_service=None):
+        self.media_service = media_service or MediaService()
+
+    def execute(self, user, expense_id, *, cursor=None, page_size=20, request=None):
+        expense = self.media_service._get_expense_or_raise(expense_id)
+        self.media_service._get_group_or_raise(expense.group_id)
+        self.media_service._get_active_member_or_raise(expense.group_id, user.sub)
+        try:
+            items, next_cursor = MediaFileRepository.list_expense_receipts(
+                expense_id=expense.expense_id,
+                group_id=expense.group_id,
+                cursor=cursor,
+                page_size=page_size,
+            )
+        except ValueError as exc:
+            raise InvalidCursorError() from exc
+        self.media_service.upload_list_access_logs(items, user.sub, MediaAccessActionChoices.VIEW, request=request)
+        return items, next_cursor
+
+    def serialize(self, items):
+        return [self.media_service.to_receipt_payload(item, include_group=False) for item in items]
+
+
+class ListMyReceiptsUseCase:
+    def __init__(self, media_service=None):
+        self.media_service = media_service or MediaService()
+
+    def execute(self, user, filters, *, request=None):
+        group_id = filters.get("group_id")
+        expense_id = filters.get("expense_id")
+        if group_id:
+            self.media_service._get_group_or_raise(group_id)
+            self.media_service._get_active_member_or_raise(group_id, user.sub)
+        if expense_id:
+            expense = self.media_service._get_expense_or_raise(expense_id)
+            self.media_service._get_group_or_raise(expense.group_id)
+            self.media_service._get_active_member_or_raise(expense.group_id, user.sub)
+            if group_id and str(group_id) != str(expense.group_id):
+                raise MediaPermissionDeniedError()
+            group_id = expense.group_id
+
+        active_group_ids = GroupMemberProjectionRepository.list_active_group_ids_for_user(user.sub)
+        try:
+            items, next_cursor = MediaFileRepository.list_user_receipts(
+                user_id=user.sub,
+                active_group_ids=active_group_ids,
+                group_id=group_id,
+                expense_id=expense_id,
+                uploaded_by_me=filters.get("uploaded_by_me"),
+                from_date=filters.get("from_date"),
+                to_date=filters.get("to_date"),
+                cursor=filters.get("cursor"),
+                page_size=filters.get("page_size", 20),
+            )
+        except ValueError as exc:
+            raise InvalidCursorError() from exc
+        self.media_service.upload_list_access_logs(items, user.sub, MediaAccessActionChoices.VIEW, request=request)
+        return items, next_cursor
+
+    def serialize(self, items):
+        return [self.media_service.to_receipt_payload(item, include_group=True) for item in items]
 
 
 class DeleteMediaUseCase:
