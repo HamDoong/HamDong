@@ -427,10 +427,10 @@ function SectionHeader({
 }) {
   return (
     <div className={[
-      'dashboard-section-header flex items-center justify-between gap-3',
+      'dashboard-section-header',
       compact
-        ? 'border-b border-emerald-50/80 bg-white/[0.35] px-4 py-3.5 sm:px-5'
-        : 'px-4 py-4 sm:px-5',
+        ? 'flex items-center justify-between gap-3 border-b border-emerald-50/80 bg-white/[0.35] px-4 py-3.5 sm:px-5'
+        : 'mb-5 flex flex-wrap items-center justify-between gap-3',
     ].join(' ')}>
       <button
         type="button"
@@ -463,7 +463,7 @@ function DashboardSectionState({
   const StateIcon = loading ? Loader2 : Icon;
 
   return (
-    <div className="dashboard-empty-state mx-4 mb-4 min-h-[140px] rounded-[20px] border border-dashed border-emerald-100/80 bg-white/[0.55] px-4 py-6 text-center sm:mx-5">
+    <div className="dashboard-empty-state min-h-[140px] rounded-[20px] border border-dashed border-emerald-100/80 bg-white/[0.55] px-4 py-6 text-center">
       <div className="dashboard-empty-state-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[16px] bg-white text-slate-500 shadow-sm">
         <StateIcon className={['h-5 w-5', loading ? 'animate-spin' : ''].join(' ')} />
       </div>
@@ -647,7 +647,7 @@ function SettlementRow({ item }: { item: SettlementSuggestion }) {
     : 'bg-emerald-50 text-emerald-600';
 
   return (
-    <div className="dashboard-list-row grid gap-3 border-b border-emerald-50/90 px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_32px_minmax(116px,160px)] sm:items-center sm:px-5">
+    <div className="dashboard-list-row dashboard-list-card grid gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:grid-cols-[minmax(0,1fr)_32px_minmax(116px,160px)] sm:items-center sm:px-5">
       <div className="order-2 text-right sm:order-3 sm:text-left">
         <div className={`text-base font-black ${amountClassName}`}>{formatMoney(item.amount)}</div>
         <div className="mt-1 hidden text-[11px] font-semibold leading-5 text-slate-500 sm:block">
@@ -676,7 +676,7 @@ function EventRow({ event }: { event: DashboardEvent }) {
   const Icon = event.icon;
 
   return (
-    <div className="dashboard-list-row grid grid-cols-[minmax(0,1fr)_44px] gap-3 border-b border-emerald-50/90 px-4 py-3.5 last:border-b-0 sm:grid-cols-[88px_minmax(0,1fr)_44px] sm:items-center sm:px-5">
+    <div className="dashboard-list-row dashboard-list-card grid grid-cols-[minmax(0,1fr)_44px] gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:grid-cols-[88px_minmax(0,1fr)_44px] sm:items-center sm:px-5">
       <div className="order-3 col-span-2 text-right text-xs font-semibold text-slate-500 sm:order-1 sm:col-span-1 sm:text-left">
         <span>{event.time}</span>
         <span className="mx-2 text-slate-300 sm:hidden">•</span>
@@ -1034,13 +1034,12 @@ export function DashboardPage({
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,0.96fr)_minmax(0,1.04fr)]">
-          <SectionCard variant="quiet" className="overflow-hidden">
+          <SectionCard variant="quiet" className="p-4 sm:p-5">
             <SectionHeader
               title="تسویه‌های پیشنهادی"
               actionLabel="مشاهده همه"
               icon={<ReceiptText className="h-5 w-5 text-slate-500" />}
               onAction={onOpenWallet}
-              compact
             />
             {settlementsLoading ? (
               <DashboardSectionState
@@ -1065,7 +1064,7 @@ export function DashboardPage({
               />
             ) : null}
             {!settlementsLoading && !settlementsError && settlementSuggestions.length > 0 ? (
-              <div>
+              <div className="grid gap-3">
                 {settlementSuggestions.map((item) => (
                   <SettlementRow key={item.id} item={item} />
                 ))}
@@ -1073,13 +1072,12 @@ export function DashboardPage({
             ) : null}
           </SectionCard>
 
-          <SectionCard variant="quiet" className="overflow-hidden">
+          <SectionCard variant="quiet" className="p-4 sm:p-5">
             <SectionHeader
               title="رویدادهای اخیر"
               actionLabel="مشاهده همه"
               icon={<Bell className="h-5 w-5 text-slate-500" />}
               onAction={onOpenActivities}
-              compact
             />
             {eventsLoading ? (
               <DashboardSectionState
@@ -1104,7 +1102,7 @@ export function DashboardPage({
               />
             ) : null}
             {!eventsLoading && !eventsError && dashboardEvents.length > 0 ? (
-              <div>
+              <div className="grid gap-3">
                 {dashboardEvents.map((event) => (
                   <EventRow key={event.id} event={event} />
                 ))}

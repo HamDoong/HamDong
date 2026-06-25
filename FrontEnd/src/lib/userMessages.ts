@@ -90,6 +90,12 @@ function pickRecordValue(record: Record<string, unknown>, keys: string[]) {
   return '';
 }
 
+function toEnglishDigits(value: string) {
+  return value
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)));
+}
+
 function stringifyValue(value: unknown) {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -323,7 +329,7 @@ function getOtpCode(item: NotificationLike, context: Record<string, unknown>) {
 }
 
 function formatMoney(value: string) {
-  const normalized = normalizeOtpCandidate(value).replace(/[^0-9.-]/g, '');
+  const normalized = toEnglishDigits(value).replace(/[^0-9.-]/g, '');
   const amount = Number(normalized);
 
   if (!Number.isFinite(amount)) {
@@ -353,13 +359,30 @@ function readContext(...sources: unknown[]) {
 
 function getAmountValue(context: Record<string, unknown>) {
   return (
-    pickRecordValue(context, ['amount', 'total_amount', 'payable_amount', 'receivable_amount']) ||
-    ''
+    pickRecordValue(context, [
+      'amount',
+      'total_amount',
+      'payable_amount',
+      'receivable_amount',
+      'amount_due',
+      'due_amount',
+      'share_amount',
+      'settlement_amount',
+      'outstanding_amount',
+      'amount_minor',
+    ]) || ''
   );
 }
 
 function getGroupName(context: Record<string, unknown>) {
-  return pickRecordValue(context, ['group_name', 'group', 'team_name']);
+  return pickRecordValue(context, [
+    'group_name',
+    'group_title',
+    'group_display_name',
+    'group',
+    'team_name',
+    'team',
+  ]);
 }
 
 function getExpenseName(context: Record<string, unknown>) {
@@ -449,16 +472,18 @@ function inferFriendlyBody(item: NotificationLike, context: Record<string, unkno
   const expenseName = getExpenseName(context);
   const counterparty = getCounterpartyName(context);
 
-  if (/settlement|receiv|credit/.test(combinedType) && amount) {
+  if (/settlement|receiv|credit/.test(combinedType) && (amount || groupName)) {
+    const amountPart = amount ? `${amount}` : 'مبلغی';
     const target = counterparty ? ` از ${counterparty}` : '';
     const groupPart = groupName ? ` در گروه «${groupName}»` : '';
-    return `قرار است ${amount}${target}${groupPart} دریافت کنی.`;
+    return `قرار است ${amountPart}${target}${groupPart} دریافت کنی.`;
   }
 
-  if (/payment|payable|debt|reminder/.test(combinedType) && amount) {
+  if (/payment|payable|debt|reminder/.test(combinedType) && (amount || groupName)) {
+    const amountPart = amount ? `${amount}` : 'مبلغی';
     const target = counterparty ? ` به ${counterparty}` : '';
-    const groupPart = groupName ? ` در گروه «${groupName}»` : '';
-    return `لازم است ${amount}${target}${groupPart} پرداخت کنی.`;
+    const groupPart = groupName ? ` برای گروه «${groupName}»` : '';
+    return `لازم است ${amountPart}${target}${groupPart} پرداخت کنی.`;
   }
 
   if (/expense/.test(combinedType)) {

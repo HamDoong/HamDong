@@ -20,7 +20,11 @@ import {
   archiveGroup,
   createGroup,
   extractInviteToken,
+  getBackendGroupMemberEmail,
+  getBackendGroupMemberPhone,
+  getBackendGroupMemberUserId,
   getGroupDetail,
+  getGroupMembers,
   getMyGroups,
   type BackendGroup,
   type BackendGroupType,
@@ -120,6 +124,42 @@ function mapBackendGroupToDashboardGroup(
     description: group.description,
   };
 }
+
+function normalizeLookupValue(value?: string | null) {
+  return (value || '').trim().replace(/\s+/g, '').toLowerCase();
+}
+
+function countPersistedSelectedMembers(
+  selectedMembers: CreatedGroupPayload,
+  persistedMembers: Awaited<ReturnType<typeof getGroupMembers>>,
+) {
+  const selectedUserIds = new Set(
+    (selectedMembers.selectedUserIds || []).map((value) => normalizeLookupValue(value)).filter(Boolean),
+  );
+  const selectedPhones = new Set(
+    (selectedMembers.selectedPhones || []).map((value) => normalizeLookupValue(value)).filter(Boolean),
+  );
+  const selectedEmails = new Set(
+    (selectedMembers.selectedEmails || []).map((value) => normalizeLookupValue(value)).filter(Boolean),
+  );
+
+  if (!selectedUserIds.size && !selectedPhones.size && !selectedEmails.size) {
+    return 0;
+  }
+
+  return persistedMembers.filter((member) => {
+    const memberUserId = normalizeLookupValue(getBackendGroupMemberUserId(member));
+    const memberPhone = normalizeLookupValue(getBackendGroupMemberPhone(member));
+    const memberEmail = normalizeLookupValue(getBackendGroupMemberEmail(member));
+
+    return (
+      (memberUserId && selectedUserIds.has(memberUserId)) ||
+      (memberPhone && selectedPhones.has(memberPhone)) ||
+      (memberEmail && selectedEmails.has(memberEmail))
+    );
+  }).length;
+}
+
 
 function getUserShareForExpense(expense: BackendExpense, userId: string, memberCount = 1) {
   if (expense.participants?.length) {
@@ -433,6 +473,9 @@ function AppContent() {
         title: payload.name || 'گروه جدید',
         description: payload.description || '',
         group_type: mapWizardGroupTypeToBackendType(payload.groupType),
+        member_user_ids: payload.selectedUserIds,
+        member_emails: payload.selectedEmails,
+        member_phones: payload.selectedPhones,
       });
 
       const mappedGroup = mapBackendGroupToDashboardGroup(backendGroup);
@@ -454,10 +497,35 @@ function AppContent() {
       setPage('group-detail');
       setBrowserPath('/Dashboard#groups');
 
+      let persistedSelectedMembers = 0;
+
+      if (
+        (payload.selectedUserIds?.length || 0) > 0 ||
+        (payload.selectedPhones?.length || 0) > 0 ||
+        (payload.selectedEmails?.length || 0) > 0
+      ) {
+        try {
+          const persistedMembers = await getGroupMembers(backendGroup.id);
+          persistedSelectedMembers = countPersistedSelectedMembers(payload, persistedMembers);
+        } catch (error) {
+          console.warn('Could not verify created group members.', error);
+        }
+      }
+
+      try {
+        const refreshedGroup = await getGroupDetail(backendGroup.id);
+        handleGroupUpdated(refreshedGroup);
+      } catch (error) {
+        console.warn('Could not refresh created group detail.', error);
+      }
+
       notify({
-        type: 'success',
-        title: 'گروه ساخته شد',
-        description: 'حالا می‌تونی اعضا، دعوت‌ها و تنظیمات گروه را مدیریت کنی.',
+        type: persistedSelectedMembers < payload.memberCount ? 'info' : 'success',
+        title: persistedSelectedMembers < payload.memberCount ? 'گروه ساخته شد' : 'گروه ساخته شد',
+        description:
+          persistedSelectedMembers < payload.memberCount && payload.memberCount > 0
+            ? 'گروه ساخته شد، اما سرویس گروه هنوز همه اعضای انتخاب‌شده را مستقیم برنگرداند. اگر لازم بود از لینک دعوت داخل جزئیات گروه استفاده کن.'
+            : 'حالا می‌تونی اعضا، دعوت‌ها و تنظیمات گروه را مدیریت کنی.',
       });
     } catch (error) {
       console.error(error);
@@ -756,7 +824,7 @@ function AppRoutes() {
       <Route
         path="/login"
         element={
-          <AuthPageFrame className="app-auth-background">
+          <AuthPageFrame className="auth-page-background">
             <LoginPage
               onLogin={() => navigate('/Dashboard', { replace: true })}
               onSignUp={() => navigate('/signup')}
@@ -767,7 +835,7 @@ function AppRoutes() {
       <Route
         path="/signup"
         element={
-          <AuthPageFrame className="app-auth-background">
+          <AuthPageFrame className="auth-page-background">
             <SignUpPage
               onLogin={() => navigate('/login')}
               onSignUp={() => navigate('/Dashboard', { replace: true })}
