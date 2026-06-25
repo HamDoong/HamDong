@@ -1,15 +1,17 @@
+
 from django.db import migrations
 
 
-def forwards(apps, schema_editor):
+def make_legacy_phone_nullable(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
-    schema_editor.execute(
-        """
-        ALTER TABLE users
-        ALTER COLUMN legacy_phone_number DROP NOT NULL;
-        """
-    )
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            ALTER TABLE users
+            ALTER COLUMN legacy_phone_number DROP NOT NULL;
+            """
+        )
 
 
 class Migration(migrations.Migration):
@@ -19,5 +21,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(forwards, migrations.RunPython.noop),
+        migrations.RunPython(make_legacy_phone_nullable, migrations.RunPython.noop),
     ]

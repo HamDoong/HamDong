@@ -100,14 +100,14 @@ db_engine = os.environ.get("DJANGO_DB_ENGINE", "django.db.backends.postgresql")
 db_name = os.environ.get("DJANGO_TEST_DB_NAME") if os.environ.get("PYTEST_CURRENT_TEST") else POSTGRES_DB
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB", default="wallet_db"),
-        "USER": env("POSTGRES_USER", default="postgres"),
-        "PASSWORD": env("POSTGRES_PASSWORD", default="postgres"),
-        "HOST": env("POSTGRES_HOST", default="postgres"),
-        "PORT": env("POSTGRES_PORT", default="5432"),
+        "ENGINE": db_engine,
+        "NAME": db_name if db_engine == "django.db.backends.sqlite3" else env("POSTGRES_DB", default="wallet_db"),
+        "USER": "" if db_engine == "django.db.backends.sqlite3" else env("POSTGRES_USER", default="postgres"),
+        "PASSWORD": "" if db_engine == "django.db.backends.sqlite3" else env("POSTGRES_PASSWORD", default="postgres"),
+        "HOST": "" if db_engine == "django.db.backends.sqlite3" else env("POSTGRES_HOST", default="postgres"),
+        "PORT": "" if db_engine == "django.db.backends.sqlite3" else env("POSTGRES_PORT", default="5432"),
         "TEST": {
-            "NAME": env("POSTGRES_TEST_DB", default="test_wallet_db"),
+            "NAME": db_name if db_engine == "django.db.backends.sqlite3" else env("POSTGRES_TEST_DB", default="test_wallet_db"),
         },
     }
 }

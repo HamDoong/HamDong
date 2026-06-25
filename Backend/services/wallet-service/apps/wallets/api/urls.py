@@ -16,6 +16,7 @@ from apps.wallets.api.views import (
     WalletWithdrawalDetailView,
     WalletWithdrawalListCreateView,
 )
+from apps.wallets.api.admin_views import AdminPaymentListView, AdminSystemHealthView, AdminWalletTransactionListView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
@@ -31,4 +32,7 @@ urlpatterns = [
     path("api/v1/payments/intents/<uuid:payment_intent_id>/", PaymentIntentDetailView.as_view(), name="payment-intent-detail"),
     path("api/v1/payments/gateway/<str:provider>/callback/", PaymentGatewayCallbackView.as_view(), name="payment-gateway-callback"),
     path("api/v1/payments/gateway/<str:provider>/verify/", PaymentGatewayVerifyView.as_view(), name="payment-gateway-verify"),
+    path("api/v1/admin/wallet-transactions/", AdminWalletTransactionListView.as_view(), name="admin-wallet-transactions"),
+    path("api/v1/admin/payments/", AdminPaymentListView.as_view(), name="admin-payments"),
+    path("api/v1/admin/system/health/", AdminSystemHealthView.as_view(), name="admin-system-health"),
 ]

@@ -2,6 +2,7 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.identity.api.views import DeactivateAccountView, HealthView, InternalPaymentContextBankCardsView, MeBankCardDetailView, MeBankCardsBulkView, MeBankCardsView, MeView
+from apps.identity.api.admin_views import AdminSystemHealthView, AdminUserDetailView, AdminUserListView
 
 
 urlpatterns = [
@@ -14,6 +15,9 @@ urlpatterns = [
         name="docs",
     ),
     path("api/v1/auth/", include("apps.identity.api.urls")),
+    path("api/v1/admin/system/health/", AdminSystemHealthView.as_view(), name="admin_system_health"),
+    path("api/v1/admin/users/", AdminUserListView.as_view(), name="admin_users"),
+    path("api/v1/admin/users/<uuid:user_id>/", AdminUserDetailView.as_view(), name="admin_user_detail"),
     path("api/v1/users/me/", MeView.as_view(), name="get_current_user"),
     path("api/v1/users/me/bank-cards/", MeBankCardsView.as_view(), name="me_bank_cards"),
     path("api/v1/users/me/bank-cards/bulk/", MeBankCardsBulkView.as_view(), name="me_bank_cards_bulk"),
