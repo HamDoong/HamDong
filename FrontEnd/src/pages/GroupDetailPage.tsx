@@ -231,18 +231,66 @@ function getCurrentUserId(user: CurrentUser | null) {
   return user?.id ? String(user.id) : '';
 }
 
+function readDisplayString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isEmailLikeValue(value?: string) {
+  return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+}
+
+function pickUserFacingName(...values: unknown[]) {
+  return values.map(readDisplayString).find((value) => value && !isEmailLikeValue(value)) || '';
+}
+
+function getMemberPreferredDisplayName(member?: BackendGroupMember) {
+  if (!member) return '';
+
+  return (
+    pickUserFacingName(
+      member.art_name,
+      member.username,
+      member.display_name,
+      member.display_name_snapshot,
+      member.full_name,
+      member.name,
+      [member.first_name, member.last_name].filter(Boolean).join(' '),
+      member.user?.art_name,
+      member.user?.username,
+      member.user?.display_name,
+      member.user?.full_name,
+      member.user?.name,
+      [member.user?.first_name, member.user?.last_name].filter(Boolean).join(' '),
+      member.profile?.art_name,
+      member.profile?.username,
+      member.profile?.display_name,
+      member.member?.art_name,
+      member.member?.username,
+      member.member?.display_name,
+    ) || getMemberName(member)
+  );
+}
+
 function getUserDisplayFromId(userId: string, members: BackendGroupMember[]) {
   const member = members.find((item) => getMemberUserId(item) === userId);
-  return member ? getMemberName(member) : 'عضو گروه';
+  return getMemberPreferredDisplayName(member) || 'عضو گروه';
 }
 
 function getBalanceDisplayName(balance: BalanceItem, members: BackendGroupMember[]) {
+  const memberName = getUserDisplayFromId(balance.user_id, members);
+  const balanceRecord = balance as BalanceItem & { username?: string; name?: string; full_name?: string };
+
   return (
-    balance.display_name ||
-    balance.art_name ||
-    balance.email ||
-    balance.phone_number ||
-    getUserDisplayFromId(balance.user_id, members)
+    memberName ||
+    pickUserFacingName(
+      balanceRecord.art_name,
+      balanceRecord.username,
+      balanceRecord.display_name,
+      balanceRecord.full_name,
+      balanceRecord.name,
+      balanceRecord.phone_number,
+    ) ||
+    'عضو گروه'
   );
 }
 
@@ -268,6 +316,97 @@ function getPlanPartyName(
     item.receiver_art_name ||
     getUserDisplayFromId(item.receiver_user_id, members)
   );
+}
+
+interface OptimizedSettlementSuggestion {
+  id: string;
+  payer_user_id: string;
+  payerName: string;
+  receiver_user_id: string;
+  receiverName: string;
+  amount_minor: number;
+}
+
+function calculateOptimizedSettlements(
+  balances: BalanceItem[],
+  members: BackendGroupMember[],
+): OptimizedSettlementSuggestion[] {
+  const debtors = balances
+    .map((balance) => ({
+      userId: balance.user_id,
+      name: getBalanceDisplayName(balance, members),
+      amount: Math.max(0, Math.round(Math.abs(Math.min(balance.net_balance_minor || 0, 0)))),
+    }))
+    .filter((item) => item.userId && item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  const creditors = balances
+    .map((balance) => ({
+      userId: balance.user_id,
+      name: getBalanceDisplayName(balance, members),
+      amount: Math.max(0, Math.round(Math.max(balance.net_balance_minor || 0, 0))),
+    }))
+    .filter((item) => item.userId && item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  const suggestions: OptimizedSettlementSuggestion[] = [];
+  let debtorIndex = 0;
+  let creditorIndex = 0;
+
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = Math.min(debtor.amount, creditor.amount);
+
+    if (amount > 0 && debtor.userId !== creditor.userId) {
+      suggestions.push({
+        id: `optimized-${debtor.userId}-${creditor.userId}-${suggestions.length}`,
+        payer_user_id: debtor.userId,
+        payerName: debtor.name,
+        receiver_user_id: creditor.userId,
+        receiverName: creditor.name,
+        amount_minor: amount,
+      });
+    }
+
+    debtor.amount -= amount;
+    creditor.amount -= amount;
+
+    if (debtor.amount <= 0) debtorIndex += 1;
+    if (creditor.amount <= 0) creditorIndex += 1;
+  }
+
+  return suggestions;
+}
+
+function getSettlementErrorTitle(action: 'create' | 'plan' | 'item' | 'review') {
+  if (action === 'create') return 'پرداخت ثبت نشد';
+  if (action === 'plan') return 'محاسبه تسویه انجام نشد';
+  if (action === 'item') return 'وضعیت پرداخت تغییر نکرد';
+  return 'تأیید پرداخت انجام نشد';
+}
+
+function getSettlementErrorDescription(error: unknown) {
+  const message = getBackendMessage(error);
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('403') || normalized.includes('permission') || normalized.includes('forbidden')) {
+    return 'برای انجام این کار دسترسی نداری یا عضو این گروه نیستی.';
+  }
+
+  if (normalized.includes('404') || normalized.includes('not found')) {
+    return 'این پرداخت یا گروه پیدا نشد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
+  }
+
+  if (normalized.includes('amount') || normalized.includes('مبلغ')) {
+    return 'مبلغ پرداخت را دقیق و به عدد وارد کن.';
+  }
+
+  if (normalized.includes('receiver') || normalized.includes('دریافت')) {
+    return 'دریافت‌کننده معتبر نیست. یکی از اعضای گروه را انتخاب کن.';
+  }
+
+  return message || 'اتصال یا اطلاعات پرداخت مشکل دارد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
 }
 
 function scrollToSection(id: QuickSection) {
@@ -660,17 +799,28 @@ export function GroupDetailPage({
     (debt) => isOpenSettlementStatus(debt.status) && (debt.amount_minor || 0) > 0,
   );
 
-  const currentUserDebt = openDebts.find((debt) => debt.debtor_user_id === currentUserId);
+  const optimizedSettlements = useMemo(
+    () => calculateOptimizedSettlements(balances, members),
+    [balances, members],
+  );
   const openPlanItems =
     settlementPlan?.items?.filter((item) => isOpenSettlementStatus(item.status)) || [];
 
-  const myNetMinor = myBalance?.net_balance_minor || 0;
+  const currentUserOptimizedPayment = optimizedSettlements.find(
+    (item) => item.payer_user_id === currentUserId,
+  );
+  const currentUserBalance = balances.find((balance) => balance.user_id === currentUserId);
+  const myNetMinor = currentUserBalance?.net_balance_minor ?? myBalance?.net_balance_minor ?? 0;
   const myAccount = getMyAccountStatus(myNetMinor);
 
-  const totalOpenDebtMinor = openDebts.reduce(
-    (sum, debt) => sum + (debt.amount_minor || 0),
+  const optimizedTotalDebtMinor = optimizedSettlements.reduce(
+    (sum, item) => sum + (item.amount_minor || 0),
     0,
   );
+  const totalOpenDebtMinor = optimizedTotalDebtMinor;
+  const remainingPaymentCount = optimizedSettlements.length;
+  const backendPaymentCount = openDebts.length || openPlanItems.length;
+  const currentSuggestedPayment = currentUserOptimizedPayment || null;
 
   async function loadGroup() {
     try {
@@ -795,21 +945,25 @@ export function GroupDetailPage({
     try {
       setSettlementSaving(true);
 
-      const generatedPlan = await generateSettlementPlan(groupId);
+      try {
+        const generatedPlan = await generateSettlementPlan(groupId);
 
-      if (generatedPlan?.id && generatedPlan.status === 'DRAFT') {
-        try {
-          await activateSettlementPlan(generatedPlan.id);
-          const latestPlan = await getSettlementPlan(groupId).catch(() => ({
-            ...generatedPlan,
-            status: 'ACTIVE',
-          }));
-          setSettlementPlan(latestPlan);
-        } catch {
+        if (generatedPlan?.id && generatedPlan.status === 'DRAFT') {
+          try {
+            await activateSettlementPlan(generatedPlan.id);
+            const latestPlan = await getSettlementPlan(groupId).catch(() => ({
+              ...generatedPlan,
+              status: 'ACTIVE',
+            }));
+            setSettlementPlan(latestPlan);
+          } catch {
+            setSettlementPlan(generatedPlan);
+          }
+        } else {
           setSettlementPlan(generatedPlan);
         }
-      } else {
-        setSettlementPlan(generatedPlan);
+      } catch (planError) {
+        console.warn('Smart plan generation was skipped; refreshing balances instead:', planError);
       }
 
       await loadSettlementData();
@@ -817,8 +971,8 @@ export function GroupDetailPage({
       if (showNotification) {
         notify({
           type: 'success',
-          title: 'دوباره حساب شد',
-          description: 'محاسبه هوشمند بروزرسانی شد.',
+          title: 'حساب کمینه بروزرسانی شد',
+          description: 'مانده‌های گروه دوباره دریافت شد و پرداخت نهایی از روی حساب کمینه نمایش داده شد.',
         });
       }
     } catch (err) {
@@ -827,8 +981,8 @@ export function GroupDetailPage({
       if (showNotification) {
         notify({
           type: 'error',
-          title: 'محاسبه ناموفق بود',
-          description: getBackendMessage(err) || 'فعلاً امکان محاسبه تسویه وجود ندارد.',
+          title: getSettlementErrorTitle('plan'),
+          description: getSettlementErrorDescription(err),
         });
       }
     } finally {
@@ -1218,12 +1372,42 @@ export function GroupDetailPage({
   async function handleCreateManualSettlement(receiverUserId?: string, amountMinor?: number) {
     const targetReceiverId = receiverUserId || manualReceiverId;
     const targetAmountMinor = amountMinor ?? parseAmountToMinor(manualAmount);
+    const targetSuggestion = optimizedSettlements.find(
+      (item) => item.receiver_user_id === targetReceiverId && item.payer_user_id === currentUserId,
+    );
+
+    if (isArchived) {
+      notify({
+        type: 'error',
+        title: 'گروه آرشیو شده',
+        description: 'برای ثبت پرداخت، اول گروه را فعال کن.',
+      });
+      return;
+    }
+
+    if (!currentUserId) {
+      notify({
+        type: 'error',
+        title: 'کاربر مشخص نیست',
+        description: 'یک بار از حساب خارج شو و دوباره وارد شو تا پرداخت به نام خودت ثبت شود.',
+      });
+      return;
+    }
 
     if (!targetReceiverId) {
       notify({
         type: 'error',
-        title: 'دریافت‌کننده مشخص نیست',
-        description: 'یک عضو را برای تسویه انتخاب کن.',
+        title: 'دریافت‌کننده را انتخاب کن',
+        description: 'از پیشنهادهای تسویه یا لیست اعضا، کسی را که باید پول بگیرد انتخاب کن.',
+      });
+      return;
+    }
+
+    if (targetReceiverId === currentUserId) {
+      notify({
+        type: 'error',
+        title: 'پرداخت به خودت ممکن نیست',
+        description: 'برای تسویه باید یکی دیگر از اعضای گروه را انتخاب کنی.',
       });
       return;
     }
@@ -1231,8 +1415,17 @@ export function GroupDetailPage({
     if (!targetAmountMinor || targetAmountMinor <= 0) {
       notify({
         type: 'error',
-        title: 'مبلغ تسویه معتبر نیست',
-        description: 'مبلغ را به عدد وارد کن.',
+        title: 'مبلغ پرداخت را وارد کن',
+        description: 'مبلغ باید عددی و بیشتر از صفر باشد؛ مثلاً ۲۰۰۰۰.',
+      });
+      return;
+    }
+
+    if (!receiverUserId && targetSuggestion && targetAmountMinor > targetSuggestion.amount_minor) {
+      notify({
+        type: 'info',
+        title: 'مبلغ بیشتر از پیشنهاد تسویه است',
+        description: `برای این عضو، مبلغ پیشنهادی ${formatMoney(targetSuggestion.amount_minor)} است. مبلغ را اصلاح کن یا از دکمه پیشنهاد استفاده کن.`,
       });
       return;
     }
@@ -1247,6 +1440,7 @@ export function GroupDetailPage({
         description: manualDescription || 'تسویه دستی در گروه',
       });
 
+      setManualReceiverId('');
       setManualAmount('');
       setManualDescription('');
 
@@ -1261,8 +1455,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'ثبت پرداخت ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: getSettlementErrorTitle('create'),
+        description: getSettlementErrorDescription(err),
       });
     } finally {
       setSettlementSaving(false);
@@ -1291,8 +1485,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'بروزرسانی پرداخت ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: getSettlementErrorTitle('item'),
+        description: getSettlementErrorDescription(err),
       });
     } finally {
       setSettlementSaving(false);
@@ -1321,8 +1515,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'بروزرسانی پرداخت ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: getSettlementErrorTitle('review'),
+        description: getSettlementErrorDescription(err),
       });
     } finally {
       setSettlementSaving(false);
@@ -1817,71 +2011,49 @@ export function GroupDetailPage({
                     <AccountStatusBox amount={myNetMinor} />
 
                     <RemainingPaymentsBox
-                      count={openDebts.length}
+                      count={remainingPaymentCount}
                       totalMinor={totalOpenDebtMinor}
                       tone={myAccount.tone}
                     />
                   </div>
 
-                  {currentUserDebt ? (
-                    <div className="rounded-[24px] border-2 border-rose-100 bg-gradient-to-l from-white via-rose-50/80 to-rose-50 p-4 text-right shadow-[inset_3px_0_0_#F43F5E,0_16px_38px_rgba(244,63,94,0.045)]">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <h3 className="text-base font-black text-rose-600">
-                            پرداخت لازم
-                          </h3>
-                          <p className="mt-1 text-sm font-semibold leading-7 text-rose-600/80">
-                            {formatMoney(currentUserDebt.amount_minor)} به{' '}
-                            {getDebtPartyName(currentUserDebt.creditor_user_id, members)}
-                          </p>
-                        </div>
-
-                        <ActionButton
-                          onClick={() =>
-                            handleCreateManualSettlement(
-                              currentUserDebt.creditor_user_id,
-                              currentUserDebt.amount_minor,
-                            )
-                          }
-                          disabled={settlementSaving}
-                        >
-                          <HandCoins className="h-4 w-4" />
-                          ثبت پرداخت
-                        </ActionButton>
-                      </div>
-                    </div>
-                  ) : null}
 
                   <div className="rounded-[24px] border-2 border-orange-200/80 bg-gradient-to-l from-white via-orange-50/70 to-orange-50/50 p-4 shadow-[inset_3px_0_0_#F97316,0_18px_44px_rgba(249,115,22,0.055)]">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <h3 className="text-base font-black text-text">
-                        محاسبه هوشمند
-                      </h3>
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="text-right">
+                        <h3 className="text-base font-black text-text">
+                          پیشنهاد تسویه کمینه
+                        </h3>
+                      </div>
 
-                      {openPlanItems.length > 0 ? (
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-orange-700 shadow-sm">
-                          {toPersianNumber(openPlanItems.length)} پرداخت
+                      {remainingPaymentCount > 0 ? (
+                        <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-black text-orange-700 shadow-sm">
+                          {toPersianNumber(remainingPaymentCount)} پرداخت نهایی
                         </span>
                       ) : null}
                     </div>
 
-                    {settlementSaving ? (
-                      <div className="mb-3 flex items-center justify-center gap-2 rounded-[20px] border-2 border-orange-100 bg-white p-4 text-center text-sm font-bold text-orange-700">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        در حال محاسبه...
+                    {backendPaymentCount > remainingPaymentCount && remainingPaymentCount > 0 ? (
+                      <div className="mb-3 rounded-[18px] border-2 border-emerald-100 bg-emerald-50/80 p-3 text-right text-xs font-bold leading-6 text-emerald-700">
+                        به جای {toPersianNumber(backendPaymentCount)} پرداخت جداگانه، با {toPersianNumber(remainingPaymentCount)} پرداخت حساب گروه صاف می‌شود.
                       </div>
                     ) : null}
 
-                    {!settlementPlan || !settlementPlan.items?.length ? (
+                    {settlementSaving ? (
+                      <div className="mb-3 flex items-center justify-center gap-2 rounded-[20px] border-2 border-orange-100 bg-white p-4 text-center text-sm font-bold text-orange-700">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        در حال بروزرسانی تسویه...
+                      </div>
+                    ) : null}
+
+                    {optimizedSettlements.length === 0 ? (
                       <div className="rounded-[20px] border-2 border-dashed border-orange-200 bg-white p-6 text-center text-sm font-semibold text-muted shadow-sm">
-                        فعلاً پرداختی لازم نیست.
+                        فعلاً پرداختی لازم نیست؛ حساب اعضای گروه تسویه است.
                       </div>
                     ) : null}
 
                     <div className="space-y-3">
-                      {settlementPlan?.items?.map((item) => {
-                        const payerName = getPlanPartyName(item, 'payer', members);
-                        const receiverName = getPlanPartyName(item, 'receiver', members);
+                      {optimizedSettlements.map((item) => {
                         const isPayer = item.payer_user_id === currentUserId;
                         const isReceiver = item.receiver_user_id === currentUserId;
 
@@ -1890,7 +2062,7 @@ export function GroupDetailPage({
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <div className="text-right">
                                 <div className="text-sm font-black text-text">
-                                  {payerName} به {receiverName}
+                                  {item.payerName} به {item.receiverName}
                                 </div>
 
                                 <div className="mt-1 text-base font-black text-orange-700">
@@ -1898,42 +2070,32 @@ export function GroupDetailPage({
                                 </div>
 
                                 <div className="mt-1 text-xs font-bold text-muted">
-                                  {getSettlementStatusLabel(item.status)}
+                                  همین یک پرداخت، سهم نهایی این دو نفر را صاف می‌کند.
                                 </div>
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                                {isPayer && canReportPlanItem(item, settlementPlan) ? (
+                                {isPayer ? (
                                   <button
                                     type="button"
-                                    onClick={() => handlePlanItemAction(item, 'paid')}
+                                    onClick={() => handleCreateManualSettlement(item.receiver_user_id, item.amount_minor)}
                                     disabled={settlementSaving}
                                     className="h-9 rounded-[13px] border-2 border-emerald-100 bg-emerald-50 px-3 text-xs font-black text-emerald-700 disabled:opacity-60"
                                   >
-                                    پرداخت کردم
+                                    ثبت همین پرداخت
                                   </button>
                                 ) : null}
 
-                                {isReceiver && canReviewPlanItem(item) ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePlanItemAction(item, 'confirm')}
-                                      disabled={settlementSaving}
-                                      className="h-9 rounded-[13px] border-2 border-emerald-100 bg-emerald-50 px-3 text-xs font-black text-emerald-700 disabled:opacity-60"
-                                    >
-                                      گرفتم
-                                    </button>
+                                {isReceiver ? (
+                                  <span className="rounded-[13px] border-2 border-sky-100 bg-sky-50 px-3 py-2 text-xs font-black text-sky-700">
+                                    منتظر پرداخت
+                                  </span>
+                                ) : null}
 
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePlanItemAction(item, 'reject')}
-                                      disabled={settlementSaving}
-                                      className="h-9 rounded-[13px] border-2 border-rose-100 bg-rose-50 px-3 text-xs font-black text-rose-600 disabled:opacity-60"
-                                    >
-                                      نگرفتم
-                                    </button>
-                                  </>
+                                {!isPayer && !isReceiver ? (
+                                  <span className="rounded-[13px] border-2 border-slate-100 bg-white px-3 py-2 text-xs font-black text-slate-500">
+                                    پرداخت بین اعضای دیگر
+                                  </span>
                                 ) : null}
                               </div>
                             </div>
@@ -1943,61 +2105,7 @@ export function GroupDetailPage({
                     </div>
                   </div>
 
-                  <FieldSurface>
-                    <div className="mb-3 text-right">
-                      <h3 className="text-base font-black text-text">
-                        پرداخت دستی
-                      </h3>
-                    </div>
 
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <select
-                        value={manualReceiverId}
-                        onChange={(event) => setManualReceiverId(event.target.value)}
-                        className="h-11 rounded-[16px] border-2 border-emerald-100 bg-white/80 px-3 text-sm font-bold text-text outline-none focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                      >
-                        <option value="">دریافت‌کننده</option>
-                        {members
-                          .filter((member) => getMemberUserId(member) !== currentUserId)
-                          .map((member) => {
-                            const userId = getMemberUserId(member);
-
-                            return (
-                              <option key={userId} value={userId}>
-                                {getMemberName(member)}
-                              </option>
-                            );
-                          })}
-                      </select>
-
-                      <input
-                        dir="rtl"
-                        inputMode="numeric"
-                        value={manualAmount}
-                        onChange={(event) => setManualAmount(event.target.value)}
-                        placeholder="مبلغ"
-                        className="h-11 rounded-[16px] border-2 border-emerald-100 bg-white/80 px-3 text-sm font-bold text-text outline-none focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                      />
-
-                      <input
-                        dir="rtl"
-                        value={manualDescription}
-                        onChange={(event) => setManualDescription(event.target.value)}
-                        placeholder="توضیح اختیاری"
-                        className="h-11 rounded-[16px] border-2 border-emerald-100 bg-white/80 px-3 text-sm font-bold text-text outline-none focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                      />
-                    </div>
-
-                    <div className="mt-3 flex justify-end">
-                      <ActionButton
-                        onClick={() => handleCreateManualSettlement()}
-                        disabled={settlementSaving}
-                        className="h-10 rounded-[15px] px-4 text-xs"
-                      >
-                        ثبت پرداخت
-                      </ActionButton>
-                    </div>
-                  </FieldSurface>
 
                   {balances.length > 0 ? (
                     <FieldSurface>
