@@ -2044,3 +2044,74 @@ html.dark .create-group-wizard-page .text-muted {
   color: rgb(var(--color-muted));
 }
 
+
+/* Landing final CTA contrast fix */
+.landing-final-cta {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.landing-final-cta > div:first-child p:first-child {
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 1px 14px rgba(3, 45, 37, 0.3);
+}
+
+.landing-final-cta h2 {
+  color: #ffffff;
+  text-shadow: 0 2px 20px rgba(3, 45, 37, 0.38);
+}
+
+.landing-final-cta > div:first-child p:last-child {
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 14px rgba(3, 45, 37, 0.26);
+}
+
+.landing-final-cta a[href="/login"] {
+  background: #ffffff;
+  color: #047857;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+}
+
+.landing-final-cta a[href="/login"] span {
+  background: #d1fae5;
+  color: #052e2b;
+}
+
+html.dark .landing-final-cta {
+  border-color: rgba(148, 255, 215, 0.22);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 177, 85, 0.24), transparent 30%),
+    radial-gradient(circle at 82% 22%, rgba(52, 211, 153, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(6, 124, 96, 0.98), rgba(5, 132, 100, 0.96) 48%, rgba(5, 31, 45, 0.98)),
+    #075f4f;
+}
+
+html.dark .landing-final-cta > div:first-child p:first-child {
+  color: rgba(255, 255, 255, 0.96);
+}
+
+html.dark .landing-final-cta h2 {
+  color: #ffffff;
+}
+
+html.dark .landing-final-cta > div:first-child p:last-child {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+html.dark .landing-final-cta a[href="/login"] {
+  background: #f8fffb;
+  color: #065f46;
+  border-color: rgba(255, 255, 255, 0.84);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.24),
+    0 8px 18px rgba(255, 255, 255, 0.08);
+}
+
+html.dark .landing-final-cta a[href="/login"]:hover {
+  background: #ffffff;
+  color: #047857;
+}
+
+html.dark .landing-final-cta a[href="/login"] span {
+  background: #d1fae5;
+  color: #052e2b;
+}
