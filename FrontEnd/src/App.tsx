@@ -828,6 +828,7 @@ function AppRoutes() {
             <LoginPage
               onLogin={() => navigate('/Dashboard', { replace: true })}
               onSignUp={() => navigate('/signup')}
+              onLanding={() => navigate('/')}
             />
           </AuthPageFrame>
         }
@@ -839,6 +840,7 @@ function AppRoutes() {
             <SignUpPage
               onLogin={() => navigate('/login')}
               onSignUp={() => navigate('/Dashboard', { replace: true })}
+              onLanding={() => navigate('/')}
             />
           </AuthPageFrame>
         }

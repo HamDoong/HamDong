@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   ArrowLeft,
   Bell,
+  Home,
   Calculator,
   Check,
   Eye,
@@ -29,6 +30,7 @@ import './LoginPage.css';
 type LoginPageProps = {
   onLogin: () => void;
   onSignUp?: () => void;
+  onLanding?: () => void;
 };
 
 type BenefitItem = {
@@ -104,6 +106,12 @@ function getLoginErrorMessage(error: unknown) {
 
     if (code === 'INVALID_CREDENTIALS') return 'نام کاربری یا رمز عبور درست نیست.';
     if (code === 'INVALID_EMAIL') return 'ایمیل را درست وارد کن.';
+    if (code === 'USER_NOT_FOUND' || code === 'EMAIL_NOT_FOUND' || code === 'ACCOUNT_NOT_FOUND') {
+      return 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.';
+    }
+    if (code === 'INCOMPLETE_SIGNUP' || code === 'SIGNUP_INCOMPLETE') {
+      return 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کنید.';
+    }
     if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل را درست وارد کن.';
 
     return getFriendlyApiErrorMessage(error, {
@@ -115,6 +123,11 @@ function getLoginErrorMessage(error: unknown) {
         OTP_EXPIRED: 'زمان این کد تمام شده است. یک کد جدید بگیر.',
         OTP_IN_COOLDOWN: 'برای دریافت کد جدید کمی صبر کن.',
         OTP_RATE_LIMITED: 'درخواست‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
+        USER_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.',
+        EMAIL_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.',
+        ACCOUNT_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.',
+        INCOMPLETE_SIGNUP: 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کنید.',
+        SIGNUP_INCOMPLETE: 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کنید.',
       },
     });
   }
@@ -532,10 +545,14 @@ export function AuthShowcase() {
   );
 }
 
-export function LoginPage({ onLogin, onSignUp }: LoginPageProps) {
+export function LoginPage({ onLogin, onSignUp, onLanding }: LoginPageProps) {
   return (
     <main className="login-page" dir="rtl">
-      <div className="auth-page-theme-toggle">
+      <div className="auth-page-actions">
+        <button type="button" className="auth-landing-link" onClick={onLanding}>
+          <Home aria-hidden="true" />
+          <span>لندینگ</span>
+        </button>
         <ThemeToggle className="h-11 w-11 rounded-full sm:h-12 sm:w-12" />
       </div>
       <section className="login-main">

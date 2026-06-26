@@ -633,10 +633,24 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
       setLoading(true);
       setError(null);
 
-      const [notificationList, recentMessages] = await Promise.all([
+      const [notificationResult, messagesResult] = await Promise.allSettled([
         getNotifications({ limit: 100 }),
         getNotificationMessages({ limit: 100 }),
       ]);
+
+      if (notificationResult.status === 'rejected' && messagesResult.status === 'rejected') {
+        throw notificationResult.reason || messagesResult.reason;
+      }
+
+      const notificationList = notificationResult.status === 'fulfilled' ? notificationResult.value : [];
+      const recentMessages = messagesResult.status === 'fulfilled' ? messagesResult.value : [];
+
+      if (notificationResult.status === 'rejected' || messagesResult.status === 'rejected') {
+        console.warn('One notification source failed, rendering the available source.', {
+          notificationError: notificationResult.status === 'rejected' ? notificationResult.reason : undefined,
+          messagesError: messagesResult.status === 'rejected' ? messagesResult.reason : undefined,
+        });
+      }
 
       setNotifications(
         notificationList.map((item) =>

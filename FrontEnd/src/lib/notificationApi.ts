@@ -255,6 +255,21 @@ async function fetchNotificationsFromPath(path: string) {
   return apiRequest<BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>>(path);
 }
 
+async function fetchFirstAvailableNotificationPath(paths: string[]) {
+  let lastError: unknown;
+
+  for (const path of paths) {
+    try {
+      return await fetchNotificationsFromPath(path);
+    } catch (error) {
+      lastError = error;
+      console.warn(`Notification endpoint ${path} failed. Trying next candidate.`, error);
+    }
+  }
+
+  throw lastError ?? new Error('Unable to load notifications');
+}
+
 function normalizeNotificationList(
   data: BackendNotificationMessage[] | PaginatedResponse<BackendNotificationMessage>,
   params: NotificationMessagesParams = {},
@@ -303,7 +318,12 @@ export async function getNotifications(
   params: NotificationMessagesParams = {},
 ) {
   const limit = getLimit(params);
-  const response = await fetchNotificationsFromPath(`/notifications/?limit=${limit}`);
+  const response = await fetchFirstAvailableNotificationPath([
+    `/notifications/?page_size=${limit}`,
+    `/notifications/?limit=${limit}`,
+    '/notifications/',
+  ]);
+
   return normalizeNotificationList(response, params);
 }
 
@@ -312,8 +332,12 @@ export async function getNotificationMessages(
 ) {
   const limit = getLimit(params);
   const endpoints = [
+    `/notifications/messages/?page_size=${limit}`,
     `/notifications/messages/?limit=${limit}`,
+    '/notifications/messages/',
+    `/notifications/?page_size=${limit}`,
     `/notifications/?limit=${limit}`,
+    '/notifications/',
   ];
 
   const settled = await Promise.allSettled(endpoints.map((path) => fetchNotificationsFromPath(path)));

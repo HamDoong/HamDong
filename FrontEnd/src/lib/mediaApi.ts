@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiRequest, getAccessToken } from './api';
+import { API_BASE_URL, apiRequest, getAccessToken, isApiError } from './api';
 
 export type MediaFileType = 'RECEIPT' | 'AVATAR' | 'OTHER' | string;
 export type MediaStatus = 'ACTIVE' | 'DELETED' | string;
@@ -115,13 +115,26 @@ export async function deleteMediaFile(fileId: string) {
   });
 }
 
+function shouldRetryAlternateMediaEndpoint(error: unknown) {
+  return isApiError(error) && [400, 404, 405, 500, 502, 503, 504].includes(error.status);
+}
+
 export async function listGroupMedia(
   groupId: string,
   filters: ListGroupMediaFilters = {},
 ) {
-  return apiRequest<MediaListResponse>(
-    `/media/groups/${groupId}/media/${buildQuery(filters)}`,
-  );
+  const query = buildQuery(filters);
+
+  try {
+    return await apiRequest<MediaListResponse>(`/groups/${groupId}/media/${query}`);
+  } catch (error) {
+    if (!shouldRetryAlternateMediaEndpoint(error)) {
+      throw error;
+    }
+
+    console.warn('Could not list media via /groups/{id}/media/. Retrying media alias.', error);
+    return apiRequest<MediaListResponse>(`/media/groups/${groupId}/media/${query}`);
+  }
 }
 
 export async function downloadMediaFile(
