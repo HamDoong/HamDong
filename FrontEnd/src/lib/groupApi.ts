@@ -341,12 +341,29 @@ export function getInviteId(invite: CreatedInvite) {
   return invite.invite_id || invite.id || '';
 }
 
-export async function getMyGroups() {
+async function requestGroupList(path: string) {
   const data = await apiRequest<
     BackendGroup[] | { results?: BackendGroup[]; data?: BackendGroup[] }
-  >('/groups/');
+  >(path);
 
   return unwrapList(data);
+}
+
+function shouldRetryAlternateGroupEndpoint(error: unknown) {
+  return isApiError(error) && [400, 404, 405, 500, 502, 503, 504].includes(error.status);
+}
+
+export async function getMyGroups() {
+  try {
+    return await requestGroupList('/groups/mine/');
+  } catch (error) {
+    if (!shouldRetryAlternateGroupEndpoint(error)) {
+      throw error;
+    }
+
+    console.warn('Could not load /groups/mine/. Retrying /groups/.', error);
+    return requestGroupList('/groups/');
+  }
 }
 
 function buildCreateGroupBasePayload(input: CreateGroupInput) {
@@ -395,34 +412,47 @@ function shouldRetryCreateGroupWithoutMembers(error: unknown) {
   );
 }
 
+async function requestCreateGroup(path: string, payload: Record<string, unknown>) {
+  return apiRequest<BackendGroup>(path, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createGroup(input: CreateGroupInput) {
   const basePayload = buildCreateGroupBasePayload(input);
   const memberPayload = buildCreateGroupMemberPayload(input);
+  const preferredPath = '/groups/mine/';
+  const fallbackPath = '/groups/';
+
+  async function createOnAvailableEndpoint(payload: Record<string, unknown>) {
+    try {
+      return await requestCreateGroup(preferredPath, payload);
+    } catch (error) {
+      if (!shouldRetryAlternateGroupEndpoint(error)) {
+        throw error;
+      }
+
+      console.warn('Could not create group via /groups/mine/. Retrying /groups/.', error);
+      return requestCreateGroup(fallbackPath, payload);
+    }
+  }
 
   if (!memberPayload) {
-    return apiRequest<BackendGroup>('/groups/', {
-      method: 'POST',
-      body: JSON.stringify(basePayload),
-    });
+    return createOnAvailableEndpoint(basePayload);
   }
 
   try {
-    return await apiRequest<BackendGroup>('/groups/', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...basePayload,
-        ...memberPayload,
-      }),
+    return await createOnAvailableEndpoint({
+      ...basePayload,
+      ...memberPayload,
     });
   } catch (error) {
     if (!shouldRetryCreateGroupWithoutMembers(error)) {
       throw error;
     }
 
-    return apiRequest<BackendGroup>('/groups/', {
-      method: 'POST',
-      body: JSON.stringify(basePayload),
-    });
+    return createOnAvailableEndpoint(basePayload);
   }
 }
 
@@ -451,9 +481,20 @@ export async function archiveGroup(groupId: string) {
 }
 
 export async function restoreGroup(groupId: string) {
-  return updateGroup(groupId, {
-    status: 'ACTIVE',
-  });
+  try {
+    return await apiRequest<BackendGroup>(`/groups/${groupId}/restore/`, {
+      method: 'POST',
+    });
+  } catch (error) {
+    if (!shouldRetryAlternateGroupEndpoint(error)) {
+      throw error;
+    }
+
+    console.warn('Could not restore group via restore endpoint. Retrying PATCH status.', error);
+    return updateGroup(groupId, {
+      status: 'ACTIVE',
+    });
+  }
 }
 
 export async function leaveGroup(groupId: string) {

@@ -799,8 +799,12 @@ export function GroupDetailPage({
 
       if (generatedPlan?.id && generatedPlan.status === 'DRAFT') {
         try {
-          const activatedPlan = await activateSettlementPlan(generatedPlan.id);
-          setSettlementPlan(activatedPlan);
+          await activateSettlementPlan(generatedPlan.id);
+          const latestPlan = await getSettlementPlan(groupId).catch(() => ({
+            ...generatedPlan,
+            status: 'ACTIVE',
+          }));
+          setSettlementPlan(latestPlan);
         } catch {
           setSettlementPlan(generatedPlan);
         }
