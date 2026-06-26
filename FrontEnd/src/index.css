@@ -2115,3 +2115,35 @@ html.dark .landing-final-cta a[href="/login"] span {
   background: #d1fae5;
   color: #052e2b;
 }
+
+/* Landing page footer-at-document-end layout */
+.landing-page {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  flex-direction: column;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.landing-page .login-footer {
+  position: static;
+  z-index: 10;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: 100%;
+  flex-shrink: 0;
+  animation: none;
+}
+
+.landing-page > section:last-of-type {
+  margin-top: auto;
+}
+
+@media (max-width: 640px) {
+  .landing-page .login-footer {
+    padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
+  }
+}

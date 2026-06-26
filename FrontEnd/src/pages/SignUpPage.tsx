@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Eye,
   EyeOff,
   Hash,
+  Home,
   Mail,
   UserRound,
 } from 'lucide-react';
@@ -29,11 +30,72 @@ import './LoginPage.css';
 type SignUpPageProps = {
   onLogin: () => void;
   onSignUp: () => void;
+  onLanding?: () => void;
 };
 
 type SignUpStep = 'account' | 'otp' | 'profile';
 
 const artNamePattern = /^[\w\-\u0600-\u06FF]{3,32}$/u;
+
+type PasswordStrengthLevel = 'empty' | 'weak' | 'medium' | 'strong';
+
+type PasswordStrengthResult = {
+  level: PasswordStrengthLevel;
+  score: number;
+  label: string;
+  message: string;
+  isStrong: boolean;
+};
+
+function getPasswordStrength(value: string): PasswordStrengthResult {
+  if (!value) {
+    return {
+      level: 'empty',
+      score: 0,
+      label: 'رمز عبور الزامی است',
+      message: 'حداقل ۸ کاراکتر، حروف بزرگ و کوچک انگلیسی، عدد و نماد استفاده کنید.',
+      isStrong: false,
+    };
+  }
+
+  const checks = {
+    length: value.length >= 8,
+    mixedCase: /[a-z]/.test(value) && /[A-Z]/.test(value),
+    number: /\d/.test(value),
+    symbol: /[^A-Za-z0-9\s]/.test(value),
+    noSpace: !/\s/.test(value),
+  };
+  const score = Object.values(checks).filter(Boolean).length;
+  const isStrong = Object.values(checks).every(Boolean);
+
+  if (isStrong) {
+    return {
+      level: 'strong',
+      score,
+      label: 'رمز عبور قوی است',
+      message: 'عالیه! این رمز عبور شرایط امنیتی لازم را دارد.',
+      isStrong: true,
+    };
+  }
+
+  if (score >= 3) {
+    return {
+      level: 'medium',
+      score,
+      label: 'رمز عبور متوسط است',
+      message: 'برای قوی شدن، حتماً حروف بزرگ و کوچک، عدد، نماد و حداقل ۸ کاراکتر داشته باشد.',
+      isStrong: false,
+    };
+  }
+
+  return {
+    level: 'weak',
+    score,
+    label: 'رمز عبور ضعیف است',
+    message: 'رمز عبور را قوی‌تر کنید؛ بدون رمز قوی امکان ادامه ثبت‌نام نیست.',
+    isStrong: false,
+  };
+}
 
 function getSignUpErrorMessage(error: unknown) {
   if (isApiError(error)) {
@@ -94,6 +156,8 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 
   const normalizedEmail = normalizeEmail(email);
   const normalizedOtpCode = normalizeLocalizedDigits(otpCode);
+  const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
+  const passwordStrengthPercent = Math.min(100, Math.max(10, passwordStrength.score * 20));
 
   const resetFeedback = () => {
     setFormError('');
@@ -113,6 +177,11 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 
     if (password !== repeatPassword) {
       setFormError('رمز عبور و تکرار آن یکسان نیستند.');
+      return false;
+    }
+
+    if (!passwordStrength.isStrong) {
+      setFormError('رمز عبور باید قوی باشد تا بتوانید ثبت‌نام را ادامه دهید.');
       return false;
     }
 
@@ -136,6 +205,18 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     setOtpVerified(false);
     setOtpCode('');
     resetFeedback();
+  }
+
+  function handleBackToPreviousStep() {
+    if (step === 'profile') {
+      setStep('otp');
+      resetFeedback();
+      return;
+    }
+
+    if (step === 'otp') {
+      handleBackToAccountStep();
+    }
   }
 
   async function handleRequestOtp() {
@@ -307,6 +388,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                   }}
                   placeholder="رمز عبور خود را وارد کنید"
                   aria-label="رمز عبور"
+                  aria-describedby="signup-password-strength"
                   disabled={step !== 'account' || submitting}
                   required={step === 'account'}
                 />
@@ -321,6 +403,21 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                 </button>
               </div>
             </label>
+
+            <div
+              className={`password-strength password-strength-${passwordStrength.level}`}
+              id="signup-password-strength"
+              aria-live="polite"
+            >
+              <div className="password-strength-head">
+                <span>{passwordStrength.label}</span>
+                <strong>{passwordStrength.score}/5</strong>
+              </div>
+              <div className="password-strength-bar" aria-hidden="true">
+                <i style={{ width: `${passwordStrengthPercent}%` }} />
+              </div>
+              <p>{passwordStrength.message}</p>
+            </div>
 
             <label className="login-field">
               <span>تکرار رمز عبور</span>
@@ -402,7 +499,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
                 disabled={requestingOtp || submitting}
                 onClick={handleBackToAccountStep}
               >
-                ویرایش ایمیل
+                مرحله قبلی
               </button>
             </div>
           </div>
@@ -432,6 +529,17 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
             <p className="signup-profile-hint">
               این نام برای ورود با رمز عبور هم استفاده می‌شود و باید یکتا باشد.
             </p>
+
+            <div className="auth-step-actions auth-step-actions-single">
+              <button
+                type="button"
+                className="auth-step-back-button"
+                disabled={submitting || completingProfile}
+                onClick={handleBackToPreviousStep}
+              >
+                مرحله قبلی
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -455,14 +563,21 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
       <button
         className="login-submit"
         type="submit"
-        disabled={requestingOtp || submitting || completingProfile}
+        disabled={
+          requestingOtp ||
+          submitting ||
+          completingProfile ||
+          (step === 'account' && Boolean(password) && !passwordStrength.isStrong)
+        }
       >
         <ArrowLeft />
         <span>
           {step === 'account'
             ? requestingOtp
               ? 'در حال ارسال...'
-              : 'دریافت کد تایید'
+              : password && !passwordStrength.isStrong
+                ? 'رمز قوی لازم است'
+                : 'دریافت کد تایید'
             : step === 'otp'
               ? submitting
                 ? 'در حال ثبت‌نام...'
@@ -483,10 +598,14 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
   );
 }
 
-export function SignUpPage({ onLogin, onSignUp }: SignUpPageProps) {
+export function SignUpPage({ onLogin, onSignUp, onLanding }: SignUpPageProps) {
   return (
     <main className="login-page" dir="rtl">
-      <div className="auth-page-theme-toggle">
+      <div className="auth-page-actions">
+        <button type="button" className="auth-landing-link" onClick={onLanding}>
+          <Home aria-hidden="true" />
+          <span>لندینگ</span>
+        </button>
         <ThemeToggle className="h-11 w-11 rounded-full sm:h-12 sm:w-12" />
       </div>
 
