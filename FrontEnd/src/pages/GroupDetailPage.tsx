@@ -24,7 +24,12 @@ import {
 } from 'lucide-react';
 import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
-import { uploadReceipt, openMediaFile } from '../lib/mediaApi';
+import {
+  listGroupMedia,
+  openMediaFile,
+  uploadReceipt,
+  type MediaListItem,
+} from '../lib/mediaApi';
 import { getFriendlyApiErrorMessage, humanizeMachineLabel } from '../lib/userMessages';
 import {
   createGroupExpense,
@@ -225,6 +230,26 @@ function toPersianDate(value?: string) {
   } catch {
     return value;
   }
+}
+
+function formatFileSize(sizeBytes = 0) {
+  if (!sizeBytes || sizeBytes <= 0) return 'حجم نامشخص';
+
+  if (sizeBytes < 1024) {
+    return `${toPersianNumber(sizeBytes)} بایت`;
+  }
+
+  const units = ['کیلوبایت', 'مگابایت', 'گیگابایت'];
+  let value = sizeBytes / 1024;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const formatted = value >= 10 ? Math.round(value).toLocaleString('en-US') : value.toFixed(1);
+  return `${toPersianNumber(formatted)} ${units[unitIndex]}`;
 }
 
 function getCurrentUserId(user: CurrentUser | null) {
@@ -737,6 +762,7 @@ export function GroupDetailPage({
   const [group, setGroup] = useState<BackendGroup | null>(null);
   const [members, setMembers] = useState<BackendGroupMember[]>([]);
   const [expenses, setExpenses] = useState<BackendExpense[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<MediaListItem[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [myBalance, setMyBalance] = useState<MyBalanceResponse | null>(null);
   const [debts, setDebts] = useState<DebtItem[]>([]);
@@ -763,6 +789,7 @@ export function GroupDetailPage({
   const [loading, setLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
   const [expensesLoading, setExpensesLoading] = useState(true);
+  const [mediaLoading, setMediaLoading] = useState(true);
   const [settlementLoading, setSettlementLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expenseSaving, setExpenseSaving] = useState(false);
@@ -794,6 +821,14 @@ export function GroupDetailPage({
     (sum, expense) => sum + getExpenseTotal(expense),
     0,
   );
+
+  const visibleReceiptFiles = [...mediaFiles]
+    .filter((file) => file.status !== 'DELETED')
+    .sort((a, b) => {
+      const left = new Date(a.created_at || 0).getTime();
+      const right = new Date(b.created_at || 0).getTime();
+      return right - left;
+    });
 
   const openDebts = debts.filter(
     (debt) => isOpenSettlementStatus(debt.status) && (debt.amount_minor || 0) > 0,
@@ -902,6 +937,24 @@ export function GroupDetailPage({
     }
   }
 
+  async function loadGroupMedia() {
+    try {
+      setMediaLoading(true);
+      const media = await listGroupMedia(groupId, { file_type: 'RECEIPT', page_size: 100 });
+      setMediaFiles(media.results || []);
+    } catch (err) {
+      console.error(err);
+      setMediaFiles([]);
+      notify({
+        type: 'error',
+        title: 'دریافت فایل‌های گروه ناموفق بود',
+        description: getBackendMessage(err) || 'فایل‌های رسید دریافت نشدند. دوباره تلاش کن.',
+      });
+    } finally {
+      setMediaLoading(false);
+    }
+  }
+
   async function loadSettlementData() {
     try {
       setSettlementLoading(true);
@@ -938,7 +991,13 @@ export function GroupDetailPage({
   }
 
   async function reloadAll() {
-    await Promise.all([loadGroup(), loadMembers(), loadExpenses(), loadSettlementData()]);
+    await Promise.all([
+      loadGroup(),
+      loadMembers(),
+      loadExpenses(),
+      loadGroupMedia(),
+      loadSettlementData(),
+    ]);
   }
 
   async function refreshSmartSettlement(showNotification = true) {
@@ -1282,7 +1341,11 @@ export function GroupDetailPage({
       let receiptFileId: string | undefined;
 
       if (receiptFile) {
-        const uploadedReceipt = await uploadReceipt({ groupId, file: receiptFile });
+        const uploadedReceipt = await uploadReceipt({
+          groupId,
+          file: receiptFile,
+          visibility: 'GROUP_MEMBERS',
+        });
         receiptFileId = uploadedReceipt.id;
       }
 
@@ -1302,7 +1365,7 @@ export function GroupDetailPage({
       setExpenseDescription('');
       setReceiptFile(null);
 
-      await Promise.all([loadExpenses(), loadSettlementData()]);
+      await Promise.all([loadExpenses(), loadGroupMedia(), loadSettlementData()]);
 
       notify({
         type: 'success',
@@ -1352,7 +1415,7 @@ export function GroupDetailPage({
 
     try {
       await deleteExpense(expense.id);
-      await Promise.all([loadExpenses(), loadSettlementData()]);
+      await Promise.all([loadExpenses(), loadGroupMedia(), loadSettlementData()]);
 
       notify({
         type: 'success',
@@ -1808,6 +1871,10 @@ export function GroupDetailPage({
                         className="w-full text-xs font-bold text-slate-600 file:ml-3 file:rounded-[12px] file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-xs file:font-black file:text-emerald-700"
                       />
                     </div>
+
+                    <span className="mt-2 block text-xs font-bold leading-6 text-muted">
+                      بعد از ثبت هزینه، فایل در بخش فایل‌های گروه برای همه اعضا نمایش داده می‌شود.
+                    </span>
                   </label>
                 </div>
 
@@ -1896,6 +1963,85 @@ export function GroupDetailPage({
                     </>
                   )}
                 </ActionButton>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              title="فایل‌های گروه"
+              icon={<Upload className="h-5 w-5" />}
+              accent="sky"
+              badge={
+                <button
+                  type="button"
+                  onClick={() => void loadGroupMedia()}
+                  disabled={mediaLoading}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border-2 border-sky-100 bg-sky-50 px-3 text-xs font-black text-sky-700 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {mediaLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  بروزرسانی فایل‌ها
+                </button>
+              }
+            >
+
+              {mediaLoading ? (
+                <div className="flex items-center justify-center gap-2 rounded-[22px] border-2 border-sky-100 bg-sky-50 p-6 text-center text-sm font-bold text-sky-700">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  در حال دریافت فایل‌های گروه...
+                </div>
+              ) : null}
+
+              {!mediaLoading && visibleReceiptFiles.length === 0 ? (
+                <EmptyState
+                  title="هنوز فایلی ثبت نشده"
+                  description="بعد از آپلود رسید در ثبت هزینه، فایل اینجا برای اعضای گروه نمایش داده می‌شود."
+                />
+              ) : null}
+
+              <div className="space-y-3">
+                {visibleReceiptFiles.slice(0, 12).map((file) => {
+                  const linkedExpense = activeExpenses.find(
+                    (expense) =>
+                      expense.receipt_file_id === file.id || expense.id === file.related_expense_id,
+                  );
+                  const fileName = file.original_filename || 'رسید هزینه';
+
+                  return (
+                    <ListRow key={file.id} tone="slate">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0 text-right">
+                          <div className="truncate text-base font-black text-text">{fileName}</div>
+
+                          <div className="mt-1 text-xs font-bold leading-6 text-muted">
+                            {linkedExpense ? `برای هزینه: ${linkedExpense.title} • ` : ''}
+                            {formatFileSize(file.size_bytes)} • {toPersianDate(file.created_at)}
+                          </div>
+
+                          <div className="mt-1 text-xs font-semibold leading-6 text-sky-700">
+                            قابل مشاهده برای اعضای گروه
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenReceipt(file.id)}
+                          disabled={openingReceiptId === file.id}
+                          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[15px] border-2 border-sky-100 bg-sky-50 px-3 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
+                        >
+                          {openingReceiptId === file.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                          مشاهده فایل
+                        </button>
+                      </div>
+                    </ListRow>
+                  );
+                })}
               </div>
             </SectionCard>
 
