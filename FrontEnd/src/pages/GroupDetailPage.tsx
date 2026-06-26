@@ -2068,10 +2068,6 @@ export function GroupDetailPage({
                                 <div className="mt-1 text-base font-black text-orange-700">
                                   {formatMoney(item.amount_minor)}
                                 </div>
-
-                                <div className="mt-1 text-xs font-bold text-muted">
-                                  همین یک پرداخت، سهم نهایی این دو نفر را صاف می‌کند.
-                                </div>
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
