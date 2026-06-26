@@ -22,6 +22,12 @@ class IdentityEventPublishingTestCase(TestCase):
     def setUp(self):
         self.email = "artist@example.com"
 
+    def _create_completed_user(self):
+        user = User.objects.create(email=self.email, art_name="artist-user")
+        user.set_password("EventPass123!")
+        user.save(update_fields=["password_hash", "password_changed_at", "updated_at"])
+        return user
+
     @patch(
         "apps.identity.application.use_cases.RabbitMqPublisher.publish",
         return_value=True,
@@ -31,6 +37,7 @@ class IdentityEventPublishingTestCase(TestCase):
         return_value=(True, None, "123456", "123456"),
     )
     def test_user_otp_requested_event_published(self, request_otp_mock, publish_mock):
+        self._create_completed_user()
         use_case = RequestOtpUseCase()
 
         success, error_code, debug_otp, resend_after = use_case.execute(self.email, "LOGIN")
@@ -175,6 +182,7 @@ class IdentityEventPublishingTestCase(TestCase):
     def test_rabbitmq_unavailable_does_not_break_otp_request(
         self, request_otp_mock, publish_mock
     ):
+        self._create_completed_user()
         use_case = RequestOtpUseCase()
 
         success, error_code, debug_otp, resend_after = use_case.execute(self.email, "LOGIN")

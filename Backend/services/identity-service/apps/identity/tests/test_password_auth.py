@@ -18,6 +18,8 @@ class PasswordAuthenticationTests(TestCase):
         self.otp_store = RedisOtpStore()
         self.email = "password.user@example.com"
         self.user = User.objects.create(email=self.email)
+        self.user.set_password("StrongPass123!")
+        self.user.save(update_fields=["password_hash", "password_changed_at", "updated_at"])
 
     def tearDown(self):
         self.otp_store.redis_client.flushdb()
@@ -70,8 +72,8 @@ class PasswordAuthenticationTests(TestCase):
         self.assertEqual(response.json()["error"]["code"], "ART_NAME_ALREADY_EXISTS")
 
     def test_password_set_login_and_change_revokes_other_sessions(self):
-        otp_data = self._otp_login()
-        access_token = otp_data["access_token"]
+        set_password_user = User.objects.create(email="setpass.user@example.com")
+        access_token, _, _ = self.token_service.generate_tokens(set_password_user)
 
         response = self.client.patch(
             "/api/v1/users/me/",
@@ -106,7 +108,7 @@ class PasswordAuthenticationTests(TestCase):
         second_login_data = second_login.json()
 
         self.assertEqual(
-            RefreshToken.objects.filter(user__email=self.email, revoked_at__isnull=True).count(),
+            RefreshToken.objects.filter(user__email="setpass.user@example.com", revoked_at__isnull=True).count(),
             3,
         )
 
@@ -123,7 +125,7 @@ class PasswordAuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["message"], "Password changed successfully.")
 
-        user = User.objects.get(email=self.email)
+        user = User.objects.get(email="setpass.user@example.com")
         self.assertTrue(user.check_password("NewStrongPass123!"))
         self.assertFalse(user.check_password("StrongPass123!"))
 
