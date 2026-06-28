@@ -13,6 +13,7 @@ import {
 import { useMemo, useState, type ReactNode } from 'react';
 import { GroupCard } from '../components/GroupCard';
 import { extractInviteToken } from '../lib/groupApi';
+import { MoneyWithWords } from '../lib/money';
 import type { Group, GroupStatus } from '../types';
 
 type GroupFilter = 'ACTIVE' | 'ARCHIVED';
@@ -214,14 +215,14 @@ function GroupDebtsSummaryCard({
         <div className="rounded-[20px] border border-rose-100 bg-rose-50 px-4 py-3 text-right">
           <div className="text-xs font-extrabold text-rose-500">کل بدهی</div>
           <div className="mt-1 text-base font-extrabold text-rose-600">
-            {formatMoney(totalDebtMinor)}
+            <MoneyWithWords amount={totalDebtMinor} valueClassName="text-base font-extrabold text-rose-600" textClassName="mt-1 text-[10px] font-semibold text-rose-500/70" showText={true} />
           </div>
         </div>
 
         <div className="rounded-[20px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-right">
           <div className="text-xs font-extrabold text-emerald-600">کل طلب</div>
           <div className="mt-1 text-base font-extrabold text-emerald-700">
-            {formatMoney(totalCreditMinor)}
+            <MoneyWithWords amount={totalCreditMinor} valueClassName="text-base font-extrabold text-emerald-700" textClassName="mt-1 text-[10px] font-semibold text-emerald-600/70" showText={true} />
           </div>
         </div>
       </div>

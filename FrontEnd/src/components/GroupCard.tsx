@@ -9,6 +9,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { MoneyWithWords } from '../lib/money';
 import type { Group } from '../types';
 
 function GroupIllustration({ type }: { type: Group['illustration'] }) {
@@ -61,14 +62,15 @@ function AmountText({ amount, tone }: { amount: string; tone: Group['tone'] }) {
       <div className="text-[11px] font-extrabold text-slate-500">
         {isPositive ? 'وضعیت حساب' : 'نیاز به تسویه'}
       </div>
-      <div
-        className={[
-          'mt-1 text-[19px] font-extrabold tracking-[-0.02em]',
+      <MoneyWithWords
+        amount={amount}
+        className="mt-1"
+        valueClassName={[
+          'text-[19px] font-extrabold tracking-[-0.02em]',
           isPositive ? 'text-emerald-600' : 'text-rose-500',
         ].join(' ')}
-      >
-        {amount}
-      </div>
+        textClassName="mt-1 text-[11px] font-semibold leading-5 text-slate-500"
+      />
     </div>
   );
 }

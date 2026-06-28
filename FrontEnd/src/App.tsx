@@ -16,6 +16,7 @@ import { groups as mockGroups } from './data/mockData';
 import { logoutCurrentUser } from './lib/authApi';
 import { getAccessToken, getRefreshToken } from './lib/api';
 import { listGroupExpenses, type BackendExpense } from './lib/expenseApi';
+import { formatMoneyNumber } from './lib/money';
 import {
   archiveGroup,
   createGroup,
@@ -71,8 +72,7 @@ function getParticipantShare(participant: NonNullable<BackendExpense['participan
 }
 
 function formatCardMoney(minor = 0) {
-  const sign = minor > 0 ? '+' : minor < 0 ? '-' : '';
-  return `${sign}${Math.abs(Math.round(minor)).toLocaleString('fa-IR')} تومان`;
+  return formatMoneyNumber(minor, { signed: true });
 }
 
 function getIllustrationFromBackendGroup(group: BackendGroup): DashboardGroup['illustration'] {

@@ -20,6 +20,13 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isApiError } from '../lib/api';
+import {
+  formatMoneyNumber as formatMoneyLabel,
+  formatMoneyText as formatMoneyTextLabel,
+  MoneyWithWords,
+  numberToPersianWords,
+  toPersianNumber,
+} from '../lib/money';
 import { getFriendlyNotificationBody } from '../lib/userMessages';
 import { listGroupExpenses, type BackendExpense } from '../lib/expenseApi';
 import {
@@ -68,83 +75,18 @@ interface DashboardEvent {
 }
 
 function formatMoney(amount: number) {
-  return `${Math.abs(Math.round(amount)).toLocaleString('fa-IR')} تومان`;
+  return formatMoneyLabel(amount);
 }
 
 function formatSignedMoney(amount: number) {
-  const sign = amount > 0 ? '+' : amount < 0 ? '-' : '';
-  return `${sign}${formatMoney(amount)}`;
-}
-
-const ones = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه'];
-const teens = ['ده', 'یازده', 'دوازده', 'سیزده', 'چهارده', 'پانزده', 'شانزده', 'هفده', 'هجده', 'نوزده'];
-const tens = ['', '', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];
-const hundreds = ['', 'صد', 'دویست', 'سیصد', 'چهارصد', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
-const groups = ['', 'هزار', 'میلیون', 'میلیارد', 'تریلیون'];
-
-function joinPersianParts(parts: string[]) {
-  return parts.filter(Boolean).join(' و ');
-}
-
-function threeDigitToPersianWords(value: number) {
-  const parts: string[] = [];
-  const hundred = Math.floor(value / 100);
-  const rest = value % 100;
-
-  if (hundred) {
-    parts.push(hundreds[hundred]);
-  }
-
-  if (rest >= 10 && rest < 20) {
-    parts.push(teens[rest - 10]);
-  } else {
-    const ten = Math.floor(rest / 10);
-    const one = rest % 10;
-
-    if (ten) {
-      parts.push(tens[ten]);
-    }
-
-    if (one) {
-      parts.push(ones[one]);
-    }
-  }
-
-  return joinPersianParts(parts);
-}
-
-function numberToPersianWords(value: number) {
-  const roundedValue = Math.abs(Math.round(value));
-
-  if (roundedValue === 0) return 'صفر';
-
-  const parts: string[] = [];
-  let remaining = roundedValue;
-  let groupIndex = 0;
-
-  while (remaining > 0) {
-    const chunk = remaining % 1000;
-
-    if (chunk) {
-      const chunkText = threeDigitToPersianWords(chunk);
-      const groupText = groups[groupIndex] || '';
-      parts.unshift([chunkText, groupText].filter(Boolean).join(' '));
-    }
-
-    remaining = Math.floor(remaining / 1000);
-    groupIndex += 1;
-  }
-
-  return joinPersianParts(parts);
+  return formatMoneyLabel(amount, { signed: true });
 }
 
 function formatMoneyText(amount: number) {
-  return `${numberToPersianWords(amount)} تومان`;
+  return formatMoneyTextLabel(amount);
 }
 
 function formatSignedMoneyText(amount: number) {
-  if (amount < 0) return `منفی ${formatMoneyText(amount)}`;
-  if (amount > 0) return `مثبت ${formatMoneyText(amount)}`;
   return formatMoneyText(amount);
 }
 
@@ -248,11 +190,13 @@ function getExpenseTotal(expense: BackendExpense) {
 }
 
 function getNotificationBody(item: BackendNotificationMessage) {
+  const metadata = typeof item.metadata === 'object' && item.metadata ? item.metadata : undefined;
+  const data = typeof item.data === 'object' && item.data ? item.data : undefined;
   const metadataMessage =
-    typeof item.metadata?.message === 'string'
-      ? item.metadata.message
-      : typeof item.data?.message === 'string'
-        ? item.data.message
+    typeof metadata?.message === 'string'
+      ? metadata.message
+      : typeof data?.message === 'string'
+        ? data.message
         : '';
 
   return getFriendlyNotificationBody({
@@ -432,6 +376,11 @@ function SectionHeader({
         ? 'flex items-center justify-between gap-3 border-b border-emerald-50/80 bg-white/[0.35] px-4 py-3.5 sm:px-5'
         : 'mb-5 flex flex-wrap items-center justify-between gap-3',
     ].join(' ')}>
+      <div className="flex items-center gap-2 text-right">
+        {icon}
+        <h2 className={compact ? 'text-base font-black text-text sm:text-lg' : 'text-lg font-black text-text sm:text-xl'}>{title}</h2>
+      </div>
+
       <button
         type="button"
         onClick={onAction}
@@ -440,11 +389,6 @@ function SectionHeader({
         {actionLabel}
         <ArrowLeft className="h-4 w-4" />
       </button>
-
-      <div className="flex items-center gap-2 text-right">
-        <h2 className={compact ? 'text-base font-black text-text sm:text-lg' : 'text-lg font-black text-text sm:text-xl'}>{title}</h2>
-        {icon}
-      </div>
     </div>
   );
 }
@@ -452,7 +396,6 @@ function SectionHeader({
 function DashboardSectionState({
   icon: Icon,
   title,
-  description,
   loading = false,
 }: {
   icon: LucideIcon;
@@ -468,9 +411,6 @@ function DashboardSectionState({
         <StateIcon className={['h-5 w-5', loading ? 'animate-spin' : ''].join(' ')} />
       </div>
       <div className="text-sm font-black text-slate-700">{title}</div>
-      {description ? (
-        <p className="mx-auto mt-2 max-w-[320px] text-xs leading-6 text-muted">{description}</p>
-      ) : null}
     </div>
   );
 }
@@ -502,13 +442,11 @@ const quickActionToneClasses: Record<QuickActionTone, {
 function QuickActionCard({
   icon: Icon,
   title,
-  description,
   onClick,
   tone = 'emerald',
 }: {
   icon: LucideIcon;
   title: string;
-  description: string;
   onClick: () => void;
   tone?: QuickActionTone;
 }) {
@@ -519,7 +457,7 @@ function QuickActionCard({
       type="button"
       onClick={onClick}
       className={[
-        `dashboard-quick-action dashboard-quick-action--${tone} group flex min-h-[96px] items-center justify-between gap-4 rounded-[22px] border px-5 text-right transition hover:-translate-y-0.5 xl:min-h-0 xl:flex-1`,
+        `dashboard-quick-action dashboard-quick-action--${tone} group flex min-h-[82px] items-center justify-start gap-4 rounded-[22px] border px-5 text-right transition hover:-translate-y-0.5 xl:min-h-0 xl:flex-1`,
         toneClasses.button,
       ].join(' ')}
     >
@@ -530,7 +468,6 @@ function QuickActionCard({
         <div className={['flex items-center justify-end gap-2 text-base font-black sm:text-lg', toneClasses.title].join(' ')}>
           <span>{title}</span>
         </div>
-        <p className="mt-1 text-sm leading-6 text-muted">{description}</p>
       </div>
     </button>
   );
@@ -562,6 +499,15 @@ function BalanceHero({
   return (
     <section className="dashboard-balance-card rounded-[28px] border border-emerald-100/80 bg-white/95 p-4 text-text shadow-[0_22px_58px_rgba(15,23,42,0.10)] backdrop-blur sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-right">
+          <span className="dashboard-wallet-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-emerald-50 text-emerald-600 shadow-[inset_3px_0_0_#10B981]">
+            <WalletCards className="h-6 w-6" strokeWidth={1.9} />
+          </span>
+          <div>
+            <h1 className="text-lg font-black text-text sm:text-xl">وضعیت مالی شما</h1>
+          </div>
+        </div>
+
         <button
           type="button"
           onClick={onOpenWallet}
@@ -570,18 +516,6 @@ function BalanceHero({
           جزئیات کیف پول
           <ArrowLeft className="h-4 w-4" />
         </button>
-
-        <div className="flex items-center gap-3 text-right">
-          <div>
-            <h1 className="text-lg font-black text-text sm:text-xl">وضعیت مالی شما</h1>
-            <p className="mt-1 text-xs font-semibold text-muted sm:text-sm">
-              خلاصه طلب و بدهی در گروه‌های فعال
-            </p>
-          </div>
-          <span className="dashboard-wallet-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-emerald-50 text-emerald-600 shadow-[inset_3px_0_0_#10B981]">
-            <WalletCards className="h-6 w-6" strokeWidth={1.9} />
-          </span>
-        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -600,9 +534,11 @@ function BalanceHero({
           </div>
 
           <div className="mt-7 text-right">
-            <div className="text-xs font-extrabold text-white/68">مانده کل</div>
+            <div className="text-xs font-extrabold text-white/68">
+              {isBalanced ? 'همه چیز تسویه است' : isPositive ? 'شما در مجموع طلبکار هستید' : 'شما در مجموع بدهکار هستید'}
+            </div>
             <div className="mt-2 max-w-full break-words text-[32px] font-black tracking-normal sm:text-[44px]">
-              {loading ? 'در حال محاسبه' : formatMoney(Math.abs(netMinor))}
+              {loading ? 'در حال محاسبه' : <MoneyWithWords amount={Math.abs(netMinor)} valueClassName="text-[32px] font-black tracking-normal sm:text-[44px]" textClassName="mt-2 text-sm font-semibold leading-7 text-white/68" showText={true} />}
             </div>
             {!loading ? (
               <p className="mt-2 hidden text-sm font-semibold leading-7 text-white/68 sm:block">
@@ -619,7 +555,7 @@ function BalanceHero({
             </span>
             <div className="min-w-0 text-right">
               <div className="text-xs font-extrabold text-emerald-700/80">طلب شما</div>
-              <div className="mt-1 text-xl font-black text-emerald-700">{formatMoney(creditMinor)}</div>
+              <div className="mt-1 text-xl font-black text-emerald-700"><MoneyWithWords amount={creditMinor} valueClassName="text-xl font-black text-emerald-700" textClassName="mt-1 text-[11px] font-semibold text-emerald-700/70" showText={true} /></div>
             </div>
           </div>
 
@@ -629,7 +565,7 @@ function BalanceHero({
             </span>
             <div className="min-w-0 text-right">
               <div className="text-xs font-extrabold text-orange-700/80">بدهی شما</div>
-              <div className="mt-1 text-xl font-black text-orange-700">{formatMoney(debtMinor)}</div>
+              <div className="mt-1 text-xl font-black text-orange-700"><MoneyWithWords amount={debtMinor} valueClassName="text-xl font-black text-orange-700" textClassName="mt-1 text-[11px] font-semibold text-orange-700/70" showText={true} /></div>
             </div>
           </div>
         </div>
@@ -640,33 +576,39 @@ function BalanceHero({
 
 function SettlementRow({ item }: { item: SettlementSuggestion }) {
   const isDebt = item.tone === 'negative';
-  const amountClassName = isDebt ? 'text-rose-500' : 'text-emerald-600';
-  const arrowClassName = isDebt ? 'text-rose-500' : 'text-emerald-600';
+  const amountClassName = isDebt ? 'text-orange-600' : 'text-emerald-600';
+  const arrowClassName = isDebt ? 'text-orange-600' : 'text-emerald-600';
   const avatarClassName = isDebt
-    ? 'bg-rose-50 text-rose-500'
+    ? 'bg-orange-50 text-orange-600'
     : 'bg-emerald-50 text-emerald-600';
+  const actionLabel = isDebt ? 'پرداخت به' : 'دریافت از';
 
   return (
-    <div className="dashboard-list-row dashboard-list-card grid gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:grid-cols-[minmax(0,1fr)_32px_minmax(116px,160px)] sm:items-center sm:px-5">
-      <div className="order-2 text-right sm:order-3 sm:text-left">
-        <div className={`text-base font-black ${amountClassName}`}>{formatMoney(item.amount)}</div>
-        <div className="mt-1 hidden text-[11px] font-semibold leading-5 text-slate-500 sm:block">
-          {formatMoneyText(item.amount)}
+    <div className="dashboard-list-row dashboard-list-card flex flex-col gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="min-w-0 text-right sm:flex-1">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={`dashboard-row-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-sm font-black ${avatarClassName}`}>
+            {item.avatarText}
+          </div>
+          <div className="min-w-0 text-right">
+            <div className="text-[11px] font-extrabold text-slate-400">{actionLabel}</div>
+            <div className="text-sm font-black leading-6 text-text sm:truncate">{item.name}</div>
+            <div className="mt-0.5 text-xs leading-5 text-muted sm:truncate">{item.description}</div>
+          </div>
         </div>
       </div>
 
-      <div className={`order-3 hidden justify-center sm:order-2 sm:flex ${arrowClassName}`}>
+      <div className={`hidden shrink-0 justify-center sm:flex ${arrowClassName}`}>
         <ArrowLeft className="h-5 w-5" />
       </div>
 
-      <div className="order-1 flex min-w-0 items-center justify-end gap-3">
-        <div className="min-w-0 text-right">
-          <div className="text-sm font-black leading-6 text-text sm:truncate">{item.name}</div>
-          <div className="mt-1 text-xs leading-5 text-muted sm:truncate">{item.description}</div>
-        </div>
-        <div className={`dashboard-row-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-sm font-black ${avatarClassName}`}>
-          {item.avatarText}
-        </div>
+      <div className="text-right sm:w-[160px] sm:text-left">
+        <MoneyWithWords
+          amount={item.amount}
+          valueClassName={`text-base font-black ${amountClassName}`}
+          textClassName="mt-1 hidden text-[11px] font-semibold leading-5 text-slate-500 sm:block"
+          className="space-y-1"
+        />
       </div>
     </div>
   );
@@ -676,17 +618,17 @@ function EventRow({ event }: { event: DashboardEvent }) {
   const Icon = event.icon;
 
   return (
-    <div className="dashboard-list-row dashboard-list-card grid grid-cols-[minmax(0,1fr)_44px] gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:grid-cols-[88px_minmax(0,1fr)_44px] sm:items-center sm:px-5">
-      <div className="order-3 col-span-2 text-right text-xs font-semibold text-slate-500 sm:order-1 sm:col-span-1 sm:text-left">
+    <div className="dashboard-list-row dashboard-list-card flex flex-col gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className={`dashboard-event-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${event.toneClassName}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <p className="min-w-0 flex-1 text-right text-sm font-semibold leading-6 text-slate-600 sm:truncate">
+        {event.title}
+      </p>
+      <div className="text-right text-xs font-semibold text-slate-500 sm:w-[104px] sm:text-left">
         <span>{event.time}</span>
         <span className="mx-2 text-slate-300 sm:hidden">•</span>
         <span className="mt-1 leading-5 text-slate-400 sm:block">{event.timeText}</span>
-      </div>
-      <p className="order-1 min-w-0 text-right text-sm font-semibold leading-6 text-slate-600 sm:order-2 sm:truncate">
-        {event.title}
-      </p>
-      <div className={`dashboard-event-icon order-2 flex h-10 w-10 items-center justify-center rounded-full sm:order-3 ${event.toneClassName}`}>
-        <Icon className="h-5 w-5" />
       </div>
     </div>
   );
@@ -728,7 +670,8 @@ function DashboardGroupCard({
   illustration: Group['illustration'];
   onOpen: (groupId: string) => void;
 }) {
-  const memberCountText = getMemberCountText(membersLabel);
+  const isDebt = tone === 'negative';
+  const isSettled = amount === 0;
 
   return (
     <button
@@ -739,18 +682,28 @@ function DashboardGroupCard({
       <div className="min-w-0">
         <h3 className="truncate text-lg font-black text-text">{title}</h3>
         <p className="mt-1 text-sm text-muted">{membersLabel}</p>
-        {memberCountText ? (
-          <p className="mt-1 text-xs font-semibold text-slate-400">{memberCountText}</p>
-        ) : null}
-        <p className={['dashboard-status-pill mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-bold', tone === 'positive' ? 'dashboard-status-pill--positive bg-emerald-50 text-emerald-600' : 'dashboard-status-pill--negative bg-rose-50 text-rose-500'].join(' ')}>
+        <p className={[
+          'dashboard-status-pill mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-bold',
+          isSettled
+            ? 'bg-slate-50 text-slate-500'
+            : isDebt
+              ? 'dashboard-status-pill--negative bg-orange-50 text-orange-600'
+              : 'dashboard-status-pill--positive bg-emerald-50 text-emerald-600',
+        ].join(' ')}>
           {statusLabel}
         </p>
-        <div className={['mt-1 text-xl font-black tracking-normal', tone === 'positive' ? 'text-emerald-600' : 'text-rose-500'].join(' ')}>
-          {formatSignedMoney(amount)}
-        </div>
-        <p className={['mt-1 hidden text-xs font-semibold leading-5 sm:block', tone === 'positive' ? 'text-emerald-700/70' : 'text-rose-500/70'].join(' ')}>
-          {formatSignedMoneyText(amount)}
-        </p>
+        <MoneyWithWords
+          amount={Math.abs(amount)}
+          className="mt-1"
+          valueClassName={[
+            'text-xl font-black tracking-normal',
+            isSettled ? 'text-slate-500' : isDebt ? 'text-orange-600' : 'text-emerald-600',
+          ].join(' ')}
+          textClassName={[
+            'mt-1 hidden text-xs font-semibold leading-5 sm:block',
+            isSettled ? 'text-slate-400' : isDebt ? 'text-orange-600/70' : 'text-emerald-700/70',
+          ].join(' ')}
+        />
       </div>
       <GroupArtwork type={illustration} />
     </button>
@@ -784,8 +737,21 @@ function getDashboardTotals(groupBalances: GroupBalanceSummary[] = []) {
 }
 
 function getGroupCards(groups: Group[], groupBalances: GroupBalanceSummary[] = []) {
-  const activeGroups = groups.filter((group) => !isArchivedGroup(group)).slice(0, 3);
   const balanceMap = new Map(groupBalances.map((item) => [String(item.groupId), item]));
+  const activeGroups = groups
+    .filter((group) => !isArchivedGroup(group))
+    .sort((a, b) => {
+      const aBalance = balanceMap.get(String(a.id))?.netMinor ?? 0;
+      const bBalance = balanceMap.get(String(b.id))?.netMinor ?? 0;
+
+      if (aBalance < 0 && bBalance >= 0) return -1;
+      if (aBalance >= 0 && bBalance < 0) return 1;
+      if (aBalance !== 0 && bBalance === 0) return -1;
+      if (aBalance === 0 && bBalance !== 0) return 1;
+
+      return Math.abs(bBalance) - Math.abs(aBalance);
+    })
+    .slice(0, 3);
 
   return activeGroups.map((group) => {
     const balance = balanceMap.get(String(group.id));
@@ -996,8 +962,22 @@ export function DashboardPage({
     };
   }, [activeGroups, currentUserId, currentUserReady]);
 
+  const handleNewExpenseAction = () => {
+    if (activeGroups.length === 0) {
+      onCreateGroup();
+      return;
+    }
+
+    if (activeGroups.length === 1) {
+      onOpenGroup(getGroupId(activeGroups[0]));
+      return;
+    }
+
+    onOpenGroups();
+  };
+
   return (
-    <main className="px-6 py-5 sm:px-8 sm:py-7 lg:px-10 xl:px-14 2xl:px-16">
+    <main dir="rtl" className="px-6 py-5 text-right sm:px-8 sm:py-7 lg:px-10 xl:px-14 2xl:px-16">
       <div className="mx-auto max-w-[1160px] space-y-4 sm:space-y-5">
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-stretch">
           <BalanceHero
@@ -1011,32 +991,29 @@ export function DashboardPage({
           <section className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
             <QuickActionCard
               icon={WalletCards}
-              title="هزینه جدید"
-              description="ثبت و تقسیم هزینه"
-              onClick={onOpenActivities}
+              title="ثبت هزینه جدید"
+              onClick={handleNewExpenseAction}
               tone="emerald"
-            />
-            <QuickActionCard
-              icon={UserPlus}
-              title="گروه جدید"
-              description="ساخت فضای مشترک"
-              onClick={onCreateGroup}
-              tone="sky"
             />
             <QuickActionCard
               icon={CreditCard}
               title="تسویه حساب"
-              description="پرداخت‌ها و دریافت‌ها"
               onClick={onOpenWallet}
               tone="amber"
+            />
+            <QuickActionCard
+              icon={UserPlus}
+              title="گروه جدید"
+              onClick={onCreateGroup}
+              tone="sky"
             />
           </section>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,0.96fr)_minmax(0,1.04fr)]">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
           <SectionCard variant="quiet" className="p-4 sm:p-5">
             <SectionHeader
-              title="تسویه‌های پیشنهادی"
+              title="نیاز به اقدام"
               actionLabel="مشاهده همه"
               icon={<ReceiptText className="h-5 w-5 text-slate-500" />}
               onAction={onOpenWallet}
@@ -1113,6 +1090,10 @@ export function DashboardPage({
 
         <SectionCard variant="quiet" className="p-4 sm:p-5">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-slate-700" />
+              <h2 className="text-lg font-black text-text sm:text-xl">گروه‌های نیازمند توجه</h2>
+            </div>
             <button
               type="button"
               onClick={onOpenGroups}
@@ -1120,10 +1101,6 @@ export function DashboardPage({
             >
               مشاهده همه گروه‌ها
             </button>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-text sm:text-xl">گروه‌های فعال شما</h2>
-              <Users className="h-5 w-5 text-slate-700" />
-            </div>
           </div>
 
           {groupsLoading ? (
@@ -1143,9 +1120,6 @@ export function DashboardPage({
             <div className="dashboard-panel-empty rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 p-7 text-center">
               <Users className="mx-auto mb-3 h-7 w-7 text-emerald-600" />
               <h3 className="text-base font-black text-text">هنوز گروه فعالی ندارید</h3>
-              <p className="mx-auto mt-2 max-w-[360px] text-sm leading-7 text-muted">
-                اولین گروه را بسازید تا وضعیت حساب، هزینه‌ها و تسویه‌های مربوط به آن در داشبورد نمایش داده شود.
-              </p>
               <button
                 type="button"
                 onClick={onCreateGroup}
