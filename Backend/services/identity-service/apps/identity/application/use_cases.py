@@ -7,15 +7,28 @@ from typing import Any, Dict, Optional, Tuple
 
 from django.db import transaction
 
+from apps.identity.application.bank_card_service import BankCardService
 from apps.identity.application.otp_service import OtpService
+from apps.identity.application.password_reset_service import (
+    PasswordResetService,
+    SessionService,
+)
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.user_service import UserService
-from apps.identity.application.bank_card_service import BankCardService
-from apps.identity.domain.events import PasswordChanged, SendOtpEmailRequested, UserCreated, UserLoggedIn, UserUpdated
+from apps.identity.domain.events import (
+    PasswordChanged,
+    SendOtpEmailRequested,
+    UserCreated,
+    UserLoggedIn,
+    UserUpdated,
+)
 from apps.identity.domain.models import User
-from apps.identity.domain.rules import ArtNameRule, EmailRule
+from apps.identity.domain.rules import ArtNameRule, EmailRule, OtpPurposeRule
 from apps.identity.infrastructure.rabbitmq_publisher import RabbitMqPublisher
-from apps.identity.infrastructure.repositories import RefreshTokenRepository, UserRepository
+from apps.identity.infrastructure.repositories import (
+    RefreshTokenRepository,
+    UserRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +52,9 @@ def build_token_response(
             "last_name": user.last_name,
             "display_name": user.display_name,
             "phone_number": user.phone_number,
-            "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
+            "date_of_birth": (
+                user.date_of_birth.isoformat() if user.date_of_birth else None
+            ),
             "city": user.city,
             "bio": user.bio,
             "avatar_url": user.avatar_url,
@@ -56,17 +71,48 @@ class RequestOtpUseCase:
         self.otp_service = OtpService()
         self.publisher = RabbitMqPublisher()
 
+    @staticmethod
+    def _is_signup_completed(user: User) -> bool:
+        return user.has_usable_password()
+
+    def _get_request_error(self, email: str, purpose: object) -> Optional[str]:
+        normalized_email = EmailRule.normalize(email)
+        if not normalized_email:
+            return "INVALID_EMAIL"
+        if not OtpPurposeRule.is_valid(purpose):
+            return "INVALID_PURPOSE"
+
+        user = UserRepository.get_any_by_email(normalized_email)
+        if purpose == "LOGIN":
+            if user is None:
+                return "EMAIL_NOT_REGISTERED"
+            if user.deleted_at is not None or not user.is_active:
+                return "ACCOUNT_DEACTIVATED"
+            if not self._is_signup_completed(user):
+                return "SIGNUP_NOT_COMPLETED"
+            return None
+
+        if user is None:
+            return None
+        if user.deleted_at is not None or not user.is_active:
+            return "ACCOUNT_DEACTIVATED"
+        return "EMAIL_ALREADY_EXISTS"
+
     def execute(
         self, email: str, purpose: object
     ) -> Tuple[bool, Optional[str], Optional[str], Optional[int]]:
-        request_result = self.otp_service.request_otp(email, purpose)
-        success, error_code, otp_code, debug_otp = request_result
+        normalized_email = EmailRule.normalize(email)
+        error_code = self._get_request_error(email, purpose)
+        if error_code:
+            return False, error_code, None, None
 
+        request_result = self.otp_service.request_otp(normalized_email, purpose)
+        success, error_code, otp_code, debug_otp = request_result
         if not success:
             return False, error_code, None, None
 
         event = SendOtpEmailRequested(
-            email=EmailRule.normalize(email),
+            email=normalized_email,
             code=otp_code,
             purpose=purpose,
             expires_in=self.otp_service.otp_ttl,
@@ -105,7 +151,12 @@ class VerifyOtpUseCase:
             else:
                 return False, "INVALID_PURPOSE", None
         except ValueError as exc:
-            if str(exc) in {"ACCOUNT_DEACTIVATED", "USER_NOT_FOUND", "EMAIL_ALREADY_EXISTS"}:
+            if str(exc) in {
+                "ACCOUNT_DEACTIVATED",
+                "USER_NOT_FOUND",
+                "EMAIL_ALREADY_EXISTS",
+                "SIGNUP_NOT_COMPLETED",
+            }:
                 return False, str(exc), None
             raise
         if not user.is_active:
@@ -134,7 +185,11 @@ class VerifyOtpUseCase:
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
 
-        return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
+        return (
+            True,
+            None,
+            build_token_response(user, self.token_service, access_token, refresh_token),
+        )
 
 
 class RefreshTokenUseCase:
@@ -149,7 +204,9 @@ class RefreshTokenUseCase:
         user_agent: str = None,
         ip_address: str = None,
     ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
-        result = self.token_service.refresh_tokens(refresh_token, user_agent, ip_address)
+        result = self.token_service.refresh_tokens(
+            refresh_token, user_agent, ip_address
+        )
         if not result:
             return False, "INVALID_TOKEN", None
 
@@ -176,6 +233,66 @@ class LogoutUseCase:
         RefreshTokenRepository.revoke(db_token)
         logger.info("User logged out: %s", EmailRule.mask(db_token.user.email))
         return True, None
+
+
+class ForgotPasswordRequestUseCase:
+    def __init__(self):
+        self.service = PasswordResetService()
+
+    def execute(self, email: str) -> Tuple[bool, Optional[str], Optional[str]]:
+        return self.service.request_reset(email)
+
+
+class ForgotPasswordVerifyUseCase:
+    def __init__(self):
+        self.service = PasswordResetService()
+
+    def execute(
+        self, email: str, otp: str
+    ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        return self.service.verify_otp(email, otp)
+
+
+class PasswordResetUseCase:
+    def __init__(self):
+        self.service = PasswordResetService()
+
+    def execute(
+        self,
+        *,
+        reset_token: str,
+        new_password: str,
+        new_password_confirm: str,
+    ) -> Tuple[bool, Optional[str]]:
+        return self.service.reset_password(
+            reset_token=reset_token,
+            new_password=new_password,
+            new_password_confirm=new_password_confirm,
+        )
+
+
+class SessionListUseCase:
+    def __init__(self):
+        self.service = SessionService()
+
+    def execute(self, *, user: User, current_jti: str | None = None) -> list[dict]:
+        return self.service.list_sessions(user=user, current_jti=current_jti)
+
+
+class DeleteSessionUseCase:
+    def __init__(self):
+        self.service = SessionService()
+
+    def execute(self, *, user: User, session_id: str) -> bool:
+        return self.service.revoke_session(user=user, session_id=session_id)
+
+
+class DeleteAllSessionsUseCase:
+    def __init__(self):
+        self.service = SessionService()
+
+    def execute(self, *, user: User, current_jti: str | None = None) -> int:
+        return self.service.revoke_other_sessions(user=user, current_jti=current_jti)
 
 
 class UpdateProfileUseCase:
@@ -206,6 +323,18 @@ class UpdateProfileUseCase:
                 )
                 self.publisher.publish(event.to_dict(), "identity.user.updated")
         return True, updated_user
+
+
+class SearchUsersByArtNameUseCase:
+    def execute(self, *, query: str, limit: int, exclude_user_id: str | None = None):
+        return UserRepository.search_active_by_art_name(
+            query=query, limit=limit, exclude_user_id=exclude_user_id
+        )
+
+
+class GetPublicUserByIdUseCase:
+    def execute(self, *, user_id: str) -> Optional[User]:
+        return UserRepository.get_active_public_by_id(user_id)
 
 
 class SetPasswordUseCase:
@@ -239,10 +368,21 @@ class PasswordLoginUseCase:
         password: str,
         user_agent: str = None,
         ip_address: str = None,
+        *,
+        remember_me: bool = False,
     ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
         normalized_art_name = ArtNameRule.normalize(art_name)
-        user = UserRepository.get_by_art_name(normalized_art_name) if normalized_art_name else None
-        if not user or not user.is_active or not user.has_usable_password() or not user.check_password(password):
+        user = (
+            UserRepository.get_by_art_name(normalized_art_name)
+            if normalized_art_name
+            else None
+        )
+        if (
+            not user
+            or not user.is_active
+            or not user.has_usable_password()
+            or not user.check_password(password)
+        ):
             return False, "INVALID_CREDENTIALS", None
 
         user = self.user_service.update_last_login(user)
@@ -250,20 +390,31 @@ class PasswordLoginUseCase:
             user,
             user_agent=user_agent,
             ip_address=ip_address,
+            remember_me=remember_me,
         )
         event = UserLoggedIn(user_id=user.id, email=user.email)
         self.publisher.publish(event.to_dict(), "identity.user.logged_in")
-        return True, None, build_token_response(user, self.token_service, access_token, refresh_token)
-
-
+        return (
+            True,
+            None,
+            build_token_response(user, self.token_service, access_token, refresh_token),
+        )
 
 
 class DeactivateAccountUseCase:
     def __init__(self):
         self.bank_card_service = BankCardService()
 
-    def execute(self, user: User, *, current_password: str | None = None, reason: str | None = None) -> tuple[str, User]:
-        return self.bank_card_service.deactivate_account(user, current_password=current_password, reason=reason)
+    def execute(
+        self,
+        user: User,
+        *,
+        current_password: str | None = None,
+        reason: str | None = None,
+    ) -> tuple[str, User]:
+        return self.bank_card_service.deactivate_account(
+            user, current_password=current_password, reason=reason
+        )
 
 
 class ChangePasswordUseCase:
@@ -292,10 +443,16 @@ class ChangePasswordUseCase:
                 )
                 event = PasswordChanged(
                     user_id=updated_user.id,
-                    changed_at=updated_user.password_changed_at.isoformat() if updated_user.password_changed_at else "",
+                    changed_at=(
+                        updated_user.password_changed_at.isoformat()
+                        if updated_user.password_changed_at
+                        else ""
+                    ),
                     other_sessions_revoked=revoked_count > 0,
                 )
-                self.publisher.publish(event.to_dict(), "identity.user.password_changed")
+                self.publisher.publish(
+                    event.to_dict(), "identity.user.password_changed"
+                )
         except ValueError as exc:
             return False, str(exc)
         return True, None

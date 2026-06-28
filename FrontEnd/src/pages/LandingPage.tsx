@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { LogoMark } from '../components/BrandLogo';
+import { LoginFooter } from './LoginPage';
 import { ThemeToggle } from '../components/theme/ThemeToggle';
 
 type FeatureItem = {
@@ -542,6 +543,8 @@ export function LandingPage() {
           </div>
         </div>
       </section>
+
+      <LoginFooter />
     </main>
   );
 }

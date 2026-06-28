@@ -9,6 +9,7 @@ import pika
 from django.conf import settings
 
 from apps.settlements.application.reminder_service import ReminderService
+from apps.settlements.application.settlement_plan_service import SettlementPlanService
 from apps.settlements.application.use_cases import ExpenseEventUseCase
 from apps.settlements.infrastructure.event_envelope import validate_event_envelope
 from apps.settlements.infrastructure.repositories import (
@@ -29,13 +30,16 @@ class SettlementEventConsumer:
         self.exchange_group = getattr(settings, "GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
         self.exchange_expense = getattr(settings, "EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense")
         self.exchange_notification = getattr(settings, "NOTIFICATION_RABBITMQ_EXCHANGE", "hamdong.notification")
+        self.exchange_wallet = getattr(settings, "WALLET_RABBITMQ_EXCHANGE", "hamdong.wallet")
         self.queue_identity = getattr(settings, "SETTLEMENT_IDENTITY_QUEUE", "settlement.identity.user_events")
         self.queue_group = getattr(settings, "SETTLEMENT_GROUP_QUEUE", "settlement.group.events")
         self.queue_expense = getattr(settings, "SETTLEMENT_EXPENSE_QUEUE", "settlement.expense.events")
         self.queue_notification = getattr(settings, "SETTLEMENT_NOTIFICATION_QUEUE", "settlement.notification.events")
+        self.queue_wallet = getattr(settings, "SETTLEMENT_WALLET_QUEUE", "settlement.wallet.events")
         self.retry_delay_seconds = 2
         self.expense_events = ExpenseEventUseCase()
         self.reminder_service = ReminderService()
+        self.plan_service = SettlementPlanService()
 
     def _connect(self):
         credentials = pika.PlainCredentials(settings.RABBITMQ_DEFAULT_USER, settings.RABBITMQ_DEFAULT_PASS)
@@ -177,6 +181,15 @@ class SettlementEventConsumer:
         if event_type == "DebtReminderDeliveryUpdated":
             self.reminder_service.apply_delivery_update(data)
 
+
+    def _handle_wallet(self, event_type, data):
+        if event_type == "WalletSettlementPaid":
+            self.plan_service.apply_wallet_payment(
+                data.get("settlement_plan_item_id"),
+                data.get("wallet_transaction_id"),
+                paid_at=data.get("paid_at"),
+            )
+
     def _callback_factory(self, handler):
         def _callback(ch, method, properties, body):
             payload = None
@@ -215,6 +228,7 @@ class SettlementEventConsumer:
             ("group", self.start_group_consumer),
             ("expense", self.start_expense_consumer),
             ("notification", self.start_notification_consumer),
+            ("wallet", self.start_wallet_consumer),
         ]
 
         threads = []
@@ -247,4 +261,13 @@ class SettlementEventConsumer:
             self.queue_notification,
             ["notification.debt_reminder.delivery.updated"],
             self._callback_factory(self._handle_notification),
+        )
+
+
+    def start_wallet_consumer(self):
+        self._start_queue(
+            self.exchange_wallet,
+            self.queue_wallet,
+            ["wallet.settlement.paid"],
+            self._callback_factory(self._handle_wallet),
         )

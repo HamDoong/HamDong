@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -91,6 +92,14 @@ class GroupMember(models.Model):
 
     class Meta:
         db_table = "group_members"
+        constraints = [
+            models.UniqueConstraint(fields=["group", "user_id"], name="group_member_unique_group_user"),
+        ]
+
+
+class GroupInviteTypeChoices(models.TextChoices):
+    TOKEN = "TOKEN", "Token"
+    DIRECT = "DIRECT", "Direct"
 
 
 class GroupInviteStatusChoices(models.TextChoices):
@@ -98,24 +107,54 @@ class GroupInviteStatusChoices(models.TextChoices):
     USED = "USED", "Used"
     REVOKED = "REVOKED", "Revoked"
     EXPIRED = "EXPIRED", "Expired"
+    PENDING = "PENDING", "Pending"
+    ACCEPTED = "ACCEPTED", "Accepted"
+    REJECTED = "REJECTED", "Rejected"
 
 
 class GroupInvite(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="invites")
+    invite_type = models.CharField(max_length=16, choices=GroupInviteTypeChoices.choices, default=GroupInviteTypeChoices.TOKEN)
     created_by_user_id = models.UUIDField()
-    token_hash = models.CharField(max_length=128)
+    token_hash = models.CharField(max_length=128, null=True, blank=True)
     invite_code = models.CharField(max_length=64, null=True, blank=True)
+    recipient_user_id = models.UUIDField(null=True, blank=True, db_index=True)
+    recipient_email = models.CharField(max_length=254, null=True, blank=True)
     status = models.CharField(max_length=16, choices=GroupInviteStatusChoices.choices, default=GroupInviteStatusChoices.ACTIVE)
     max_uses = models.PositiveIntegerField(null=True, blank=True)
     used_count = models.PositiveIntegerField(default=0)
     expires_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "group_invites"
+        indexes = [
+            models.Index(fields=["group", "invite_type", "status"], name="group_invite_type_status_idx"),
+            models.Index(fields=["recipient_user_id", "invite_type", "status"], name="group_invite_recipient_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(invite_type=GroupInviteTypeChoices.TOKEN, token_hash__isnull=False)
+                    | Q(invite_type=GroupInviteTypeChoices.DIRECT, recipient_user_id__isnull=False)
+                ),
+                name="group_invite_type_required_fields",
+            ),
+        ]
+
+    @property
+    def is_direct(self) -> bool:
+        return self.invite_type == GroupInviteTypeChoices.DIRECT
+
+    @property
+    def is_token(self) -> bool:
+        return self.invite_type == GroupInviteTypeChoices.TOKEN
 
 
 class OutboxMessageStatusChoices(models.TextChoices):

@@ -9,7 +9,14 @@ from django.conf import settings
 from rest_framework import serializers
 
 from apps.identity.domain.models import User
-from apps.identity.domain.rules import ArtNameRule, DateOfBirthRule, EmailRule, PhoneNumberRule, ProfileRule, VALID_OTP_PURPOSES
+from apps.identity.domain.rules import (
+    ArtNameRule,
+    DateOfBirthRule,
+    EmailRule,
+    PhoneNumberRule,
+    ProfileRule,
+    VALID_OTP_PURPOSES,
+)
 
 
 class NormalizedEmailField(serializers.EmailField):
@@ -70,6 +77,20 @@ class TrimmedOptionalURLField(serializers.URLField):
         return super().to_internal_value(value)
 
 
+class StrictBooleanField(serializers.BooleanField):
+    default_error_messages = {
+        "invalid": "Must be a valid boolean.",
+    }
+
+    TRUE_VALUES = {True}
+    FALSE_VALUES = {False}
+
+    def to_internal_value(self, data):
+        if data is True or data is False:
+            return bool(data)
+        self.fail("invalid")
+
+
 class RequestOtpSerializer(serializers.Serializer):
     email = NormalizedEmailField(required=True)
     purpose = StrictOtpPurposeField()
@@ -102,12 +123,48 @@ class PasswordSetSerializer(serializers.Serializer):
 class PasswordLoginSerializer(serializers.Serializer):
     art_name = serializers.CharField(required=True)
     password = serializers.CharField(required=True, write_only=True)
+    remember_me = StrictBooleanField(required=False, default=False)
 
 
 class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField(required=True, write_only=True)
     new_password = serializers.CharField(required=True, write_only=True)
     new_password_confirm = serializers.CharField(required=True, write_only=True)
+
+
+class ForgotPasswordRequestSerializer(serializers.Serializer):
+    email = NormalizedEmailField(required=True)
+
+
+class ForgotPasswordVerifySerializer(serializers.Serializer):
+    email = NormalizedEmailField(required=True)
+    otp = serializers.CharField(required=True, min_length=6, max_length=6)
+
+    def validate_otp(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError("OTP code must be numeric.")
+        return value
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    reset_token = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True)
+    new_password_confirm = serializers.CharField(required=True, write_only=True)
+
+
+class SessionSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    remember_me = serializers.BooleanField()
+    created_at = serializers.DateTimeField()
+    last_used_at = serializers.DateTimeField()
+    expires_at = serializers.DateTimeField()
+    is_current = serializers.BooleanField()
+    user_agent = serializers.CharField(allow_null=True)
+    ip_address = serializers.CharField(allow_null=True)
+
+
+class SessionListResponseSerializer(serializers.Serializer):
+    results = SessionSerializer(many=True)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -137,15 +194,25 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UpdateUserSerializer(serializers.Serializer):
-    art_name = serializers.CharField(required=False, allow_blank=False, allow_null=False)
-    first_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    art_name = serializers.CharField(
+        required=False, allow_blank=False, allow_null=False
+    )
+    first_name = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
     last_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    display_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    phone_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    display_name = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
+    phone_number = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
     date_of_birth = StrictDateField(required=False, allow_null=True)
     city = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     bio = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    avatar_url = TrimmedOptionalURLField(required=False, allow_blank=True, allow_null=True)
+    avatar_url = TrimmedOptionalURLField(
+        required=False, allow_blank=True, allow_null=True
+    )
 
     IGNORED_FIELDS = {
         "id",
@@ -203,13 +270,17 @@ class UpdateUserSerializer(serializers.Serializer):
 
     def validate_first_name(self, value):
         try:
-            return ProfileRule.normalize_optional_text(value, max_length=150, field_name="first_name")
+            return ProfileRule.normalize_optional_text(
+                value, max_length=150, field_name="first_name"
+            )
         except ValueError:
             raise serializers.ValidationError("INVALID_FIRST_NAME")
 
     def validate_last_name(self, value):
         try:
-            return ProfileRule.normalize_optional_text(value, max_length=150, field_name="last_name")
+            return ProfileRule.normalize_optional_text(
+                value, max_length=150, field_name="last_name"
+            )
         except ValueError:
             raise serializers.ValidationError("INVALID_LAST_NAME")
 
@@ -245,6 +316,41 @@ class UserDetailSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField()
 
 
+class UserSearchQuerySerializer(serializers.Serializer):
+    art_name = serializers.CharField(
+        required=True, allow_blank=False, trim_whitespace=True
+    )
+    limit = serializers.IntegerField(
+        required=False, min_value=1, max_value=20, default=10
+    )
+    exclude_me = serializers.BooleanField(required=False, default=True)
+
+    def validate_art_name(self, value):
+        if len(value) < 2:
+            raise serializers.ValidationError("ART_NAME_QUERY_TOO_SHORT")
+        if len(value) > 50:
+            raise serializers.ValidationError("ART_NAME_QUERY_TOO_LONG")
+        return value
+
+
+class UserSearchResultSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField(source="id")
+    art_name = serializers.CharField()
+    avatar_url = TrimmedOptionalURLField(allow_null=True, required=False)
+
+
+class UserSearchResponseSerializer(serializers.Serializer):
+    items = UserSearchResultSerializer(many=True)
+    count = serializers.IntegerField()
+    query = serializers.CharField()
+
+
+class PublicUserSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField(source="id")
+    art_name = serializers.CharField()
+    avatar_url = TrimmedOptionalURLField(allow_null=True, required=False)
+    is_active = serializers.BooleanField()
+
 
 class UserBankCardSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
@@ -273,10 +379,19 @@ class UpdateUserBankCardSerializer(serializers.Serializer):
     card_number = serializers.CharField(required=False)
 
     def validate(self, attrs):
-        immutable = {"card_number_hash", "encrypted_card_number", "card_number_last4", "user_id", "created_at", "id"}
+        immutable = {
+            "card_number_hash",
+            "encrypted_card_number",
+            "card_number_last4",
+            "user_id",
+            "created_at",
+            "id",
+        }
         unexpected = immutable.intersection(self.initial_data.keys())
         if unexpected:
-            raise serializers.ValidationError({name: "This field may not be updated." for name in unexpected})
+            raise serializers.ValidationError(
+                {name: "This field may not be updated." for name in unexpected}
+            )
         return attrs
 
 
@@ -311,7 +426,9 @@ class BulkUserBankCardSaveResponseSerializer(serializers.Serializer):
 
 class DeactivateAccountSerializer(serializers.Serializer):
     current_password = serializers.CharField(required=False, allow_blank=False)
-    reason = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=500)
+    reason = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=500
+    )
 
 
 class DeactivateAccountResponseSerializer(serializers.Serializer):
@@ -322,4 +439,6 @@ class DeactivateAccountResponseSerializer(serializers.Serializer):
 
 class InternalPaymentContextBankCardsRequestSerializer(serializers.Serializer):
     owner_user_id = serializers.UUIDField(required=True)
-    card_ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True)
+    card_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, allow_empty=True
+    )

@@ -1,7 +1,9 @@
 import uuid
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.settlements.domain.models import (
@@ -46,6 +48,22 @@ def normalize_uuid(value):
     if isinstance(value, uuid.UUID):
         return value
     return uuid.UUID(str(value))
+
+
+@dataclass(frozen=True)
+class SettlementFeedRecord:
+    id: uuid.UUID
+    source_type: str
+    source_id: uuid.UUID
+    group_id: uuid.UUID
+    payer_user_id: uuid.UUID
+    receiver_user_id: uuid.UUID
+    amount_minor: int
+    currency: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    manual_settlement_id: uuid.UUID | None = None
 
 
 class UserProjectionRepository:
@@ -262,6 +280,15 @@ class GroupMemberProjectionRepository:
     def list_active_members(group_id):
         return GroupMemberProjection.objects.filter(
             group_id=normalize_uuid(group_id), status="ACTIVE"
+        )
+
+    @staticmethod
+    def list_active_group_ids_for_user(user_id):
+        return list(
+            GroupMemberProjection.objects.filter(
+                user_id=normalize_uuid(user_id),
+                status="ACTIVE",
+            ).values_list("group_id", flat=True)
         )
 
 
@@ -503,6 +530,10 @@ class GroupBalanceSnapshotRepository:
 
 class ManualSettlementRepository:
     @staticmethod
+    def _base_queryset():
+        return ManualSettlement.objects.all()
+
+    @staticmethod
     def create_pending(**data):
         return ManualSettlement.objects.create(
             group_id=normalize_uuid(data.get("group_id")),
@@ -544,6 +575,65 @@ class ManualSettlementRepository:
         if filters.get("receiver_user_id"):
             qs = qs.filter(receiver_user_id=normalize_uuid(filters["receiver_user_id"]))
         return qs
+
+    @staticmethod
+    def list_for_user_feed(user_id, *, active_group_ids=None, filters=None):
+        filters = filters or {}
+        group_ids = [
+            normalize_uuid(group_id)
+            for group_id in (active_group_ids or [])
+            if normalize_uuid(group_id)
+        ]
+        if filters.get("group_id"):
+            requested_group_id = normalize_uuid(filters["group_id"])
+            if requested_group_id not in group_ids:
+                return []
+            group_ids = [requested_group_id]
+        if not group_ids:
+            return []
+
+        qs = (
+            ManualSettlementRepository._base_queryset()
+            .filter(group_id__in=group_ids)
+            .filter(
+                Q(payer_user_id=normalize_uuid(user_id))
+                | Q(receiver_user_id=normalize_uuid(user_id))
+            )
+            .order_by("-updated_at", "-created_at", "-id")
+        )
+        if filters.get("status"):
+            qs = qs.filter(status=filters["status"])
+        direction = filters.get("direction")
+        if direction == "PAY":
+            qs = qs.filter(payer_user_id=normalize_uuid(user_id))
+        elif direction == "RECEIVE":
+            qs = qs.filter(receiver_user_id=normalize_uuid(user_id))
+        linked_manual_ids = set(
+            SettlementPlanItem.objects.exclude(manual_settlement_id__isnull=True).values_list(
+                "manual_settlement_id", flat=True
+            )
+        )
+        rows = []
+        for settlement in qs:
+            if settlement.id in linked_manual_ids:
+                continue
+            rows.append(
+                SettlementFeedRecord(
+                    id=settlement.id,
+                    source_type="MANUAL_SETTLEMENT",
+                    source_id=settlement.id,
+                    group_id=settlement.group_id,
+                    payer_user_id=settlement.payer_user_id,
+                    receiver_user_id=settlement.receiver_user_id,
+                    amount_minor=settlement.amount_minor,
+                    currency=settlement.currency,
+                    status=settlement.status,
+                    created_at=settlement.created_at,
+                    updated_at=settlement.updated_at,
+                    manual_settlement_id=settlement.id,
+                )
+            )
+        return rows
 
     @staticmethod
     def confirm(settlement: ManualSettlement, confirmed_by_user_id):
@@ -705,6 +795,57 @@ class SettlementPlanItemRepository:
         return SettlementPlanItem.objects.filter(
             group_id=normalize_uuid(group_id)
         ).order_by("-created_at", "-id")
+
+    @staticmethod
+    def list_for_user_feed(user_id, *, active_group_ids=None, filters=None):
+        filters = filters or {}
+        group_ids = [
+            normalize_uuid(group_id)
+            for group_id in (active_group_ids or [])
+            if normalize_uuid(group_id)
+        ]
+        if filters.get("group_id"):
+            requested_group_id = normalize_uuid(filters["group_id"])
+            if requested_group_id not in group_ids:
+                return []
+            group_ids = [requested_group_id]
+        if not group_ids:
+            return []
+
+        qs = (
+            SettlementPlanItemRepository._base_queryset()
+            .filter(group_id__in=group_ids)
+            .filter(
+                Q(payer_user_id=normalize_uuid(user_id))
+                | Q(receiver_user_id=normalize_uuid(user_id))
+            )
+            .order_by("-updated_at", "-created_at", "-id")
+        )
+        if filters.get("status"):
+            qs = qs.filter(status=filters["status"])
+        direction = filters.get("direction")
+        if direction == "PAY":
+            qs = qs.filter(payer_user_id=normalize_uuid(user_id))
+        elif direction == "RECEIVE":
+            qs = qs.filter(receiver_user_id=normalize_uuid(user_id))
+
+        return [
+            SettlementFeedRecord(
+                id=item.id,
+                source_type="SETTLEMENT_PLAN_ITEM",
+                source_id=item.id,
+                group_id=item.group_id,
+                payer_user_id=item.payer_user_id,
+                receiver_user_id=item.receiver_user_id,
+                amount_minor=item.amount_minor,
+                currency=item.currency,
+                status=item.status,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+                manual_settlement_id=item.manual_settlement_id,
+            )
+            for item in qs
+        ]
 
     @staticmethod
     def list_pending_for_scheduler(limit=100):

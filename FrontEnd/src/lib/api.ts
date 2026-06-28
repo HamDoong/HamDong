@@ -239,7 +239,7 @@ export async function apiRequest<T>(
 
 function shouldRetryIdentityDirectly(error: unknown) {
   if (error instanceof TypeError) return true;
-  return isApiError(error) && [404, 502, 503, 504].includes(error.status);
+  return isApiError(error) && [404, 500, 502, 503, 504].includes(error.status);
 }
 
 /**

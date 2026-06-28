@@ -8,8 +8,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.groups.api.serializers import (
+    CreateDirectInviteSerializer,
     CreateGroupSerializer,
     CreateInviteSerializer,
+    DirectInviteCreateResponseSerializer,
+    DirectInviteDetailSerializer,
+    DirectInviteListQuerySerializer,
+    DirectInviteListResponseSerializer,
     ErrorResponseSerializer,
     GroupSerializer,
     InviteAcceptResponseSerializer,
@@ -34,7 +39,7 @@ from apps.groups.application.use_cases import (
     RestoreGroupUseCase,
     UpdateGroupUseCase,
 )
-from apps.groups.domain.models import GroupMember
+from apps.groups.domain.models import GroupInviteStatusChoices, GroupMember
 from apps.groups.infrastructure.jwt_authentication import JWTAuthentication
 from apps.groups.infrastructure.repositories import GroupInviteRepository, GroupRepository, UserProjectionRepository
 
@@ -55,6 +60,25 @@ def _mask_email(email: str | None) -> str | None:
     else:
         masked_local = local_part[:2] + "***"
     return f"{masked_local}@{domain}"
+
+
+def _direct_invite_payload(invite):
+    invited_by_projection = UserProjectionRepository.get_by_identity_id(invite.created_by_user_id)
+    return {
+        "id": invite.id,
+        "group": {
+            "id": invite.group.id,
+            "title": invite.group.display_title,
+        },
+        "invited_by": {
+            "user_id": invite.created_by_user_id,
+            "art_name": getattr(invited_by_projection, "art_name", "") or "",
+        },
+        "status": invite.status,
+        "expires_at": invite.expires_at,
+        "created_at": invite.created_at,
+        "updated_at": invite.updated_at,
+    }
 
 
 class GroupListCreateView(GenericAPIView):
@@ -216,6 +240,190 @@ class CreateInviteView(GenericAPIView):
         invite_url = f"{base.rstrip('/')}/api/v1/groups/invites/{raw_token}" if base else request.build_absolute_uri(f"/api/v1/groups/invites/{raw_token}")
 
         return Response(InviteCreateResponseSerializer({"invite_id": str(invite.id), "invite_url": invite_url}).data, status=status.HTTP_201_CREATED)
+
+
+
+class CreateDirectInviteView(GenericAPIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    serializer_class = CreateDirectInviteSerializer
+
+    @extend_schema(
+        tags=["Groups"],
+        summary="Create direct group invitation",
+        request=CreateDirectInviteSerializer,
+        responses={201: DirectInviteCreateResponseSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 403: ErrorResponseSerializer, 404: ErrorResponseSerializer},
+    )
+    def post(self, request, group_id):
+        group = GroupRepository.get_by_id(group_id)
+        if not group or group.status == "DELETED":
+            return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
+
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            invite = InviteService().create_direct_invite(
+                group=group,
+                creator=request.user,
+                recipient_user_id=serializer.validated_data.get("recipient_user_id"),
+                recipient_email=serializer.validated_data.get("recipient_email"),
+                expires_in_hours=serializer.validated_data.get("expires_in_hours"),
+            )
+        except PermissionError as exc:
+            if str(exc) == "NOT_GROUP_MEMBER":
+                return _error_response("NOT_GROUP_MEMBER", "You are not an active member of this group.", status.HTTP_403_FORBIDDEN)
+            return _error_response("PERMISSION_DENIED", "You do not have permission to create invites for this group.", status.HTTP_403_FORBIDDEN)
+        except LookupError:
+            return _error_response("GROUP_NOT_FOUND", "Group not found.", status.HTTP_404_NOT_FOUND)
+        except ValueError as exc:
+            error_map = {
+                "GROUP_NOT_ACTIVE": ("GROUP_NOT_ACTIVE", "Group must be active.", status.HTTP_409_CONFLICT),
+                "RECIPIENT_REQUIRED": ("RECIPIENT_REQUIRED", "Recipient is required.", status.HTTP_400_BAD_REQUEST),
+                "INVALID_EXPIRES_IN_HOURS": ("INVALID_EXPIRES_IN_HOURS", "Expiration must be a positive number of hours.", status.HTTP_400_BAD_REQUEST),
+                "EXPIRES_IN_HOURS_TOO_LARGE": ("EXPIRES_IN_HOURS_TOO_LARGE", "Expiration is too large.", status.HTTP_400_BAD_REQUEST),
+                "RECIPIENT_NOT_FOUND": ("RECIPIENT_NOT_FOUND", "Recipient must be a registered user.", status.HTTP_400_BAD_REQUEST),
+                "RECIPIENT_INACTIVE": ("RECIPIENT_INACTIVE", "Recipient must be active.", status.HTTP_400_BAD_REQUEST),
+                "RECIPIENT_ALREADY_MEMBER": ("RECIPIENT_ALREADY_MEMBER", "Recipient is already a group member.", status.HTTP_409_CONFLICT),
+                "DIRECT_INVITE_ALREADY_PENDING": ("DIRECT_INVITE_ALREADY_PENDING", "An active pending invitation already exists for this recipient.", status.HTTP_409_CONFLICT),
+            }
+            code, message, http_status = error_map.get(str(exc), ("INVALID_REQUEST", "Invalid invite request.", status.HTTP_400_BAD_REQUEST))
+            return _error_response(code, message, http_status)
+
+        return Response(
+            DirectInviteCreateResponseSerializer(
+                {
+                    "id": invite.id,
+                    "status": invite.status,
+                    "expires_at": invite.expires_at,
+                    "created_at": invite.created_at,
+                }
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MyDirectInvitationsView(GenericAPIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    serializer_class = DirectInviteListQuerySerializer
+
+    @extend_schema(
+        tags=["Groups"],
+        summary="List my direct group invitations",
+        responses={200: DirectInviteListResponseSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer},
+    )
+    def get(self, request):
+        serializer = self.get_serializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            invites, next_cursor = InviteService().list_direct_invites(
+                request.user.sub,
+                status_filter=serializer.validated_data.get("status"),
+                cursor=serializer.validated_data.get("cursor"),
+                page_size=serializer.validated_data.get("page_size", 20),
+            )
+        except ValueError:
+            return _error_response("INVALID_CURSOR", "Cursor is invalid.", status.HTTP_400_BAD_REQUEST)
+
+        payload = {
+            "results": [_direct_invite_payload(invite) for invite in invites],
+            "next_cursor": next_cursor,
+        }
+        return Response(DirectInviteListResponseSerializer(payload).data)
+
+
+class DirectInvitationDetailView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Groups"],
+        summary="Get direct invitation detail",
+        responses={200: DirectInviteDetailSerializer, 401: ErrorResponseSerializer, 404: ErrorResponseSerializer},
+    )
+    def get(self, request, invite_id):
+        invite = InviteService().get_direct_invite_for_recipient(invite_id, request.user.sub)
+        if not invite:
+            return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
+        return Response(DirectInviteDetailSerializer(_direct_invite_payload(invite)).data)
+
+
+class AcceptDirectInvitationView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Groups"],
+        summary="Accept direct invitation",
+        request=None,
+        responses={200: InviteAcceptResponseSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 404: ErrorResponseSerializer, 409: ErrorResponseSerializer},
+    )
+    def post(self, request, invite_id):
+        invite = GroupInviteRepository.get_by_id(invite_id)
+        if not invite:
+            return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
+        try:
+            member = InviteService().accept_direct_invite(invite, request.user)
+        except PermissionError:
+            return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
+        except ValueError as exc:
+            error_map = {
+                "GROUP_NOT_JOINABLE": ("GROUP_NOT_JOINABLE", "This group cannot be joined.", status.HTTP_409_CONFLICT),
+                "INVITE_EXPIRED": ("INVITE_EXPIRED", "Invite expired.", status.HTTP_409_CONFLICT),
+                "INVITE_NOT_PENDING": ("INVITE_NOT_PENDING", "Invite is not pending.", status.HTTP_409_CONFLICT),
+                "NEW_INVITE_REQUIRED": ("NEW_INVITE_REQUIRED", "Removed members need a new invite to rejoin.", status.HTTP_409_CONFLICT),
+                "ALREADY_GROUP_MEMBER": ("ALREADY_GROUP_MEMBER", "You are already an active member of this group.", status.HTTP_409_CONFLICT),
+                "INVITE_ALREADY_ACCEPTED": ("INVITE_ALREADY_ACCEPTED", "Invite was already accepted.", status.HTTP_409_CONFLICT),
+            }
+            code, message, http_status = error_map.get(str(exc), ("INVALID_INVITE", "Invite is not valid.", status.HTTP_400_BAD_REQUEST))
+            return _error_response(code, message, http_status)
+
+        return Response(
+            InviteAcceptResponseSerializer(
+                {
+                    "group_id": invite.group.id,
+                    "member_id": member.id,
+                    "user_id": member.user_id,
+                    "status": member.status,
+                    "message": "You have joined the group successfully.",
+                }
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class RejectDirectInvitationView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Groups"],
+        summary="Reject direct invitation",
+        request=None,
+        responses={200: MessageSerializer, 400: ErrorResponseSerializer, 401: ErrorResponseSerializer, 404: ErrorResponseSerializer, 409: ErrorResponseSerializer},
+    )
+    def post(self, request, invite_id):
+        invite = GroupInviteRepository.get_by_id(invite_id)
+        if not invite:
+            return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
+        try:
+            InviteService().reject_direct_invite(invite, request.user)
+        except PermissionError:
+            return _error_response("INVITE_NOT_FOUND", "Invite not found.", status.HTTP_404_NOT_FOUND)
+        except ValueError as exc:
+            error_map = {
+                "INVITE_EXPIRED": ("INVITE_EXPIRED", "Invite expired.", status.HTTP_409_CONFLICT),
+                "INVITE_NOT_PENDING": ("INVITE_NOT_PENDING", "Invite is not pending.", status.HTTP_409_CONFLICT),
+            }
+            code, message, http_status = error_map.get(str(exc), ("INVALID_INVITE", "Invite is not valid.", status.HTTP_400_BAD_REQUEST))
+            return _error_response(code, message, http_status)
+
+        return Response({"message": "Invitation rejected successfully."}, status=status.HTTP_200_OK)
+
 
 
 class InvitePreviewView(APIView):

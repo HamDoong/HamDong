@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.identity.domain.models import User
+from apps.identity.domain.models import OutboxMessage, User
 from apps.identity.infrastructure.redis_otp_store import RedisOtpStore
 
 
@@ -38,8 +38,23 @@ class OtpRequestTestCase(TestCase):
         keys = self.otp_store.redis_client.keys(f"*{email}*")
         self.assertEqual(keys, [])
 
+    def _assert_no_otp_event(self, email: str):
+        self.assertFalse(
+            OutboxMessage.objects.filter(
+                event_type="SendOtpEmailRequested",
+                payload__data__email=email,
+            ).exists()
+        )
+
+    @staticmethod
+    def _create_completed_user(email: str, **kwargs) -> User:
+        user = User.objects.create(email=email, **kwargs)
+        user.set_password("StrongPass123!")
+        user.save(update_fields=["password_hash", "password_changed_at", "updated_at"])
+        return user
+
     def test_request_otp_with_valid_login_purpose_for_existing_user(self):
-        User.objects.create(email="artist@example.com")
+        self._create_completed_user(email="artist@example.com")
 
         response = self.client.post(
             self.request_url,
@@ -78,7 +93,7 @@ class OtpRequestTestCase(TestCase):
         self.assertEqual(response.json()["error"]["code"], "INVALID_EMAIL")
 
     def test_request_otp_rejects_lowercase_login_without_side_effects(self):
-        User.objects.create(email="existing@example.com")
+        self._create_completed_user(email="existing@example.com")
 
         response = self.client.post(
             self.request_url,
@@ -137,7 +152,7 @@ class OtpRequestTestCase(TestCase):
             self.assertFalse(User.objects.filter(email="missing@example.com").exists())
 
     def test_request_otp_rate_limit_is_per_purpose(self):
-        User.objects.create(email="artist@example.com")
+        self._create_completed_user(email="artist@example.com")
 
         for _ in range(3):
             self.otp_store.increment_request_count("artist@example.com", "LOGIN")
@@ -151,7 +166,7 @@ class OtpRequestTestCase(TestCase):
 
         signup_response = self.client.post(
             self.request_url,
-            {"email": "artist@example.com", "purpose": "SIGNUP"},
+            {"email": "new@example.com", "purpose": "SIGNUP"},
             format="json",
         )
         self.assertEqual(signup_response.status_code, status.HTTP_200_OK)
@@ -179,8 +194,15 @@ class OtpVerifyTestCase(TestCase):
         User.objects.all().delete()
         RedisOtpStore._shared_client = None
 
+    @staticmethod
+    def _create_completed_user(email: str, **kwargs) -> User:
+        user = User.objects.create(email=email, **kwargs)
+        user.set_password("StrongPass123!")
+        user.save(update_fields=["password_hash", "password_changed_at", "updated_at"])
+        return user
+
     def test_verify_login_logs_in_existing_user(self):
-        User.objects.create(email="artist@example.com")
+        self._create_completed_user(email="artist@example.com")
         self.otp_store.store_otp("artist@example.com", "LOGIN", "123456", 120)
 
         response = self.client.post(
@@ -210,7 +232,7 @@ class OtpVerifyTestCase(TestCase):
         self.assertTrue(user.is_email_verified)
 
     def test_verify_otp_with_wrong_code(self):
-        User.objects.create(email="artist@example.com")
+        self._create_completed_user(email="artist@example.com")
         self.otp_store.store_otp("artist@example.com", "LOGIN", "123456", 120)
 
         response = self.client.post(
@@ -223,7 +245,7 @@ class OtpVerifyTestCase(TestCase):
         self.assertEqual(response.json()["error"]["code"], "INVALID_OTP")
 
     def test_verify_otp_expired(self):
-        User.objects.create(email="artist@example.com")
+        self._create_completed_user(email="artist@example.com")
 
         response = self.client.post(
             self.verify_url,
@@ -235,7 +257,7 @@ class OtpVerifyTestCase(TestCase):
         self.assertEqual(response.json()["error"]["code"], "OTP_EXPIRED")
 
     def test_verify_otp_max_attempts(self):
-        User.objects.create(email="artist@example.com")
+        self._create_completed_user(email="artist@example.com")
         self.otp_store.store_otp("artist@example.com", "LOGIN", "123456", 120)
 
         for _ in range(5):
@@ -255,7 +277,7 @@ class OtpVerifyTestCase(TestCase):
         self.assertEqual(response.json()["error"]["code"], "OTP_MAX_ATTEMPTS_EXCEEDED")
 
     def test_verify_otp_rejects_lowercase_login_even_with_valid_uppercase_otp(self):
-        User.objects.create(email="existing@example.com")
+        self._create_completed_user(email="existing@example.com")
         self.otp_store.store_otp("existing@example.com", "LOGIN", "123456", 120)
 
         response = self.client.post(
@@ -284,7 +306,7 @@ class OtpVerifyTestCase(TestCase):
         self.assertFalse(User.objects.filter(email="new@example.com").exists())
 
     def test_verify_otp_rejects_mixed_case_missing_empty_null_and_unknown_purpose(self):
-        User.objects.create(email="existing@example.com")
+        self._create_completed_user(email="existing@example.com")
         self.otp_store.store_otp("existing@example.com", "LOGIN", "123456", 120)
 
         invalid_payloads = [

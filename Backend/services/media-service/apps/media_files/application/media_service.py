@@ -3,11 +3,30 @@ import uuid
 from datetime import datetime, timezone
 from io import BytesIO
 
+from django.urls import reverse
+
 from apps.media_files.application.file_validator import GroupNotFoundError, MediaFileNotFoundError, MediaPermissionDeniedError, NotGroupMemberError
-from apps.media_files.domain.models import MediaStatusChoices
+from apps.media_files.domain.models import ExpenseStatusChoices, MediaStatusChoices
 from apps.media_files.domain.rules import can_access_media, can_manage_media
-from apps.media_files.infrastructure.repositories import GroupMemberProjectionRepository, GroupProjectionRepository, MediaAccessLogRepository, MediaFileRepository
+from apps.media_files.infrastructure.repositories import (
+    ExpenseProjectionRepository,
+    GroupMemberProjectionRepository,
+    GroupProjectionRepository,
+    MediaAccessLogRepository,
+    MediaFileRepository,
+)
 from apps.media_files.infrastructure.storage.local_storage import LocalStorageProvider
+
+
+class ExpenseNotFoundError(GroupNotFoundError):
+    code = "EXPENSE_NOT_FOUND"
+    message = "Expense was not found."
+
+
+class InvalidCursorError(MediaPermissionDeniedError):
+    code = "INVALID_CURSOR"
+    message = "The provided cursor is invalid."
+    status_code = 400
 
 
 class MediaService:
@@ -21,6 +40,12 @@ class MediaService:
         if group.status != "ACTIVE":
             raise MediaPermissionDeniedError()
         return group
+
+    def _get_expense_or_raise(self, expense_id):
+        expense = ExpenseProjectionRepository.get(expense_id)
+        if not expense or expense.status == ExpenseStatusChoices.DELETED:
+            raise ExpenseNotFoundError()
+        return expense
 
     def _get_active_member_or_raise(self, group_id, user_id):
         member = GroupMemberProjectionRepository.get_active_member(group_id, user_id)
@@ -55,6 +80,9 @@ class MediaService:
         content_bytes = self.read_uploaded_file(uploaded_file)
         return self.storage_provider.save(BytesIO(content_bytes), object_key), content_bytes
 
+    def build_download_url(self, media_file):
+        return reverse("media_download", kwargs={"file_id": media_file.id})
+
     def to_metadata(self, media_file):
         return {
             "id": str(media_file.id),
@@ -69,6 +97,27 @@ class MediaService:
             "created_at": media_file.created_at.isoformat(),
         }
 
+    def to_receipt_payload(self, media_file, *, include_group=False):
+        payload = {
+            "id": str(media_file.id),
+            "expense_id": str(media_file.related_expense_id) if media_file.related_expense_id else None,
+            "original_filename": media_file.original_filename,
+            "content_type": media_file.content_type,
+            "size_bytes": media_file.size_bytes,
+            "uploaded_by_user_id": str(media_file.uploaded_by_user_id),
+            "created_at": media_file.created_at.isoformat(),
+            "download_url": self.build_download_url(media_file),
+        }
+        if include_group:
+            group = GroupProjectionRepository.get(media_file.group_id)
+            payload["group"] = {
+                "id": str(media_file.group_id),
+                "title": getattr(group, "title", ""),
+            }
+        else:
+            payload["group_id"] = str(media_file.group_id)
+        return payload
+
     def upload_access_log(self, media_file, user_id, action, request=None):
         ip_address = None
         user_agent = None
@@ -76,6 +125,14 @@ class MediaService:
             ip_address = request.META.get("REMOTE_ADDR")
             user_agent = request.META.get("HTTP_USER_AGENT")
         return MediaAccessLogRepository.create(media_file, user_id, action, ip_address=ip_address, user_agent=user_agent)
+
+    def upload_list_access_logs(self, media_files, user_id, action, request=None):
+        ip_address = None
+        user_agent = None
+        if request is not None:
+            ip_address = request.META.get("REMOTE_ADDR")
+            user_agent = request.META.get("HTTP_USER_AGENT")
+        return MediaAccessLogRepository.bulk_create_for_files(media_files, user_id=user_id, action=action, ip_address=ip_address, user_agent=user_agent)
 
     def ensure_view_access(self, media_file, user_id):
         if media_file.status != MediaStatusChoices.ACTIVE:

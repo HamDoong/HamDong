@@ -32,6 +32,7 @@ SETTLEMENT_RABBITMQ_EXCHANGE = env(
 NOTIFICATION_RABBITMQ_EXCHANGE = env(
     "NOTIFICATION_RABBITMQ_EXCHANGE", default="hamdong.notification"
 )
+WALLET_RABBITMQ_EXCHANGE = env("WALLET_RABBITMQ_EXCHANGE", default="hamdong.wallet")
 SETTLEMENT_IDENTITY_QUEUE = env(
     "SETTLEMENT_IDENTITY_QUEUE", default="settlement.identity.user_events"
 )
@@ -44,6 +45,7 @@ SETTLEMENT_EXPENSE_QUEUE = env(
 SETTLEMENT_NOTIFICATION_QUEUE = env(
     "SETTLEMENT_NOTIFICATION_QUEUE", default="settlement.notification.events"
 )
+SETTLEMENT_WALLET_QUEUE = env("SETTLEMENT_WALLET_QUEUE", default="settlement.wallet.events")
 IDENTITY_JWKS_URL = env(
     "IDENTITY_JWKS_URL",
     default="http://identity-service:8000/api/v1/auth/.well-known/jwks.json",
@@ -92,7 +94,7 @@ EMAIL_TEMPLATE_SETTLEMENT_REMINDER = env(
 
 SECRET_KEY = env("SECRET_KEY", default="change-me")
 DEBUG = env.bool("DEBUG", default=False)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*"])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1", "0.0.0.0"])
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -168,7 +170,9 @@ SPECTACULAR_SETTINGS = {
     "VERSION": SERVICE_VERSION,
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+CORS_ALLOW_ALL_ORIGINS = False
+EXPOSE_API_DOCS = env.bool("EXPOSE_API_DOCS", default=DEBUG)
 
 EVENT_OUTBOX_POLL_INTERVAL_SECONDS = env.int("EVENT_OUTBOX_POLL_INTERVAL_SECONDS", default=5)
 EVENT_RETRY_DELAY_SECONDS = env("EVENT_RETRY_DELAY_SECONDS", default="10,30,60")

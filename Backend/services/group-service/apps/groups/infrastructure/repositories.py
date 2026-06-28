@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import base64
+import json
+import uuid
 from datetime import timedelta
 from typing import Optional
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.groups.domain.models import (
     Group,
     GroupInvite,
+    GroupInviteStatusChoices,
+    GroupInviteTypeChoices,
     GroupMember,
     InboxMessage,
     InboxMessageStatusChoices,
@@ -25,6 +31,12 @@ class UserProjectionRepository:
     @staticmethod
     def get_by_identity_id(identity_user_id):
         return UserProjection.objects.filter(identity_user_id=identity_user_id).first()
+
+    @staticmethod
+    def get_by_email(email: str):
+        if not email:
+            return None
+        return UserProjection.objects.filter(email__iexact=str(email).strip()).first()
 
     @staticmethod
     def get_map_by_identity_ids(identity_user_ids):
@@ -88,31 +100,130 @@ class GroupMemberRepository:
     def is_active_member(group: Group, user_id) -> bool:
         return GroupMember.objects.filter(group=group, user_id=user_id, status="ACTIVE").exists()
 
+    @staticmethod
+    def get_member(group: Group, user_id):
+        return GroupMember.objects.filter(group=group, user_id=user_id).first()
+
 
 class GroupInviteRepository:
+    MAX_LIMIT = 100
+
     @staticmethod
     def create(**kwargs) -> GroupInvite:
         return GroupInvite.objects.create(**kwargs)
 
     @staticmethod
     def get_by_token_hash(token_hash) -> Optional[GroupInvite]:
-        return GroupInvite.objects.filter(token_hash=token_hash).first()
+        return GroupInvite.objects.filter(token_hash=token_hash, invite_type=GroupInviteTypeChoices.TOKEN).first()
 
     @staticmethod
     def get_by_id(invite_id) -> Optional[GroupInvite]:
         return GroupInvite.objects.filter(id=invite_id).first()
 
     @staticmethod
+    def get_direct_for_recipient(invite_id, recipient_user_id) -> Optional[GroupInvite]:
+        return GroupInvite.objects.filter(
+            id=invite_id,
+            invite_type=GroupInviteTypeChoices.DIRECT,
+            recipient_user_id=recipient_user_id,
+        ).first()
+
+    @staticmethod
+    def has_pending_direct_invite(group_id, recipient_user_id) -> bool:
+        now = timezone.now()
+        return GroupInvite.objects.filter(
+            group_id=group_id,
+            invite_type=GroupInviteTypeChoices.DIRECT,
+            recipient_user_id=recipient_user_id,
+            status=GroupInviteStatusChoices.PENDING,
+        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now)).exists()
+
+    @staticmethod
+    def list_direct_for_recipient(recipient_user_id, *, status_filter=None, cursor=None, page_size=20):
+        qs = GroupInvite.objects.select_related("group").filter(
+            invite_type=GroupInviteTypeChoices.DIRECT,
+            recipient_user_id=recipient_user_id,
+        ).order_by("-created_at", "-id")
+
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
+        if cursor:
+            data = GroupInviteRepository.decode_cursor(cursor)
+            qs = qs.filter(
+                Q(created_at__lt=data["created_at"])
+                | Q(created_at=data["created_at"], id__lt=data["id"])
+            )
+
+        safe_limit = min(max(int(page_size or 20), 1), GroupInviteRepository.MAX_LIMIT)
+        rows = list(qs[: safe_limit + 1])
+        next_cursor = None
+        if len(rows) > safe_limit:
+            next_cursor = GroupInviteRepository.encode_cursor(rows[safe_limit - 1])
+            rows = rows[:safe_limit]
+        return rows, next_cursor
+
+    @staticmethod
+    def encode_cursor(invite: GroupInvite) -> str:
+        payload = {
+            "created_at": invite.created_at.isoformat(),
+            "id": str(invite.id),
+        }
+        raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return base64.urlsafe_b64encode(raw).decode("ascii")
+
+    @staticmethod
+    def decode_cursor(cursor: str) -> dict:
+        try:
+            raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+            data = json.loads(raw)
+            return {
+                "created_at": data["created_at"],
+                "id": uuid.UUID(data["id"]),
+            }
+        except Exception as exc:
+            raise ValueError("INVALID_CURSOR") from exc
+
+    @staticmethod
     def increment_used(invite: GroupInvite) -> GroupInvite:
         invite.used_count = (invite.used_count or 0) + 1
-        invite.save(update_fields=["used_count"])
+        update_fields = ["used_count", "updated_at"]
+        if invite.max_uses and invite.used_count >= invite.max_uses and invite.status == GroupInviteStatusChoices.ACTIVE:
+            invite.status = GroupInviteStatusChoices.USED
+            update_fields.append("status")
+        invite.save(update_fields=update_fields)
         return invite
 
     @staticmethod
-    def revoke(invite: GroupInvite) -> GroupInvite:
-        invite.status = "REVOKED"
-        invite.revoked_at = timezone.now()
-        invite.save(update_fields=["status", "revoked_at"])
+    def revoke(invite: GroupInvite, *, revoked_at=None) -> GroupInvite:
+        invite.status = GroupInviteStatusChoices.REVOKED
+        invite.revoked_at = revoked_at or timezone.now()
+        invite.save(update_fields=["status", "revoked_at", "updated_at"])
+        return invite
+
+
+    @staticmethod
+    def mark_expired(invite: GroupInvite) -> GroupInvite:
+        invite.status = GroupInviteStatusChoices.EXPIRED
+        invite.save(update_fields=["status", "updated_at"])
+        return invite
+
+    @staticmethod
+    def mark_accepted(invite: GroupInvite) -> GroupInvite:
+        now = timezone.now()
+        invite.status = GroupInviteStatusChoices.ACCEPTED
+        invite.responded_at = now
+        invite.accepted_at = now
+        invite.save(update_fields=["status", "responded_at", "accepted_at", "updated_at"])
+        return invite
+
+    @staticmethod
+    def mark_rejected(invite: GroupInvite) -> GroupInvite:
+        now = timezone.now()
+        invite.status = GroupInviteStatusChoices.REJECTED
+        invite.responded_at = now
+        invite.rejected_at = now
+        invite.save(update_fields=["status", "responded_at", "rejected_at", "updated_at"])
         return invite
 
 

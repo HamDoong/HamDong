@@ -7,10 +7,18 @@ from datetime import timedelta
 from typing import Optional
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 
-from apps.identity.domain.models import OutboxMessage, OutboxMessageStatusChoices, RefreshToken, User, UserBankCard
+from apps.identity.domain.models import (
+    OutboxMessage,
+    OutboxMessageStatusChoices,
+    PasswordResetChallenge,
+    PasswordResetToken,
+    RefreshToken,
+    User,
+    UserBankCard,
+)
 
 
 class UserRepository:
@@ -51,7 +59,41 @@ class UserRepository:
 
     @staticmethod
     def get_active_by_id(user_id: str) -> Optional[User]:
-        return User.objects.filter(id=user_id, deleted_at__isnull=True, is_active=True).first()
+        return User.objects.filter(
+            id=user_id, deleted_at__isnull=True, is_active=True
+        ).first()
+
+    @staticmethod
+    def search_active_by_art_name(
+        query: str, limit: int, exclude_user_id: str | None = None
+    ):
+        queryset = User.objects.filter(
+            art_name__icontains=query,
+            deleted_at__isnull=True,
+            is_active=True,
+        )
+        if exclude_user_id:
+            queryset = queryset.exclude(id=exclude_user_id)
+        return queryset.annotate(
+            match_rank=Case(
+                When(art_name__iexact=query, then=Value(0)),
+                When(art_name__istartswith=query, then=Value(1)),
+                default=Value(2),
+                output_field=IntegerField(),
+            )
+        ).order_by("match_rank", "-created_at", "art_name")[:limit]
+
+    @staticmethod
+    def get_active_public_by_id(user_id: str) -> Optional[User]:
+        return (
+            User.objects.filter(
+                id=user_id,
+                deleted_at__isnull=True,
+                is_active=True,
+            )
+            .only("id", "art_name", "avatar_url", "is_active")
+            .first()
+        )
 
     @staticmethod
     def update(user: User, **kwargs) -> User:
@@ -81,14 +123,19 @@ class RefreshTokenRepository:
         token_hash: str,
         jti: str,
         lifetime_seconds: int,
+        *,
+        remember_me: bool = False,
         **kwargs,
     ) -> RefreshToken:
-        expires_at = timezone.now() + timedelta(seconds=lifetime_seconds)
+        now = timezone.now()
+        expires_at = now + timedelta(seconds=lifetime_seconds)
         return RefreshToken.objects.create(
             user=user,
             token_hash=token_hash,
             jti=jti,
+            remember_me=remember_me,
             expires_at=expires_at,
+            last_used_at=now,
             **kwargs,
         )
 
@@ -102,6 +149,29 @@ class RefreshTokenRepository:
     @staticmethod
     def get_by_jti(jti: str) -> Optional[RefreshToken]:
         return RefreshToken.objects.filter(jti=jti, revoked_at__isnull=True).first()
+
+    @staticmethod
+    def get_any_by_token_hash(token_hash: str) -> Optional[RefreshToken]:
+        return RefreshToken.objects.filter(token_hash=token_hash).first()
+
+    @staticmethod
+    def get_any_by_id_for_user(session_id: str, user: User) -> Optional[RefreshToken]:
+        return RefreshToken.objects.filter(id=session_id, user=user).first()
+
+    @staticmethod
+    def list_active_sessions(user: User):
+        now = timezone.now()
+        return RefreshToken.objects.filter(
+            user=user,
+            revoked_at__isnull=True,
+            expires_at__gt=now,
+        ).order_by("-created_at")
+
+    @staticmethod
+    def touch(refresh_token: RefreshToken) -> RefreshToken:
+        refresh_token.last_used_at = timezone.now()
+        refresh_token.save(update_fields=["last_used_at", "updated_at"])
+        return refresh_token
 
     @staticmethod
     def revoke(refresh_token: RefreshToken) -> RefreshToken:
@@ -124,7 +194,9 @@ class RefreshTokenRepository:
         filters = Q(user=user, revoked_at__isnull=True, expires_at__gt=now)
         if current_jti:
             filters &= ~Q(jti=current_jti)
-        return RefreshToken.objects.filter(filters).update(revoked_at=now, updated_at=now)
+        return RefreshToken.objects.filter(filters).update(
+            revoked_at=now, updated_at=now
+        )
 
     @staticmethod
     def is_expired(refresh_token: RefreshToken) -> bool:
@@ -139,9 +211,97 @@ class RefreshTokenRepository:
         )
 
 
+class PasswordResetChallengeRepository:
+    @staticmethod
+    def hash_secret(raw_value: str) -> str:
+        return hashlib.sha256(raw_value.encode()).hexdigest()
+
+    @staticmethod
+    def expire_open_challenges(email: str) -> int:
+        now = timezone.now()
+        return PasswordResetChallenge.objects.filter(
+            email=email,
+            status__in=[
+                PasswordResetChallenge.StatusChoices.PENDING,
+                PasswordResetChallenge.StatusChoices.VERIFIED,
+            ],
+        ).update(
+            status=PasswordResetChallenge.StatusChoices.EXPIRED,
+            updated_at=now,
+        )
+
+    @staticmethod
+    def create(
+        *, user: User | None, email: str, otp_hash: str, expires_at, max_attempts: int
+    ) -> PasswordResetChallenge:
+        return PasswordResetChallenge.objects.create(
+            user=user,
+            email=email,
+            otp_hash=otp_hash,
+            expires_at=expires_at,
+            max_attempts=max_attempts,
+        )
+
+    @staticmethod
+    def latest_for_email(email: str) -> Optional[PasswordResetChallenge]:
+        return (
+            PasswordResetChallenge.objects.filter(email=email)
+            .order_by("-created_at")
+            .first()
+        )
+
+    @staticmethod
+    def save(
+        challenge: PasswordResetChallenge, *, update_fields: list[str]
+    ) -> PasswordResetChallenge:
+        challenge.save(update_fields=update_fields + ["updated_at"])
+        return challenge
+
+
+class PasswordResetTokenRepository:
+    @staticmethod
+    def hash_secret(raw_value: str) -> str:
+        return hashlib.sha256(raw_value.encode()).hexdigest()
+
+    @staticmethod
+    def invalidate_open_tokens_for_user(user: User) -> int:
+        now = timezone.now()
+        return PasswordResetToken.objects.filter(
+            user=user,
+            used_at__isnull=True,
+        ).update(used_at=now, updated_at=now)
+
+    @staticmethod
+    def create(
+        *, challenge: PasswordResetChallenge, user: User, token_hash: str, expires_at
+    ) -> PasswordResetToken:
+        return PasswordResetToken.objects.create(
+            challenge=challenge,
+            user=user,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+
+    @staticmethod
+    def get_any_by_token_hash(token_hash: str) -> Optional[PasswordResetToken]:
+        return (
+            PasswordResetToken.objects.filter(token_hash=token_hash)
+            .select_related("user", "challenge")
+            .first()
+        )
+
+    @staticmethod
+    def mark_used(reset_token: PasswordResetToken) -> PasswordResetToken:
+        reset_token.used_at = timezone.now()
+        reset_token.save(update_fields=["used_at", "updated_at"])
+        return reset_token
+
+
 class OutboxRepository:
     @staticmethod
-    def create(*, event_type, routing_key, payload, exchange, source_service="identity-service"):
+    def create(
+        *, event_type, routing_key, payload, exchange, source_service="identity-service"
+    ):
         return OutboxMessage.objects.create(
             event_id=payload["event_id"],
             event_type=event_type,
@@ -155,7 +315,10 @@ class OutboxRepository:
     @staticmethod
     def pending(limit: int = 50, max_retry_count: int = 5):
         return OutboxMessage.objects.filter(
-            status__in=[OutboxMessageStatusChoices.PENDING, OutboxMessageStatusChoices.FAILED],
+            status__in=[
+                OutboxMessageStatusChoices.PENDING,
+                OutboxMessageStatusChoices.FAILED,
+            ],
             retry_count__lt=max_retry_count,
             available_at__lte=timezone.now(),
         ).order_by("created_at")[:limit]
@@ -165,7 +328,9 @@ class OutboxRepository:
         message.status = OutboxMessageStatusChoices.PUBLISHED
         message.published_at = timezone.now()
         message.last_error = None
-        message.save(update_fields=["status", "published_at", "last_error", "updated_at"])
+        message.save(
+            update_fields=["status", "published_at", "last_error", "updated_at"]
+        )
 
     @staticmethod
     def mark_failed(message, error: str):
@@ -174,11 +339,17 @@ class OutboxRepository:
         max_retry_count = int(getattr(settings, "EVENT_MAX_RETRY_COUNT", 5))
         retry_delays = [
             int(value.strip())
-            for value in str(getattr(settings, "EVENT_RETRY_DELAY_SECONDS", "10,30,60")).split(",")
+            for value in str(
+                getattr(settings, "EVENT_RETRY_DELAY_SECONDS", "10,30,60")
+            ).split(",")
             if value.strip()
         ]
-        if hasattr(message, "available_at") and message.retry_count <= len(retry_delays):
-            message.available_at = timezone.now() + timedelta(seconds=retry_delays[message.retry_count - 1])
+        if hasattr(message, "available_at") and message.retry_count <= len(
+            retry_delays
+        ):
+            message.available_at = timezone.now() + timedelta(
+                seconds=retry_delays[message.retry_count - 1]
+            )
         if message.retry_count >= max_retry_count:
             message.status = OutboxMessageStatusChoices.FAILED
         else:

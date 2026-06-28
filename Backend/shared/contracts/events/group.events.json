@@ -97,6 +97,60 @@
         "invite_id",
         "revoked_by_user_id"
       ]
+    },
+    {
+      "event_type": "GroupDirectInvitationCreated",
+      "routing_key": "group.direct_invitation.created",
+      "payload_keys": [
+        "invitation_id",
+        "group_id",
+        "group_title",
+        "recipient_user_id",
+        "recipient_email",
+        "recipient_art_name",
+        "invited_by_user_id",
+        "expires_at"
+      ]
+    },
+    {
+      "event_type": "GroupDirectInvitationAccepted",
+      "routing_key": "group.direct_invitation.accepted",
+      "payload_keys": [
+        "invitation_id",
+        "group_id",
+        "group_title",
+        "recipient_user_id",
+        "recipient_email",
+        "invited_by_user_id",
+        "accepted_at"
+      ]
+    },
+    {
+      "event_type": "GroupDirectInvitationRejected",
+      "routing_key": "group.direct_invitation.rejected",
+      "payload_keys": [
+        "invitation_id",
+        "group_id",
+        "group_title",
+        "recipient_user_id",
+        "recipient_email",
+        "invited_by_user_id",
+        "rejected_at"
+      ]
+    },
+    {
+      "event_type": "GroupDirectInvitationRevoked",
+      "routing_key": "group.direct_invitation.revoked",
+      "payload_keys": [
+        "invitation_id",
+        "group_id",
+        "group_title",
+        "recipient_user_id",
+        "recipient_email",
+        "invited_by_user_id",
+        "revoked_by_user_id",
+        "revoked_at"
+      ]
     }
   ]
 }

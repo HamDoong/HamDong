@@ -136,3 +136,8 @@ Backend/**/__pycache__/
 Backend/**/*.pyc
 Backend/**/.pytest_cache/
 Backend/**/.ruff_cache/
+
+# Secrets / keys
+*.pem
+*.key
+Backend/**/keys/

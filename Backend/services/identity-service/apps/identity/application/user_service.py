@@ -56,15 +56,21 @@ class UserService:
         return f"user-{suffix}"[:32]
 
     @staticmethod
+    def is_signup_completed(user: User) -> bool:
+        return user.has_usable_password()
+
+    @staticmethod
     def get_for_login(email: str) -> User:
         normalized_email = EmailRule.normalize(email)
         existing_any = UserRepository.get_any_by_email(normalized_email) if normalized_email else None
-        if existing_any and not existing_any.is_active:
+        if existing_any and (existing_any.deleted_at is not None or not existing_any.is_active):
             raise ValueError("ACCOUNT_DEACTIVATED")
 
         user = UserRepository.get_by_email(normalized_email) if normalized_email else None
         if not user:
             raise ValueError("USER_NOT_FOUND")
+        if not UserService.is_signup_completed(user):
+            raise ValueError("SIGNUP_NOT_COMPLETED")
         if not user.art_name:
             user = UserRepository.update(
                 user,
@@ -79,11 +85,9 @@ class UserService:
     def create_for_signup(email: str) -> tuple[User, bool]:
         normalized_email = EmailRule.normalize(email)
         existing_any = UserRepository.get_any_by_email(normalized_email) if normalized_email else None
-        if existing_any and not existing_any.is_active:
-            raise ValueError("ACCOUNT_DEACTIVATED")
-
-        user = UserRepository.get_by_email(normalized_email) if normalized_email else None
-        if user:
+        if existing_any:
+            if existing_any.deleted_at is not None or not existing_any.is_active:
+                raise ValueError("ACCOUNT_DEACTIVATED")
             raise ValueError("EMAIL_ALREADY_EXISTS")
 
         if not normalized_email:

@@ -1,7 +1,7 @@
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from apps.media_files.api.views import HealthView, ListGroupMediaView
+from apps.media_files.api.views import ExpenseReceiptListView, HealthView, ListGroupMediaView, MyReceiptListView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
@@ -13,6 +13,8 @@ urlpatterns = [
         name="docs",
     ),
     path("api/v1/media/", include("apps.media_files.api.urls")),
+    path("api/v1/expenses/<uuid:expense_id>/receipts/", ExpenseReceiptListView.as_view(), name="expense_receipt_list"),
+    path("api/v1/users/me/receipts/", MyReceiptListView.as_view(), name="my_receipt_list"),
     path(
         "api/v1/groups/<uuid:group_id>/media/",
         ListGroupMediaView.as_view(),

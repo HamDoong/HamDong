@@ -13,6 +13,7 @@ ROUTING_KEYS = {
     "UserLoggedIn": "identity.user.logged_in",
     "SendOtpEmailRequested": "identity.otp.requested",
     "PasswordChanged": "identity.user.password_changed",
+    "PasswordResetCompleted": "identity.user.password_reset_completed",
     "UserBankCardCreated": "identity.user_bank_card.created",
     "UserBankCardUpdated": "identity.user_bank_card.updated",
     "UserBankCardDeactivated": "identity.user_bank_card.deactivated",
@@ -125,6 +126,17 @@ class PasswordChanged(DomainEvent):
                 "user_id": str(user_id),
                 "changed_at": changed_at,
                 "other_sessions_revoked": other_sessions_revoked,
+            },
+        )
+
+
+class PasswordResetCompleted(DomainEvent):
+    def __init__(self, user_id: str, completed_at: str):
+        super().__init__(
+            "PasswordResetCompleted",
+            {
+                "user_id": str(user_id),
+                "completed_at": completed_at,
             },
         )
 

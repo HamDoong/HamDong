@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import re
@@ -33,6 +34,68 @@ def _normalize_phone_number(value):
     if re.fullmatch(r"\+989\d{9}", normalized):
         return normalized
     return None
+
+
+def rename_legacy_phone_constraint(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'users_phone_number_key'
+                ) THEN
+                    ALTER TABLE users
+                    RENAME CONSTRAINT users_phone_number_key
+                    TO users_legacy_phone_number_key;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_class
+                    WHERE relname = 'users_phone_number_b4cde146_like'
+                ) THEN
+                    ALTER INDEX users_phone_number_b4cde146_like
+                    RENAME TO users_legacy_phone_number_like;
+                END IF;
+            END $$;
+            """
+        )
+
+
+def rename_legacy_phone_constraint_reverse(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'users_legacy_phone_number_key'
+                ) THEN
+                    ALTER TABLE users
+                    RENAME CONSTRAINT users_legacy_phone_number_key
+                    TO users_phone_number_key;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_class
+                    WHERE relname = 'users_legacy_phone_number_like'
+                ) THEN
+                    ALTER INDEX users_legacy_phone_number_like
+                    RENAME TO users_phone_number_b4cde146_like;
+                END IF;
+            END $$;
+            """
+        )
 
 
 def forwards(apps, schema_editor):
@@ -74,7 +137,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        
         migrations.AddField(
             model_name="user",
             name="bio",
@@ -95,56 +157,7 @@ class Migration(migrations.Migration):
             name="display_name",
             field=models.CharField(blank=True, max_length=150, null=True),
         ),
-        
-        migrations.RunSQL(
-            sql="""
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname = 'users_phone_number_key'
-                ) THEN
-                    ALTER TABLE users
-                    RENAME CONSTRAINT users_phone_number_key
-                    TO users_legacy_phone_number_key;
-                END IF;
-
-                IF EXISTS (
-                    SELECT 1
-                    FROM pg_class
-                    WHERE relname = 'users_phone_number_b4cde146_like'
-                ) THEN
-                    ALTER INDEX users_phone_number_b4cde146_like
-                    RENAME TO users_legacy_phone_number_like;
-                END IF;
-            END $$;
-            """,
-            reverse_sql="""
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname = 'users_legacy_phone_number_key'
-                ) THEN
-                    ALTER TABLE users
-                    RENAME CONSTRAINT users_legacy_phone_number_key
-                    TO users_phone_number_key;
-                END IF;
-
-                IF EXISTS (
-                    SELECT 1
-                    FROM pg_class
-                    WHERE relname = 'users_legacy_phone_number_like'
-                ) THEN
-                    ALTER INDEX users_legacy_phone_number_like
-                    RENAME TO users_phone_number_b4cde146_like;
-                END IF;
-            END $$;
-            """,
-        ),
-        
+        migrations.RunPython(rename_legacy_phone_constraint, rename_legacy_phone_constraint_reverse),
         migrations.AddField(
             model_name="user",
             name="phone_number",

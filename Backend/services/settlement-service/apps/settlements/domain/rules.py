@@ -70,6 +70,12 @@ class InvalidCurrencyError(SettlementServiceError):
     status_code = 400
 
 
+class InvalidSettlementCursorError(SettlementServiceError):
+    code = "INVALID_CURSOR"
+    message = "The provided cursor is invalid."
+    status_code = 400
+
+
 class InvalidEventPayloadError(SettlementServiceError):
     code = "INVALID_EVENT_PAYLOAD"
     message = "Event payload is invalid."

@@ -19,6 +19,7 @@ import {
   Trash2,
   Upload,
   UserMinus,
+  Users,
   X,
 } from 'lucide-react';
 import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
@@ -174,33 +175,6 @@ function getCurrentUserId(user: CurrentUser | null) {
   return user?.id ? String(user.id) : '';
 }
 
-function getUserDisplayFromId(userId: string, members: BackendGroupMember[]) {
-  const member = members.find((item) => getMemberUserId(item) === userId);
-  return member ? getMemberName(member) : 'عضو گروه';
-}
-
-function getBalanceDisplayName(balance: BalanceItem, members: BackendGroupMember[]) {
-  return (
-    balance.display_name ||
-    balance.art_name ||
-    balance.email ||
-    balance.phone_number ||
-    getUserDisplayFromId(balance.user_id, members)
-  );
-}
-
-function getPlanPartyName(
-  item: SettlementPlanItem,
-  type: 'payer' | 'receiver',
-  members: BackendGroupMember[],
-) {
-  if (type === 'payer') {
-    return item.payer_display_name || item.payer_art_name || getUserDisplayFromId(item.payer_user_id, members);
-  }
-
-  return item.receiver_display_name || item.receiver_art_name || getUserDisplayFromId(item.receiver_user_id, members);
-}
-
 function getExpenseTotal(expense: BackendExpense) {
   return (
     expense.total_amount_minor ??
@@ -257,7 +231,517 @@ const textareaClass =
 const scrollAreaClass =
   'min-h-0 overflow-y-auto overscroll-contain pl-1 pr-0 [scrollbar-width:thin] [scrollbar-color:rgba(16,185,129,0.45)_transparent] dark:[scrollbar-color:rgba(52,211,153,0.35)_transparent]';
 
+function readDisplayString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isEmailLikeValue(value?: string) {
+  return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+}
+
+function pickUserFacingName(...values: unknown[]) {
+  return values.map(readDisplayString).find((value) => value && !isEmailLikeValue(value)) || '';
+}
+
+function getMemberPreferredDisplayName(member?: BackendGroupMember) {
+  if (!member) return '';
+
+  return (
+    pickUserFacingName(
+      member.art_name,
+      member.username,
+      member.display_name,
+      member.display_name_snapshot,
+      member.full_name,
+      member.name,
+      [member.first_name, member.last_name].filter(Boolean).join(' '),
+      member.user?.art_name,
+      member.user?.username,
+      member.user?.display_name,
+      member.user?.full_name,
+      member.user?.name,
+      [member.user?.first_name, member.user?.last_name].filter(Boolean).join(' '),
+      member.profile?.art_name,
+      member.profile?.username,
+      member.profile?.display_name,
+      member.member?.art_name,
+      member.member?.username,
+      member.member?.display_name,
+    ) || getMemberName(member)
+  );
+}
+
+function getUserDisplayFromId(userId: string, members: BackendGroupMember[]) {
+  const member = members.find((item) => getMemberUserId(item) === userId);
+  return getMemberPreferredDisplayName(member) || 'عضو گروه';
+}
+
+function getBalanceDisplayName(balance: BalanceItem, members: BackendGroupMember[]) {
+  const memberName = getUserDisplayFromId(balance.user_id, members);
+  const balanceRecord = balance as BalanceItem & { username?: string; name?: string; full_name?: string };
+
+  return (
+    memberName ||
+    pickUserFacingName(
+      balanceRecord.art_name,
+      balanceRecord.username,
+      balanceRecord.display_name,
+      balanceRecord.full_name,
+      balanceRecord.name,
+      balanceRecord.phone_number,
+    ) ||
+    'عضو گروه'
+  );
+}
+
+function getDebtPartyName(userId: string, members: BackendGroupMember[]) {
+  return getUserDisplayFromId(userId, members);
+}
+
+function getPlanPartyName(
+  item: SettlementPlanItem,
+  type: 'payer' | 'receiver',
+  members: BackendGroupMember[],
+) {
+  if (type === 'payer') {
+    return (
+      item.payer_display_name ||
+      item.payer_art_name ||
+      getUserDisplayFromId(item.payer_user_id, members)
+    );
+  }
+
+  return (
+    item.receiver_display_name ||
+    item.receiver_art_name ||
+    getUserDisplayFromId(item.receiver_user_id, members)
+  );
+}
+
+interface OptimizedSettlementSuggestion {
+  id: string;
+  payer_user_id: string;
+  payerName: string;
+  receiver_user_id: string;
+  receiverName: string;
+  amount_minor: number;
+}
+
+function calculateOptimizedSettlements(
+  balances: BalanceItem[],
+  members: BackendGroupMember[],
+): OptimizedSettlementSuggestion[] {
+  const debtors = balances
+    .map((balance) => ({
+      userId: balance.user_id,
+      name: getBalanceDisplayName(balance, members),
+      amount: Math.max(0, Math.round(Math.abs(Math.min(balance.net_balance_minor || 0, 0)))),
+    }))
+    .filter((item) => item.userId && item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  const creditors = balances
+    .map((balance) => ({
+      userId: balance.user_id,
+      name: getBalanceDisplayName(balance, members),
+      amount: Math.max(0, Math.round(Math.max(balance.net_balance_minor || 0, 0))),
+    }))
+    .filter((item) => item.userId && item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  const suggestions: OptimizedSettlementSuggestion[] = [];
+  let debtorIndex = 0;
+  let creditorIndex = 0;
+
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = Math.min(debtor.amount, creditor.amount);
+
+    if (amount > 0 && debtor.userId !== creditor.userId) {
+      suggestions.push({
+        id: `optimized-${debtor.userId}-${creditor.userId}-${suggestions.length}`,
+        payer_user_id: debtor.userId,
+        payerName: debtor.name,
+        receiver_user_id: creditor.userId,
+        receiverName: creditor.name,
+        amount_minor: amount,
+      });
+    }
+
+    debtor.amount -= amount;
+    creditor.amount -= amount;
+
+    if (debtor.amount <= 0) debtorIndex += 1;
+    if (creditor.amount <= 0) creditorIndex += 1;
+  }
+
+  return suggestions;
+}
+
+function getSettlementErrorTitle(action: 'create' | 'plan' | 'item' | 'review') {
+  if (action === 'create') return 'پرداخت ثبت نشد';
+  if (action === 'plan') return 'محاسبه تسویه انجام نشد';
+  if (action === 'item') return 'وضعیت پرداخت تغییر نکرد';
+  return 'تأیید پرداخت انجام نشد';
+}
+
+function getSettlementErrorDescription(error: unknown) {
+  const message = getBackendMessage(error);
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('403') || normalized.includes('permission') || normalized.includes('forbidden')) {
+    return 'برای انجام این کار دسترسی نداری یا عضو این گروه نیستی.';
+  }
+
+  if (normalized.includes('404') || normalized.includes('not found')) {
+    return 'این پرداخت یا گروه پیدا نشد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
+  }
+
+  if (normalized.includes('amount') || normalized.includes('مبلغ')) {
+    return 'مبلغ پرداخت را دقیق و به عدد وارد کن.';
+  }
+
+  if (normalized.includes('receiver') || normalized.includes('دریافت')) {
+    return 'دریافت‌کننده معتبر نیست. یکی از اعضای گروه را انتخاب کن.';
+  }
+
+  return message || 'اتصال یا اطلاعات پرداخت مشکل دارد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
+}
+
+type VisualTone = 'positive' | 'negative' | 'warning' | 'sky' | 'slate' | 'neutral';
+type QuickSection = 'expenses' | 'settlement' | 'settings' | 'members' | 'activity';
+
+function getMyAccountStatus(amount: number) {
+  if (amount > 0) {
+    return {
+      label: 'بدهکار',
+      amount: formatSignedMoney(amount),
+      tone: 'negative' as VisualTone,
+    };
+  }
+
+  if (amount < 0) {
+    return {
+      label: 'طلبکار',
+      amount: formatSignedMoney(amount),
+      tone: 'positive' as VisualTone,
+    };
+  }
+
+  return {
+    label: 'تسویه',
+    amount: formatSignedMoney(amount),
+    tone: 'slate' as VisualTone,
+  };
+}
+
+function getRemainingPaymentsLabel(count: number) {
+  return count > 0 ? `${toPersianNumber(count)} پرداخت` : 'بدون پرداخت';
+}
+
+function scrollToSection(id: QuickSection) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function MemberAvatar({ name, owner = false }: { name: string; owner?: boolean }) {
+  return (
+    <div
+      className={cn(
+        'flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black shadow-[inset_3px_0_0_#10B981,0_10px_28px_rgba(15,23,42,0.045)]',
+        owner
+          ? 'border-orange-300 bg-orange-50 text-orange-700'
+          : 'border-emerald-100 bg-gradient-to-br from-emerald-50 via-teal-50 to-white text-emerald-700',
+      )}
+    >
+      {name.slice(0, 1) || '؟'}
+    </div>
+  );
+}
+
+function toneCardClass(tone: VisualTone) {
+  if (tone === 'positive') {
+    return 'border-2 border-emerald-200/80 bg-gradient-to-l from-white via-emerald-50/85 to-emerald-50/70 text-emerald-700 shadow-[inset_3px_0_0_#10B981,0_18px_44px_rgba(16,185,129,0.075)]';
+  }
+
+  if (tone === 'negative') {
+    return 'border-2 border-rose-200/80 bg-gradient-to-l from-white via-rose-50/85 to-rose-50/70 text-rose-600 shadow-[inset_3px_0_0_#F43F5E,0_18px_44px_rgba(244,63,94,0.07)]';
+  }
+
+  if (tone === 'warning') {
+    return 'border-2 border-orange-200/80 bg-gradient-to-l from-white via-orange-50/85 to-orange-50/70 text-orange-700 shadow-[inset_3px_0_0_#F97316,0_18px_44px_rgba(249,115,22,0.07)]';
+  }
+
+  if (tone === 'sky') {
+    return 'border-2 border-sky-200/80 bg-gradient-to-l from-white via-sky-50/85 to-sky-50/70 text-sky-700 shadow-[inset_3px_0_0_#0EA5E9,0_18px_44px_rgba(14,165,233,0.065)]';
+  }
+
+  if (tone === 'slate') {
+    return 'border-2 border-slate-200 bg-gradient-to-l from-white via-slate-50/90 to-white text-slate-700 shadow-[inset_3px_0_0_#64748B,0_18px_44px_rgba(15,23,42,0.055)]';
+  }
+
+  return 'border-2 border-emerald-100/80 bg-white/[0.88] text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.045)]';
+}
+
+function iconToneClass(tone: VisualTone) {
+  if (tone === 'positive') return 'bg-emerald-600 text-white shadow-[0_12px_28px_rgba(16,185,129,0.16)]';
+  if (tone === 'negative') return 'bg-rose-500 text-white shadow-[0_12px_28px_rgba(244,63,94,0.14)]';
+  if (tone === 'warning') return 'bg-orange-500 text-white shadow-[0_12px_28px_rgba(249,115,22,0.14)]';
+  if (tone === 'sky') return 'bg-sky-500 text-white shadow-[0_12px_28px_rgba(14,165,233,0.14)]';
+  if (tone === 'slate') return 'bg-slate-700 text-white shadow-[0_12px_28px_rgba(15,23,42,0.10)]';
+  return 'bg-white text-emerald-600 shadow-sm';
+}
+
+function SectionCard({
+  id,
+  title,
+  icon,
+  badge,
+  children,
+  accent = 'emerald',
+}: {
+  id?: string;
+  title: string;
+  icon?: ReactNode;
+  badge?: ReactNode;
+  children: ReactNode;
+  accent?: 'emerald' | 'sky' | 'orange' | 'slate';
+}) {
+  const accentClass =
+    accent === 'sky'
+      ? 'border-sky-100/90 shadow-[0_20px_52px_rgba(14,165,233,0.055)]'
+      : accent === 'orange'
+        ? 'border-orange-100/90 shadow-[0_20px_52px_rgba(249,115,22,0.055)]'
+        : accent === 'slate'
+          ? 'border-slate-200 shadow-[0_20px_52px_rgba(15,23,42,0.045)]'
+          : 'border-emerald-100/90 shadow-[0_20px_52px_rgba(15,23,42,0.055)]';
+
+  const iconClass =
+    accent === 'sky'
+      ? 'bg-sky-50 text-sky-600 shadow-[inset_3px_0_0_#0EA5E9]'
+      : accent === 'orange'
+        ? 'bg-orange-50 text-orange-600 shadow-[inset_3px_0_0_#F97316]'
+        : accent === 'slate'
+          ? 'bg-slate-50 text-slate-600 shadow-[inset_3px_0_0_#64748B]'
+          : 'bg-emerald-50 text-emerald-600 shadow-[inset_3px_0_0_#10B981]';
+
+  return (
+    <section
+      id={id}
+      className={cn(
+        'scroll-mt-6 rounded-[28px] border-2 bg-white/95 p-5 backdrop-blur sm:p-6',
+        accentClass,
+      )}
+    >
+      <div className="mb-5 flex items-center justify-between gap-4 border-b-2 border-emerald-50/70 pb-4">
+        <div className="text-right">
+          <h2 className="text-xl font-black text-text sm:text-2xl">{title}</h2>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {badge}
+          {icon ? (
+            <div className={cn('flex h-12 w-12 items-center justify-center rounded-[18px]', iconClass)}>
+              {icon}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function HeaderMiniCard({
+  label,
+  value,
+  status,
+  tone = 'neutral',
+  icon,
+}: {
+  label: string;
+  value: string;
+  status?: string;
+  tone?: 'neutral' | 'positive' | 'negative';
+  icon: ReactNode;
+}) {
+  const visualTone: VisualTone =
+    tone === 'positive' ? 'positive' : tone === 'negative' ? 'negative' : 'slate';
+
+  return (
+    <div className={cn('rounded-[22px] px-4 py-3 text-right', toneCardClass(visualTone))}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-black opacity-70">{label}</div>
+          {status ? <div className="mt-1 text-sm font-black">{status}</div> : null}
+          <div className="mt-1 text-lg font-black tracking-[-0.02em]">{value}</div>
+        </div>
+
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px]', iconToneClass(visualTone))}>
+          {icon}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function AccountStatusBox({ amount }: { amount: number }) {
+  const status = getMyAccountStatus(amount);
+
+  return (
+    <div className={cn('rounded-[24px] p-4 text-right', toneCardClass(status.tone))}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-black">حساب من</div>
+          <div className="mt-1 text-xs font-bold opacity-75">وضعیت تو در این گروه</div>
+        </div>
+
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px]', iconToneClass(status.tone))}>
+          <HandCoins className="h-4 w-4" />
+        </span>
+      </div>
+
+      <div className="text-2xl font-black tracking-[-0.03em]">{status.label}</div>
+      <div className="mt-2 text-lg font-black">{status.amount}</div>
+    </div>
+  );
+}
+
+function RemainingPaymentsBox({
+  count,
+  totalMinor,
+  tone = 'slate',
+}: {
+  count: number;
+  totalMinor: number;
+  tone?: VisualTone;
+}) {
+  const hasPayments = count > 0;
+
+  return (
+    <div className={cn('rounded-[24px] p-4 text-right', toneCardClass(tone))}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-black">پرداخت‌های مانده</div>
+          <div className="mt-1 text-xs font-bold opacity-75">
+            {hasPayments ? 'جمع پرداخت‌های باقی‌مانده' : 'چیزی باقی نمانده.'}
+          </div>
+        </div>
+
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px]', iconToneClass(tone))}>
+          <ReceiptText className="h-4 w-4" />
+        </span>
+      </div>
+
+      <div className="text-2xl font-black tracking-[-0.03em]">
+        {getRemainingPaymentsLabel(count)}
+      </div>
+
+      <div className="mt-2 text-lg font-black">
+        {hasPayments ? formatMoney(totalMinor) : formatMoney(0)}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, description, icon }: { title: string; description: string; icon?: ReactNode }) {
+  return (
+    <div className="rounded-[22px] border-2 border-dashed border-emerald-100/80 bg-white/[0.58] p-7 text-center shadow-[0_16px_38px_rgba(15,23,42,0.035)]">
+      <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-[18px] bg-white text-emerald-600 shadow-sm">
+        {icon ?? <Users className="h-6 w-6" />}
+      </div>
+
+      <h3 className="text-lg font-black text-text">{title}</h3>
+
+      <p className="mx-auto mt-2 max-w-[420px] text-sm font-semibold leading-7 text-muted">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function QuickActionButton({
+  id,
+  label,
+  icon,
+  tone = 'emerald',
+}: {
+  id: QuickSection;
+  label: string;
+  icon: ReactNode;
+  tone?: 'emerald' | 'sky' | 'orange' | 'slate';
+}) {
+  const toneClass =
+    tone === 'sky'
+      ? 'border-sky-200/90 bg-gradient-to-l from-white via-sky-50/90 to-sky-50/70 text-sky-700 shadow-[inset_3px_0_0_#0EA5E9,0_16px_36px_rgba(14,165,233,0.055)] hover:border-sky-300'
+      : tone === 'orange'
+        ? 'border-orange-200/90 bg-gradient-to-l from-white via-orange-50/90 to-orange-50/70 text-orange-700 shadow-[inset_3px_0_0_#F97316,0_16px_36px_rgba(249,115,22,0.055)] hover:border-orange-300'
+        : tone === 'slate'
+          ? 'border-slate-200 bg-gradient-to-l from-white via-slate-50 to-white text-slate-700 shadow-[inset_3px_0_0_#64748B,0_16px_36px_rgba(15,23,42,0.04)] hover:border-slate-300'
+          : 'border-emerald-200/90 bg-gradient-to-l from-white via-emerald-50/90 to-emerald-50/70 text-emerald-700 shadow-[inset_3px_0_0_#10B981,0_16px_36px_rgba(16,185,129,0.055)] hover:border-emerald-300';
+
+  return (
+    <button
+      type="button"
+      onClick={() => scrollToSection(id)}
+      className={cn(
+        'inline-flex h-[76px] w-full flex-col items-center justify-center gap-1.5 rounded-[20px] border-2 px-4 text-sm font-black transition hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(15,23,42,0.07)]',
+        toneClass,
+      )}
+    >
+      <span className="flex h-5 w-5 items-center justify-center">
+        {icon}
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function Button({
+  children,
+  onClick,
+  disabled,
+  tone = 'primary',
+  className,
+  type = 'button',
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  tone?: 'primary' | 'secondary' | 'danger' | 'dark' | 'ghost';
+  className?: string;
+  type?: 'button' | 'submit';
+}) {
+  const toneClass =
+    tone === 'primary'
+      ? 'bg-emerald-600 text-white shadow-[0_14px_32px_rgba(16,185,129,0.22)] ring-1 ring-emerald-500/20 hover:-translate-y-0.5 hover:bg-emerald-700 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400'
+      : tone === 'danger'
+        ? 'border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15'
+        : tone === 'dark'
+          ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white'
+          : tone === 'ghost'
+            ? 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            : 'border border-emerald-200 bg-emerald-50/80 text-emerald-700 shadow-[0_10px_24px_rgba(15,23,42,0.045)] hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/15';
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'inline-flex min-h-11 items-center justify-center gap-2 px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0',
+        controlRadius,
+        toneClass,
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ActionButton({
   children,
   onClick,
   disabled,
@@ -358,33 +842,6 @@ function Modal({
 
         <div className="max-h-[calc(92vh-92px)] overflow-y-auto px-4 py-4 text-right sm:px-5">{children}</div>
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, description, icon }: { title: string; description: string; icon: ReactNode }) {
-  return (
-    <div className="dashboard-empty-state min-h-[132px] rounded-[20px] border border-dashed border-emerald-200 bg-white/[0.65] px-4 py-6 text-center dark:border-emerald-500/20 dark:bg-slate-900/70">
-      <div className="dashboard-empty-state-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[18px] bg-white text-slate-500 shadow-sm dark:bg-slate-800 dark:text-slate-300">
-        {icon}
-      </div>
-      <h3 className="text-sm font-black text-slate-700 dark:text-slate-100">{title}</h3>
-      <p className="mx-auto mt-2 max-w-[320px] text-xs leading-6 text-muted dark:text-slate-400">{description}</p>
-    </div>
-  );
-}
-
-function MemberAvatar({ name, owner = false }: { name: string; owner?: boolean }) {
-  return (
-    <div
-      className={cn(
-        'dashboard-row-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-black',
-        owner
-          ? 'border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-500/35 dark:bg-orange-500/10 dark:text-orange-200'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200',
-      )}
-    >
-      {name.slice(0, 1) || '؟'}
     </div>
   );
 }
@@ -534,9 +991,7 @@ export function GroupDetailPage({
     });
   }, [activeExpenses]);
 
-  const myNetMinor = myBalance?.net_balance_minor || 0;
   const openPlanItems = settlementPlan?.items?.filter((item) => isOpenSettlementStatus(item.status)) || [];
-
   const myDebtItems = openPlanItems.filter((item) => item.payer_user_id === currentUserId);
   const myCreditItems = openPlanItems.filter((item) => item.receiver_user_id === currentUserId);
 
@@ -546,6 +1001,27 @@ export function GroupDetailPage({
   const manualPayOptions = openPlanItems.filter(
     (item) => item.payer_user_id === currentUserId && ['PENDING', 'REJECTED'].includes(item.status || 'PENDING'),
   );
+
+  const totalExpenseMinor = activeExpenses.reduce((sum, expense) => sum + getExpenseTotal(expense), 0);
+  const optimizedSettlements = useMemo(
+    () => calculateOptimizedSettlements(balances, members),
+    [balances, members],
+  );
+  const currentUserOptimizedPayment = optimizedSettlements.find(
+    (item) => item.payer_user_id === currentUserId,
+  );
+  const currentUserBalance = balances.find((balance) => balance.user_id === currentUserId);
+  const myNetMinor = currentUserBalance?.net_balance_minor ?? myBalance?.net_balance_minor ?? 0;
+  const myAccount = getMyAccountStatus(myNetMinor);
+
+  const optimizedTotalDebtMinor = optimizedSettlements.reduce(
+    (sum, item) => sum + (item.amount_minor || 0),
+    0,
+  );
+  const totalOpenDebtMinor = optimizedTotalDebtMinor;
+  const remainingPaymentCount = optimizedSettlements.length;
+  const backendPaymentCount = openPlanItems.length;
+  const currentSuggestedPayment = currentUserOptimizedPayment || null;
 
   const selectedManualPlanItem = manualPayOptions.find((item) => item.id === selectedManualPlanItemId) || null;
 
@@ -697,7 +1173,18 @@ export function GroupDetailPage({
       const generatedPlan = await generateSettlementPlan(groupId);
 
       if (generatedPlan?.id && generatedPlan.status === 'DRAFT') {
-        await activateSettlementPlan(generatedPlan.id);
+        try {
+          await activateSettlementPlan(generatedPlan.id);
+          const latestPlan = await getSettlementPlan(groupId).catch(() => ({
+            ...generatedPlan,
+            status: 'ACTIVE',
+          }));
+          setSettlementPlan(latestPlan);
+        } catch {
+          setSettlementPlan(generatedPlan);
+        }
+      } else {
+        setSettlementPlan(generatedPlan);
       }
 
       await loadSettlementData();
@@ -706,7 +1193,7 @@ export function GroupDetailPage({
         notify({
           type: 'success',
           title: 'تسویه هوشمند بروزرسانی شد',
-          description: 'کمترین پرداخت‌های لازم دوباره حساب شد.',
+          description: 'کمترین پرداخت‌های لازم دوباره حساب شد و پیشنهادهای جدید نمایش داده شد.',
         });
       }
     } catch (err) {
@@ -714,8 +1201,8 @@ export function GroupDetailPage({
       if (showNotification) {
         notify({
           type: 'error',
-          title: 'محاسبه تسویه ناموفق بود',
-          description: getBackendMessage(err),
+          title: getSettlementErrorTitle('plan'),
+          description: getSettlementErrorDescription(err),
         });
       }
     } finally {
@@ -1159,6 +1646,27 @@ export function GroupDetailPage({
         ? selectedItem.amount_minor
         : parseAmountToMinor(manualAmount)
       : amountMinor ?? parseAmountToMinor(manualAmount);
+    const targetSuggestion = optimizedSettlements.find(
+      (item) => item.receiver_user_id === targetReceiverId && item.payer_user_id === currentUserId,
+    );
+
+    if (isArchived) {
+      notify({
+        type: 'error',
+        title: 'گروه آرشیو شده',
+        description: 'برای ثبت پرداخت، اول گروه را فعال کن.',
+      });
+      return;
+    }
+
+    if (!currentUserId) {
+      notify({
+        type: 'error',
+        title: 'کاربر مشخص نیست',
+        description: 'یک بار از حساب خارج شو و دوباره وارد شو تا پرداخت به نام خودت ثبت شود.',
+      });
+      return;
+    }
 
     if (!targetReceiverId) {
       notify({
@@ -1187,6 +1695,15 @@ export function GroupDetailPage({
       return;
     }
 
+    if (!selectedItem && targetSuggestion && targetAmountMinor > targetSuggestion.amount_minor) {
+      notify({
+        type: 'info',
+        title: 'مبلغ بیشتر از پیشنهاد تسویه است',
+        description: `برای این عضو، مبلغ پیشنهادی ${formatMoney(targetSuggestion.amount_minor)} است. مبلغ را اصلاح کن یا از دکمه پیشنهاد استفاده کن.`,
+      });
+      return;
+    }
+
     try {
       setSettlementSaving(true);
 
@@ -1205,6 +1722,10 @@ export function GroupDetailPage({
         });
       }
 
+      setManualReceiverId('');
+      setManualAmount('');
+      setManualDescription('');
+
       resetManualPaymentForm();
       await loadSettlementData();
 
@@ -1219,8 +1740,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'ثبت پرداخت ناموفق بود',
-        description: getBackendMessage(err),
+        title: getSettlementErrorTitle('create'),
+        description: getSettlementErrorDescription(err),
       });
     } finally {
       setSettlementSaving(false);
@@ -1250,8 +1771,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'بروزرسانی ناموفق بود',
-        description: getBackendMessage(err),
+        title: getSettlementErrorTitle('item'),
+        description: getSettlementErrorDescription(err),
       });
     } finally {
       setSettlementSaving(false);
@@ -1281,8 +1802,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'بروزرسانی ناموفق بود',
-        description: getBackendMessage(err),
+        title: getSettlementErrorTitle('review'),
+        description: getSettlementErrorDescription(err),
       });
     } finally {
       setSettlementSaving(false);

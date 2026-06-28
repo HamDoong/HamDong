@@ -4,7 +4,18 @@ services:
     ports:
     - 8080:80
     volumes:
-    - ./Backend/api-gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    - ./Backend/api-gateway/nginx.conf:/etc/nginx/conf.d/default.conf.template:ro
+    command: >
+      /bin/sh -c '
+        SRC=/etc/nginx/conf.d/default.conf.template;
+        DST=/etc/nginx/conf.d/default.conf;
+        if [ "$$(head -c 3 "$$SRC" | od -An -tx1 | tr -d " \n")" = "efbbbf" ]; then
+          tail -c +4 "$$SRC" > "$$DST";
+        else
+          cp "$$SRC" "$$DST";
+        fi;
+        nginx -t && nginx -g "daemon off;";
+      '
     depends_on:
     - identity-service
     - group-service
@@ -12,7 +23,9 @@ services:
     - settlement-service
     - media-service
     - notification-service
-  
+    - dashboard-service
+    - wallet-service
+
   identity-service:
     build: ./Backend/services/identity-service
     env_file: ./.env
@@ -45,7 +58,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   group-service:
     build: ./Backend/services/group-service
     env_file: ./.env
@@ -78,7 +91,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   group-consumer:
     build: ./Backend/services/group-service
     env_file: ./.env
@@ -109,7 +122,7 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_started
-  
+
   settlement-service:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -168,7 +181,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   settlement-consumer:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -225,7 +238,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   settlement-outbox-dispatcher:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -256,7 +269,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   settlement-reminder-scheduler:
     build: ./Backend/services/settlement-service
     env_file: ./.env
@@ -291,7 +304,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   media-service:
     build: ./Backend/services/media-service
     env_file: ./.env
@@ -390,7 +403,7 @@ services:
         condition: service_started
       group-service:
         condition: service_started
-  
+
   notification-service:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -452,7 +465,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   notification-consumer:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -510,7 +523,51 @@ services:
         condition: service_started
       redis:
         condition: service_started
-  
+
+  notification-group-consumer:
+    build: ./Backend/services/notification-service
+    env_file: ./.env
+    command: ["python", "manage.py", "consume_group_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+      NOTIFICATION_DB_NAME: ${NOTIFICATION_DB_NAME}
+      GROUP_RABBITMQ_EXCHANGE: ${GROUP_RABBITMQ_EXCHANGE:-hamdong.group}
+      NOTIFICATION_GROUP_DIRECT_INVITE_QUEUE: ${NOTIFICATION_GROUP_DIRECT_INVITE_QUEUE:-notification.group.direct_invites}
+      EVENT_DLQ_SUFFIX: ${EVENT_DLQ_SUFFIX:-.dlq}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-fake}
+      EMAIL_OTP_MAX_RETRIES: ${EMAIL_OTP_MAX_RETRIES:-3}
+      EMAIL_OTP_RETRY_DELAYS_SECONDS: ${EMAIL_OTP_RETRY_DELAYS_SECONDS:-5,15,30}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.smtp.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-smtp.gmail.com}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+      EMAIL_USE_SSL: ${EMAIL_USE_SSL:-false}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+      EMAIL_TIMEOUT_SECONDS: ${EMAIL_TIMEOUT_SECONDS:-20}
+      DEFAULT_FROM_EMAIL: "${DEFAULT_FROM_EMAIL}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_started
+
   notification-reminder-consumer:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -564,7 +621,7 @@ services:
         condition: service_started
       redis:
         condition: service_started
-  
+
   expense-service:
     build: ./Backend/services/expense-service
     env_file: ./.env
@@ -601,7 +658,7 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
-  
+
   expense-consumer:
     build: ./Backend/services/expense-service
     env_file: ./.env
@@ -637,7 +694,7 @@ services:
         condition: service_started
       group-service:
         condition: service_started
-  
+
   identity-outbox-dispatcher:
     build: ./Backend/services/identity-service
     env_file: ./.env
@@ -665,7 +722,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   group-outbox-dispatcher:
     build: ./Backend/services/group-service
     env_file: ./.env
@@ -693,7 +750,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   expense-outbox-dispatcher:
     build: ./Backend/services/expense-service
     env_file: ./.env
@@ -721,7 +778,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   media-outbox-dispatcher:
     build: ./Backend/services/media-service
     env_file: ./.env
@@ -749,7 +806,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
   notification-outbox-dispatcher:
     build: ./Backend/services/notification-service
     env_file: ./.env
@@ -777,7 +834,193 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
-  
+
+  wallet-consumer:
+    build: ./Backend/services/wallet-service
+    env_file: ./.env
+    command: ["python", "manage.py", "consume_events"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${WALLET_DB_NAME:-wallet_db}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      SETTLEMENT_RABBITMQ_EXCHANGE: ${SETTLEMENT_RABBITMQ_EXCHANGE:-hamdong.settlement}
+      WALLET_IDENTITY_QUEUE: ${WALLET_IDENTITY_QUEUE:-wallet.identity.user_events}
+      WALLET_SETTLEMENT_QUEUE: ${WALLET_SETTLEMENT_QUEUE:-wallet.settlement.events}
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+
+  wallet-outbox-dispatcher:
+    build: ./Backend/services/wallet-service
+    env_file: ./.env
+    command: ["python", "manage.py", "dispatch_outbox_loop"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${WALLET_DB_NAME:-wallet_db}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      WALLET_RABBITMQ_EXCHANGE: ${WALLET_RABBITMQ_EXCHANGE:-hamdong.wallet}
+      EVENT_OUTBOX_BATCH_SIZE: ${EVENT_OUTBOX_BATCH_SIZE:-50}
+      EVENT_MAX_RETRY_COUNT: ${EVENT_MAX_RETRY_COUNT:-5}
+      EVENT_RETRY_DELAY_SECONDS: ${EVENT_RETRY_DELAY_SECONDS:-10,30,60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  dashboard-service:
+    build: ./Backend/services/dashboard-service
+    env_file: ./.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DASHBOARD_DB_NAME:-dashboard_db}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      SETTLEMENT_SERVICE_URL: ${SETTLEMENT_SERVICE_URL:-http://settlement-service:8000}
+      GROUP_SERVICE_URL: ${GROUP_SERVICE_URL:-http://group-service:8000}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8000}
+    ports:
+    - 8007:8000
+    volumes:
+    - ./Backend/services/dashboard-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      group-service:
+        condition: service_started
+      expense-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+
+  wallet-service:
+    build: ./Backend/services/wallet-service
+    env_file: ./.env
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${WALLET_DB_NAME:-wallet_db}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_RABBITMQ_EXCHANGE: ${IDENTITY_RABBITMQ_EXCHANGE:-hamdong.identity}
+      SETTLEMENT_RABBITMQ_EXCHANGE: ${SETTLEMENT_RABBITMQ_EXCHANGE:-hamdong.settlement}
+      WALLET_RABBITMQ_EXCHANGE: ${WALLET_RABBITMQ_EXCHANGE:-hamdong.wallet}
+      WALLET_IDENTITY_QUEUE: ${WALLET_IDENTITY_QUEUE:-wallet.identity.user_events}
+      WALLET_SETTLEMENT_QUEUE: ${WALLET_SETTLEMENT_QUEUE:-wallet.settlement.events}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+      IDENTITY_PUBLIC_KEY_PATH: ${IDENTITY_PUBLIC_KEY_PATH:-/app/keys/public.pem}
+      JWT_ISSUER: ${JWT_ISSUER:-hamdong.identity-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-hamdong.services}
+      IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8000}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-hamdong-internal-token}
+    ports:
+    - 8008:8000
+    volumes:
+    - ./Backend/services/wallet-service:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      identity-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+
+  dashboard-consumer:
+    build: ./Backend/services/dashboard-service
+    env_file: ./.env
+    command:
+    - python
+    - manage.py
+    - consume_events
+    environment:
+      APP_ENV: ${APP_ENV}
+      DEBUG: ${DEBUG}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DASHBOARD_DB_NAME:-dashboard_db}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      IDENTITY_JWKS_URL: ${IDENTITY_JWKS_URL:-http://identity-service:8000/api/v1/auth/.well-known/jwks.json}
+    depends_on:
+      rabbitmq:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      group-service:
+        condition: service_started
+      expense-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+      media-service:
+        condition: service_started
+
   postgres:
     image: postgres:16-alpine
     env_file: ./.env
@@ -797,12 +1040,12 @@ services:
     volumes:
     - postgres_data:/var/lib/postgresql/data
     - ./Backend/infra/postgres/init:/docker-entrypoint-initdb.d
-  
+
   redis:
     image: redis:7-alpine
     ports:
     - 6379:6379
-  
+
   rabbitmq:
     image: rabbitmq:3-management
     environment:

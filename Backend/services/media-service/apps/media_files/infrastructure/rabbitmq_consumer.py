@@ -6,9 +6,11 @@ import time
 
 import pika
 from django.conf import settings
+from django.utils.dateparse import parse_datetime
 
 from apps.media_files.infrastructure.event_envelope import validate_event_envelope
 from apps.media_files.infrastructure.repositories import (
+    ExpenseProjectionRepository,
     GroupMemberProjectionRepository,
     GroupProjectionRepository,
     InboxRepository,
@@ -22,8 +24,10 @@ class MediaEventConsumer:
     def __init__(self):
         self.identity_exchange = getattr(settings, "IDENTITY_RABBITMQ_EXCHANGE", "hamdong.identity")
         self.group_exchange = getattr(settings, "GROUP_RABBITMQ_EXCHANGE", "hamdong.group")
+        self.expense_exchange = getattr(settings, "EXPENSE_RABBITMQ_EXCHANGE", "hamdong.expense")
         self.identity_queue = getattr(settings, "MEDIA_IDENTITY_QUEUE", "media.identity.user_events")
         self.group_queue = getattr(settings, "MEDIA_GROUP_QUEUE", "media.group.events")
+        self.expense_queue = getattr(settings, "MEDIA_EXPENSE_QUEUE", "media.expense.events")
         self.retry_delay_seconds = 2
 
     def _connect(self):
@@ -68,27 +72,64 @@ class MediaEventConsumer:
             GroupMemberProjectionRepository.mark_left(**data)
         InboxRepository.mark_processed(payload["event_id"], event_type, payload["source_service"], payload["routing_key"], payload)
 
+    def process_expense_payload(self, payload: dict):
+        valid, error = validate_event_envelope(payload)
+        if not valid:
+            raise ValueError(error)
+        if InboxRepository.was_processed(payload["event_id"]):
+            InboxRepository.mark_skipped(payload["event_id"], payload["event_type"], payload["source_service"], payload["routing_key"], payload)
+            return
+        event_type = payload["event_type"]
+        data = payload["data"] or {}
+        occurred_at = parse_datetime(payload.get("occurred_at")) if payload.get("occurred_at") else None
+        if event_type in ("ExpenseCreated", "ExpenseUpdated"):
+            ExpenseProjectionRepository.upsert_from_event(
+                event_id=payload["event_id"],
+                event_type=event_type,
+                occurred_at=occurred_at,
+                **data,
+            )
+        elif event_type == "ExpenseDeleted":
+            ExpenseProjectionRepository.mark_deleted(
+                event_id=payload["event_id"],
+                occurred_at=occurred_at,
+                **data,
+            )
+        InboxRepository.mark_processed(payload["event_id"], event_type, payload["source_service"], payload["routing_key"], payload)
+
     def _callback_identity(self, ch, method, properties, body):
         payload = None
         try:
-            payload = json.loads(body.decode("utf-8") if isinstance(body,(bytes,bytearray)) else body)
+            payload = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
             self.process_identity_payload(payload)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to process identity event")
             if isinstance(payload, dict) and payload.get("event_id"):
-                InboxRepository.mark_failed(payload["event_id"], payload.get("event_type","UNKNOWN"), payload.get("source_service",""), payload.get("routing_key",""), payload, str(exc))
+                InboxRepository.mark_failed(payload["event_id"], payload.get("event_type", "UNKNOWN"), payload.get("source_service", ""), payload.get("routing_key", ""), payload, str(exc))
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
     def _callback_group(self, ch, method, properties, body):
         payload = None
         try:
-            payload = json.loads(body.decode("utf-8") if isinstance(body,(bytes,bytearray)) else body)
+            payload = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
             self.process_group_payload(payload)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to process group event")
             if isinstance(payload, dict) and payload.get("event_id"):
-                InboxRepository.mark_failed(payload["event_id"], payload.get("event_type","UNKNOWN"), payload.get("source_service",""), payload.get("routing_key",""), payload, str(exc))
+                InboxRepository.mark_failed(payload["event_id"], payload.get("event_type", "UNKNOWN"), payload.get("source_service", ""), payload.get("routing_key", ""), payload, str(exc))
+        finally:
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+    def _callback_expense(self, ch, method, properties, body):
+        payload = None
+        try:
+            payload = json.loads(body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else body)
+            self.process_expense_payload(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to process expense event")
+            if isinstance(payload, dict) and payload.get("event_id"):
+                InboxRepository.mark_failed(payload["event_id"], payload.get("event_type", "UNKNOWN"), payload.get("source_service", ""), payload.get("routing_key", ""), payload, str(exc))
         finally:
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -111,7 +152,7 @@ class MediaEventConsumer:
                 channel.start_consuming()
             except KeyboardInterrupt:
                 break
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.exception("Media identity consumer unavailable; retrying")
                 time.sleep(self.retry_delay_seconds)
             finally:
@@ -129,8 +170,26 @@ class MediaEventConsumer:
                 channel.start_consuming()
             except KeyboardInterrupt:
                 break
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.exception("Media group consumer unavailable; retrying")
+                time.sleep(self.retry_delay_seconds)
+            finally:
+                if connection and not connection.is_closed:
+                    connection.close()
+
+    def start_expense_consumer(self):
+        while True:
+            connection = None
+            try:
+                connection, channel = self._connect()
+                self._declare(channel, self.expense_exchange, self.expense_queue, ["expense.created", "expense.updated", "expense.deleted"])
+                channel.basic_qos(prefetch_count=1)
+                channel.basic_consume(queue=self.expense_queue, on_message_callback=self._callback_expense)
+                channel.start_consuming()
+            except KeyboardInterrupt:
+                break
+            except Exception:  # noqa: BLE001
+                logger.exception("Media expense consumer unavailable; retrying")
                 time.sleep(self.retry_delay_seconds)
             finally:
                 if connection and not connection.is_closed:

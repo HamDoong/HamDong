@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.groups.domain.models import Group
+from apps.groups.domain.models import Group, GroupInviteStatusChoices
 from apps.groups.domain.rules import normalize_title_parts
 
 
@@ -101,6 +101,36 @@ class CreateInviteSerializer(serializers.Serializer):
     invite_code = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
+class CreateDirectInviteSerializer(serializers.Serializer):
+    recipient_user_id = serializers.UUIDField(required=False)
+    recipient_email = serializers.EmailField(required=False)
+    expires_in_hours = serializers.IntegerField(required=False, min_value=1, default=72)
+
+    def validate(self, attrs):
+        recipient_user_id = attrs.get("recipient_user_id")
+        recipient_email = attrs.get("recipient_email")
+        if not recipient_user_id and not recipient_email:
+            raise serializers.ValidationError({"recipient_user_id": "This field is required."})
+        if recipient_user_id and recipient_email:
+            raise serializers.ValidationError({"recipient_email": "Provide either recipient_user_id or recipient_email."})
+        return attrs
+
+
+class DirectInviteListQuerySerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            GroupInviteStatusChoices.PENDING,
+            GroupInviteStatusChoices.ACCEPTED,
+            GroupInviteStatusChoices.REJECTED,
+            GroupInviteStatusChoices.REVOKED,
+            GroupInviteStatusChoices.EXPIRED,
+        ],
+        required=False,
+    )
+    cursor = serializers.CharField(required=False)
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100, default=20)
+
+
 class InvitePreviewSerializer(serializers.Serializer):
     group_id = serializers.UUIDField()
     title = serializers.CharField()
@@ -112,6 +142,47 @@ class InvitePreviewSerializer(serializers.Serializer):
 class InviteCreateResponseSerializer(serializers.Serializer):
     invite_id = serializers.UUIDField()
     invite_url = serializers.CharField()
+
+
+class DirectInviteCreateResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    status = serializers.CharField()
+    expires_at = serializers.DateTimeField()
+    created_at = serializers.DateTimeField()
+
+
+class DirectInviteGroupSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    title = serializers.CharField()
+
+
+class DirectInviteUserSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    art_name = serializers.CharField(allow_blank=True)
+
+
+class DirectInviteListItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    group = DirectInviteGroupSerializer()
+    invited_by = DirectInviteUserSerializer()
+    status = serializers.CharField()
+    expires_at = serializers.DateTimeField(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class DirectInviteListResponseSerializer(serializers.Serializer):
+    results = DirectInviteListItemSerializer(many=True)
+    next_cursor = serializers.CharField(allow_null=True)
+
+
+class DirectInviteDetailSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    group = DirectInviteGroupSerializer()
+    invited_by = DirectInviteUserSerializer()
+    status = serializers.CharField()
+    expires_at = serializers.DateTimeField(allow_null=True)
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
 
 
 class MemberSerializer(serializers.Serializer):

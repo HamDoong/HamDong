@@ -31,20 +31,31 @@ class TokenService:
         self.refresh_audience = settings.JWT_ISSUER
         self.access_token_lifetime = settings.JWT_ACCESS_TOKEN_LIFETIME_SECONDS
         self.refresh_token_lifetime = settings.JWT_REFRESH_TOKEN_LIFETIME_SECONDS
+        self.remember_me_refresh_token_lifetime = getattr(settings, "JWT_REMEMBER_ME_REFRESH_TOKEN_LIFETIME_SECONDS", self.refresh_token_lifetime)
         self.private_key = JwtKeyLoader.get_private_key()
         self.public_key = JwtKeyLoader.get_public_key()
 
     def generate_tokens(
-        self, user: User, user_agent: str = None, ip_address: str = None
+        self,
+        user: User,
+        user_agent: str = None,
+        ip_address: str = None,
+        *,
+        remember_me: bool = False,
+        refresh_lifetime_seconds: int | None = None,
     ) -> Tuple[str, str, str]:
         jti = str(uuid.uuid4())
+        lifetime_seconds = refresh_lifetime_seconds if refresh_lifetime_seconds is not None else (
+            self.remember_me_refresh_token_lifetime if remember_me else self.refresh_token_lifetime
+        )
         access_token = self._create_access_token(user, jti)
-        refresh_token, refresh_token_hash = self._create_refresh_token(user, jti)
+        refresh_token, refresh_token_hash = self._create_refresh_token(user, jti, lifetime_seconds=lifetime_seconds)
         RefreshTokenRepository.create(
             user=user,
             token_hash=refresh_token_hash,
             jti=jti,
-            lifetime_seconds=self.refresh_token_lifetime,
+            lifetime_seconds=lifetime_seconds,
+            remember_me=remember_me,
             user_agent=user_agent,
             ip_address=ip_address,
         )
@@ -74,9 +85,9 @@ class TokenService:
         }
         return self._encode(payload)
 
-    def _create_refresh_token(self, user: User, jti: str) -> Tuple[str, str]:
+    def _create_refresh_token(self, user: User, jti: str, *, lifetime_seconds: int) -> Tuple[str, str]:
         now = datetime.now(tz.utc)
-        expires_at = now + timedelta(seconds=self.refresh_token_lifetime)
+        expires_at = now + timedelta(seconds=lifetime_seconds)
         payload = {
             "sub": str(user.id),
             "type": "refresh",
@@ -157,11 +168,13 @@ class TokenService:
         if not old_token:
             return None
 
+        remember_me = bool(getattr(old_token, "remember_me", False))
         RefreshTokenRepository.revoke(old_token)
         access_token, new_refresh_token, _ = self.generate_tokens(
             user,
             user_agent=user_agent,
             ip_address=ip_address,
+            remember_me=remember_me,
         )
         return access_token, new_refresh_token
 
