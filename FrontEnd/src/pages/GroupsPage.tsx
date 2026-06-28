@@ -48,9 +48,7 @@ function formatMoney(minor = 0) {
 }
 
 function getSignedMoneyLabel(minor = 0) {
-  if (minor > 0) return `+${formatMoney(minor)}`;
-  if (minor < 0) return `-${formatMoney(minor)}`;
-  return formatMoney(0);
+  return formatMoney(minor);
 }
 
 function normalizeSearchText(value: string) {

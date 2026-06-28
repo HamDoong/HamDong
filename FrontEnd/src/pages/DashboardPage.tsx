@@ -79,7 +79,7 @@ function formatMoney(amount: number) {
 }
 
 function formatSignedMoney(amount: number) {
-  return formatMoneyLabel(amount, { signed: true });
+  return formatMoneyLabel(amount);
 }
 
 function formatMoneyText(amount: number) {

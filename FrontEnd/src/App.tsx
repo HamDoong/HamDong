@@ -72,7 +72,7 @@ function getParticipantShare(participant: NonNullable<BackendExpense['participan
 }
 
 function formatCardMoney(minor = 0) {
-  return formatMoneyNumber(minor, { signed: true });
+  return formatMoneyNumber(minor);
 }
 
 function getIllustrationFromBackendGroup(group: BackendGroup): DashboardGroup['illustration'] {

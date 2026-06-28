@@ -42,7 +42,7 @@ export const groups: Group[] = [
     name: 'کافه دوستان',
     membersLabel: '۶ عضو • فعال',
     statusLabel: 'شما طلبکار هستید',
-    amount: '+34,250 تومان',
+    amount: '34,250 تومان',
     tone: 'positive',
     illustration: 'cafe',
   },
@@ -51,7 +51,7 @@ export const groups: Group[] = [
     name: 'خانه ما',
     membersLabel: '۴ عضو • فعال',
     statusLabel: 'شما بدهکار هستید',
-    amount: '-75,600 تومان',
+    amount: '75,600 تومان',
     tone: 'negative',
     illustration: 'home',
   },
@@ -60,16 +60,16 @@ export const groups: Group[] = [
     name: 'سفر کیش',
     membersLabel: '۵ عضو • فعال',
     statusLabel: 'شما طلبکار هستید',
-    amount: '+120,000 تومان',
+    amount: '120,000 تومان',
     tone: 'positive',
     illustration: 'trip',
   },
 ];
 
 export const accountSummary: SummaryItem[] = [
-  { id: 1, label: 'موجودی کیف پول', amount: '+120,000 تومان', tone: 'positive' },
-  { id: 2, label: 'شما طلبکار هستید', amount: '+175,000 تومان', tone: 'positive' },
-  { id: 3, label: 'شما بدهکار هستید', amount: '-50,000 تومان', tone: 'negative' },
+  { id: 1, label: 'موجودی کیف پول', amount: '120,000 تومان', tone: 'positive' },
+  { id: 2, label: 'شما طلبکار هستید', amount: '175,000 تومان', tone: 'positive' },
+  { id: 3, label: 'شما بدهکار هستید', amount: '50,000 تومان', tone: 'negative' },
 ];
 
 export const recentMembers: Member[] = [
@@ -77,7 +77,7 @@ export const recentMembers: Member[] = [
     id: 1,
     name: 'علی احمدی (شما)',
     badge: 'مدیر',
-    amount: '+۳۵,۰۰۰ تومان',
+    amount: '۳۵,۰۰۰ تومان',
     tone: 'positive',
     avatarInitial: 'ع',
     avatarGradient: 'from-emerald-400 to-teal-600',
@@ -85,7 +85,7 @@ export const recentMembers: Member[] = [
   {
     id: 2,
     name: 'سارا محمدی',
-    amount: '-۵۰,۰۰۰',
+    amount: '۵۰,۰۰۰',
     tone: 'negative',
     avatarInitial: 'س',
     avatarGradient: 'from-rose-300 to-pink-500',
@@ -93,7 +93,7 @@ export const recentMembers: Member[] = [
   {
     id: 3,
     name: 'رضا کریمی',
-    amount: '-۶۰,۰۰۰',
+    amount: '۶۰,۰۰۰',
     tone: 'negative',
     avatarInitial: 'ر',
     avatarGradient: 'from-amber-300 to-orange-500',
@@ -101,7 +101,7 @@ export const recentMembers: Member[] = [
   {
     id: 4,
     name: 'مینا حسینی',
-    amount: '+۷۰,۰۰۰',
+    amount: '۷۰,۰۰۰',
     tone: 'positive',
     avatarInitial: 'م',
     avatarGradient: 'from-sky-300 to-cyan-500',
@@ -109,7 +109,7 @@ export const recentMembers: Member[] = [
   {
     id: 5,
     name: 'حامد نوروزی',
-    amount: '-۸۰,۰۰۰',
+    amount: '۸۰,۰۰۰',
     tone: 'negative',
     avatarInitial: 'ح',
     avatarGradient: 'from-slate-400 to-slate-600',

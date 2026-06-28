@@ -122,9 +122,7 @@ function formatMoney(minor = 0) {
 }
 
 function formatSignedMoney(minor = 0) {
-  if (minor > 0) return `+${formatMoney(minor)}`;
-  if (minor < 0) return `-${formatMoney(minor)}`;
-  return formatMoney(0);
+  return formatMoney(minor);
 }
 
 function toPersianDate(value?: string) {
@@ -1998,7 +1996,6 @@ export function GroupDetailPage({
                 <div className={cn('mt-1', accountTone === 'rose' ? 'text-rose-700 dark:text-rose-200' : accountTone === 'emerald' ? 'text-emerald-700 dark:text-emerald-200' : 'text-slate-700 dark:text-slate-200')}>
                   <MoneyWithWords
                     amount={myNetMinor}
-                    signed={true}
                     valueClassName="text-4xl font-black tracking-[-0.06em]"
                     textClassName="mt-1 text-[10px] font-semibold opacity-70"
                     showText={true}

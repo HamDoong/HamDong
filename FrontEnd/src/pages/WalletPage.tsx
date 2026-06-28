@@ -134,8 +134,7 @@ function formatMoney(amount: number) {
 }
 
 function formatSignedMoney(amount: number) {
-  const sign = amount > 0 ? '+' : amount < 0 ? '-' : '';
-  return `${sign}${formatMoney(amount)}`;
+  return formatMoney(amount);
 }
 
 function getAvatarText(value: string) {
@@ -650,14 +649,14 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
               <div className="border-white/20 lg:border-r lg:pr-8">
                 <div className="text-sm text-white/75">در انتظار دریافت</div>
                 <div className="mt-3 text-2xl font-black text-emerald-200">
-                  <MoneyWithWords amount={summary.creditMinor} signed={true} valueClassName="text-2xl font-black text-emerald-200" textClassName="mt-1 text-xs font-semibold text-emerald-100/80" showText={true} />
+                  <MoneyWithWords amount={summary.creditMinor} valueClassName="text-2xl font-black text-emerald-200" textClassName="mt-1 text-xs font-semibold text-emerald-100/80" showText={true} />
                 </div>
               </div>
 
               <div className="border-white/20 lg:border-r lg:pr-8">
                 <div className="text-sm text-white/75">در انتظار پرداخت</div>
                 <div className="mt-3 text-2xl font-black text-orange-300">
-                  <MoneyWithWords amount={-summary.debtMinor} signed={true} valueClassName="text-2xl font-black text-orange-300" textClassName="mt-1 text-xs font-semibold text-orange-100/80" showText={true} />
+                  <MoneyWithWords amount={-summary.debtMinor} valueClassName="text-2xl font-black text-orange-300" textClassName="mt-1 text-xs font-semibold text-orange-100/80" showText={true} />
                 </div>
               </div>
 
