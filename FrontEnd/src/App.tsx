@@ -739,6 +739,7 @@ function AppContent() {
               onOpenGroup={handleOpenGroup}
               onOpenInvite={handleOpenInvite}
               onDeleteGroup={handleDeleteGroupFromCard}
+              onRetry={loadInitialData}
             />
           ) : null}
 

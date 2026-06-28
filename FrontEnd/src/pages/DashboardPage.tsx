@@ -22,7 +22,6 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isApiError } from '../lib/api';
 import {
   formatMoneyNumber as formatMoneyLabel,
-  formatMoneyText as formatMoneyTextLabel,
   MoneyWithWords,
   numberToPersianWords,
   toPersianNumber,
@@ -78,17 +77,6 @@ function formatMoney(amount: number) {
   return formatMoneyLabel(amount);
 }
 
-function formatSignedMoney(amount: number) {
-  return formatMoneyLabel(amount);
-}
-
-function formatMoneyText(amount: number) {
-  return formatMoneyTextLabel(amount);
-}
-
-function formatSignedMoneyText(amount: number) {
-  return formatMoneyText(amount);
-}
 
 function toEnglishDigits(value: string) {
   return value
@@ -346,11 +334,11 @@ function SectionCard({
 }) {
   const variantClassName =
     variant === 'quiet'
-      ? 'rounded-[24px] border border-emerald-100/70 bg-white/[0.82] shadow-[0_10px_30px_rgba(15,23,42,0.045)] backdrop-blur'
-      : 'rounded-[24px] border border-emerald-100/80 bg-white/95 shadow-[0_18px_44px_rgba(15,23,42,0.07)] backdrop-blur';
+      ? 'rounded-[24px] border border-slate-200/80 bg-white/[0.92] shadow-[0_16px_42px_rgba(15,23,42,0.085)] ring-1 ring-white/80 backdrop-blur'
+      : 'rounded-[24px] border border-slate-200/85 bg-white/95 shadow-[0_20px_50px_rgba(15,23,42,0.095)] ring-1 ring-white/80 backdrop-blur';
 
   return (
-    <section className={`dashboard-section-card dashboard-section-card--${variant} ${variantClassName} ${className}`}>
+    <section className={`dashboard-section-card dashboard-section-card--${variant} min-w-0 overflow-hidden ${variantClassName} ${className}`}>
       {children}
     </section>
   );
@@ -406,7 +394,7 @@ function DashboardSectionState({
   const StateIcon = loading ? Loader2 : Icon;
 
   return (
-    <div className="dashboard-empty-state min-h-[140px] rounded-[20px] border border-dashed border-emerald-100/80 bg-white/[0.55] px-4 py-6 text-center">
+    <div className="dashboard-empty-state min-h-[140px] rounded-[20px] border border-dashed border-slate-200/90 bg-white/[0.82] px-4 py-6 text-center shadow-[0_10px_24px_rgba(15,23,42,0.055)]">
       <div className="dashboard-empty-state-icon mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[16px] bg-white text-slate-500 shadow-sm">
         <StateIcon className={['h-5 w-5', loading ? 'animate-spin' : ''].join(' ')} />
       </div>
@@ -535,16 +523,11 @@ function BalanceHero({
 
           <div className="mt-7 text-right">
             <div className="text-xs font-extrabold text-white/68">
-              {isBalanced ? 'همه چیز تسویه است' : isPositive ? 'شما در مجموع طلبکار هستید' : 'شما در مجموع بدهکار هستید'}
+              {isBalanced ? 'همه چیز تسویه است' : 'در مجموع'}
             </div>
             <div className="mt-2 max-w-full break-words text-[32px] font-black tracking-normal sm:text-[44px]">
               {loading ? 'در حال محاسبه' : <MoneyWithWords amount={Math.abs(netMinor)} valueClassName="text-[32px] font-black tracking-normal sm:text-[44px]" textClassName="mt-2 text-sm font-semibold leading-7 text-white/68" showText={true} />}
             </div>
-            {!loading ? (
-              <p className="mt-2 hidden text-sm font-semibold leading-7 text-white/68 sm:block">
-                {formatMoneyText(Math.abs(netMinor))}
-              </p>
-            ) : null}
           </div>
         </div>
 
@@ -554,17 +537,17 @@ function BalanceHero({
               <ArrowDown className="h-5 w-5" strokeWidth={2.4} />
             </span>
             <div className="min-w-0 text-right">
-              <div className="text-xs font-extrabold text-emerald-700/80">طلب شما</div>
+              <div className="text-xs font-extrabold text-emerald-700/80">کل طلب‌ها</div>
               <div className="mt-1 text-xl font-black text-emerald-700"><MoneyWithWords amount={creditMinor} valueClassName="text-xl font-black text-emerald-700" textClassName="mt-1 text-[11px] font-semibold text-emerald-700/70" showText={true} /></div>
             </div>
           </div>
 
-          <div className="dashboard-balance-mini dashboard-balance-mini--debt flex min-h-[92px] items-center justify-between gap-4 rounded-[22px] border border-orange-200/80 bg-gradient-to-l from-white via-orange-50/70 to-orange-50/60 px-4 py-3 shadow-[inset_3px_0_0_#F97316,0_0_0_1px_rgba(249,115,22,0.10),0_10px_24px_rgba(15,23,42,0.06)]">
+          <div className="dashboard-balance-mini dashboard-balance-mini--debt flex min-h-[92px] items-center justify-between gap-4 rounded-[22px] border border-orange-200/80 bg-gradient-to-l from-white via-orange-50/70 to-orange-50/60 px-4 py-3 text-right shadow-[inset_3px_0_0_#F97316,0_0_0_1px_rgba(249,115,22,0.10),0_10px_24px_rgba(15,23,42,0.06)]">
             <span className="dashboard-balance-mini-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-orange-500 text-white shadow-[0_10px_22px_rgba(249,115,22,0.22)] ring-1 ring-orange-500/20">
               <ArrowUp className="h-5 w-5" strokeWidth={2.4} />
             </span>
-            <div className="min-w-0 text-right">
-              <div className="text-xs font-extrabold text-orange-700/80">بدهی شما</div>
+            <div className="min-w-0 flex-1 text-right">
+              <div className="text-xs font-extrabold text-orange-700/80">کل بدهی‌ها</div>
               <div className="mt-1 text-xl font-black text-orange-700"><MoneyWithWords amount={debtMinor} valueClassName="text-xl font-black text-orange-700" textClassName="mt-1 text-[11px] font-semibold text-orange-700/70" showText={true} /></div>
             </div>
           </div>
@@ -576,33 +559,27 @@ function BalanceHero({
 
 function SettlementRow({ item }: { item: SettlementSuggestion }) {
   const isDebt = item.tone === 'negative';
-  const amountClassName = isDebt ? 'text-orange-600' : 'text-emerald-600';
-  const arrowClassName = isDebt ? 'text-orange-600' : 'text-emerald-600';
-  const avatarClassName = isDebt
-    ? 'bg-orange-50 text-orange-600'
-    : 'bg-emerald-50 text-emerald-600';
-  const actionLabel = isDebt ? 'پرداخت به' : 'دریافت از';
+  const amountClassName = isDebt ? 'text-orange-700' : 'text-emerald-700';
+  const iconClassName = isDebt
+    ? 'bg-orange-50 text-orange-600 ring-orange-100'
+    : 'bg-emerald-50 text-emerald-600 ring-emerald-100';
+  const ActionIcon = isDebt ? ArrowUp : ArrowDown;
+  const actionLabel = isDebt ? `پرداخت به ${item.name}` : `دریافت از ${item.name}`;
+  const amountTitle = isDebt ? 'مبلغ پرداختی' : 'مبلغ دریافتی';
 
   return (
-    <div className="dashboard-list-row dashboard-list-card flex flex-col gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
-      <div className="min-w-0 text-right sm:flex-1">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className={`dashboard-row-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border text-sm font-black ${avatarClassName}`}>
-            {item.avatarText}
-          </div>
-          <div className="min-w-0 text-right">
-            <div className="text-[11px] font-extrabold text-slate-400">{actionLabel}</div>
-            <div className="text-sm font-black leading-6 text-text sm:truncate">{item.name}</div>
-            <div className="mt-0.5 text-xs leading-5 text-muted sm:truncate">{item.description}</div>
-          </div>
-        </div>
+    <div className="dashboard-list-row dashboard-list-card dashboard-action-card flex w-full max-w-full min-w-0 flex-col gap-3 overflow-hidden rounded-[22px] border border-slate-200/85 bg-white/[0.92] px-4 py-4 text-right shadow-[0_12px_28px_rgba(15,23,42,0.065)] ring-1 ring-slate-100/70 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.09)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className={`dashboard-event-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 ${iconClassName}`}>
+        <ActionIcon className="h-5 w-5" strokeWidth={2.3} />
       </div>
 
-      <div className={`hidden shrink-0 justify-center sm:flex ${arrowClassName}`}>
-        <ArrowLeft className="h-5 w-5" />
+      <div className="min-w-0 flex-1 text-right">
+        <div className="truncate text-sm font-black leading-6 text-slate-700">{actionLabel}</div>
+        <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{item.description}</p>
       </div>
 
-      <div className="text-right sm:w-[160px] sm:text-left">
+      <div className="max-w-full shrink-0 text-right sm:w-[148px] sm:text-left">
+        <div className="mb-1 text-[11px] font-black text-slate-400">{amountTitle}</div>
         <MoneyWithWords
           amount={item.amount}
           valueClassName={`text-base font-black ${amountClassName}`}
@@ -618,17 +595,17 @@ function EventRow({ event }: { event: DashboardEvent }) {
   const Icon = event.icon;
 
   return (
-    <div className="dashboard-list-row dashboard-list-card flex flex-col gap-3 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <div className="dashboard-list-row dashboard-list-card flex w-full max-w-full min-w-0 flex-col gap-3 overflow-hidden rounded-[22px] border border-slate-200/85 bg-white/[0.92] px-4 py-4 text-right shadow-[0_12px_28px_rgba(15,23,42,0.065)] ring-1 ring-slate-100/70 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.09)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className={`dashboard-event-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${event.toneClassName}`}>
         <Icon className="h-5 w-5" />
       </div>
-      <p className="min-w-0 flex-1 text-right text-sm font-semibold leading-6 text-slate-600 sm:truncate">
+      <p className="min-w-0 flex-1 whitespace-normal break-words text-right text-sm font-semibold leading-6 text-slate-600">
         {event.title}
       </p>
-      <div className="text-right text-xs font-semibold text-slate-500 sm:w-[104px] sm:text-left">
+      <div className="max-w-full shrink-0 text-right text-xs font-semibold text-slate-500 sm:w-[112px] sm:text-left">
         <span>{event.time}</span>
         <span className="mx-2 text-slate-300 sm:hidden">•</span>
-        <span className="mt-1 leading-5 text-slate-400 sm:block">{event.timeText}</span>
+        <span className="mt-1 block break-words leading-5 text-slate-400">{event.timeText}</span>
       </div>
     </div>
   );
@@ -672,40 +649,46 @@ function DashboardGroupCard({
 }) {
   const isDebt = tone === 'negative';
   const isSettled = amount === 0;
+  const toneClassName = isSettled
+    ? 'dashboard-status-pill--neutral border-slate-200 bg-slate-50/90 text-slate-600'
+    : isDebt
+      ? 'dashboard-status-pill--negative border-orange-200 bg-orange-50/90 text-orange-700'
+      : 'dashboard-status-pill--positive border-emerald-200 bg-emerald-50/90 text-emerald-700';
+  const amountClassName = isSettled ? 'text-slate-600' : isDebt ? 'text-orange-700' : 'text-emerald-700';
+  const amountTextClassName = isSettled ? 'text-slate-500' : isDebt ? 'text-orange-700/70' : 'text-emerald-700/70';
 
   return (
     <button
       type="button"
       onClick={() => onOpen(id)}
-      className="dashboard-group-card grid min-h-[144px] grid-cols-[minmax(0,1fr)_76px] items-center gap-4 rounded-[22px] border border-emerald-100/80 bg-white/[0.86] px-4 py-4 text-right transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:grid-cols-[minmax(0,1fr)_88px] sm:px-5"
+      className="dashboard-group-card group flex min-h-[178px] w-full min-w-0 flex-col justify-between overflow-hidden rounded-[26px] border border-slate-200/85 bg-gradient-to-br from-white via-white to-emerald-50/45 p-4 text-right shadow-[0_14px_34px_rgba(15,23,42,0.075)] ring-1 ring-slate-100/70 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_18px_42px_rgba(15,23,42,0.105)] sm:p-5"
     >
-      <div className="min-w-0">
-        <h3 className="truncate text-lg font-black text-text">{title}</h3>
-        <p className="mt-1 text-sm text-muted">{membersLabel}</p>
-        <p className={[
-          'dashboard-status-pill mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-bold',
-          isSettled
-            ? 'bg-slate-50 text-slate-500'
-            : isDebt
-              ? 'dashboard-status-pill--negative bg-orange-50 text-orange-600'
-              : 'dashboard-status-pill--positive bg-emerald-50 text-emerald-600',
-        ].join(' ')}>
-          {statusLabel}
-        </p>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-lg font-black text-text">{title}</h3>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[11px] font-extrabold text-slate-500">
+              <Users className="h-3.5 w-3.5" />
+              {membersLabel}
+            </span>
+            <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${toneClassName}`}>
+              {statusLabel}
+            </span>
+          </div>
+        </div>
+        <GroupArtwork type={illustration} />
+      </div>
+
+      <div className="mt-5 rounded-[20px] border border-white/70 bg-white/72 px-3.5 py-3 shadow-[inset_3px_0_0_rgba(16,185,129,0.22)]">
+        <div className="mb-1 text-[11px] font-extrabold text-slate-400">
+          {isSettled ? 'مانده گروه' : isDebt ? 'مبلغ قابل پرداخت' : 'مبلغ قابل دریافت'}
+        </div>
         <MoneyWithWords
           amount={Math.abs(amount)}
-          className="mt-1"
-          valueClassName={[
-            'text-xl font-black tracking-normal',
-            isSettled ? 'text-slate-500' : isDebt ? 'text-orange-600' : 'text-emerald-600',
-          ].join(' ')}
-          textClassName={[
-            'mt-1 hidden text-xs font-semibold leading-5 sm:block',
-            isSettled ? 'text-slate-400' : isDebt ? 'text-orange-600/70' : 'text-emerald-700/70',
-          ].join(' ')}
+          valueClassName={`text-xl font-black tracking-normal ${amountClassName}`}
+          textClassName={`mt-1 hidden text-xs font-semibold leading-5 sm:block ${amountTextClassName}`}
         />
       </div>
-      <GroupArtwork type={illustration} />
     </button>
   );
 }
@@ -761,7 +744,7 @@ function getGroupCards(groups: Group[], groupBalances: GroupBalanceSummary[] = [
     return {
       id: String(group.id),
       title: group.name,
-      membersLabel: group.membersLabel,
+      membersLabel: getMemberCountText(group.membersLabel) || group.membersLabel.replace(/\s*•\s*فعال\s*/g, '').replace(/فعال/g, '').trim(),
       statusLabel: amount < 0 ? 'شما بدهکار هستید' : amount > 0 ? 'شما طلبکار هستید' : 'تسویه شده',
       amount,
       tone,
@@ -1013,7 +996,7 @@ export function DashboardPage({
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
           <SectionCard variant="quiet" className="p-4 sm:p-5">
             <SectionHeader
-              title="نیاز به اقدام"
+              title="کارهایی که باید انجام دهید"
               actionLabel="مشاهده همه"
               icon={<ReceiptText className="h-5 w-5 text-slate-500" />}
               onAction={onOpenWallet}
@@ -1041,7 +1024,7 @@ export function DashboardPage({
               />
             ) : null}
             {!settlementsLoading && !settlementsError && settlementSuggestions.length > 0 ? (
-              <div className="grid gap-3">
+              <div className="grid min-w-0 gap-3">
                 {settlementSuggestions.map((item) => (
                   <SettlementRow key={item.id} item={item} />
                 ))}
@@ -1079,7 +1062,7 @@ export function DashboardPage({
               />
             ) : null}
             {!eventsLoading && !eventsError && dashboardEvents.length > 0 ? (
-              <div className="grid gap-3">
+              <div className="grid min-w-0 gap-3 overflow-hidden">
                 {dashboardEvents.map((event) => (
                   <EventRow key={event.id} event={event} />
                 ))}
@@ -1092,7 +1075,7 @@ export function DashboardPage({
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-slate-700" />
-              <h2 className="text-lg font-black text-text sm:text-xl">گروه‌های نیازمند توجه</h2>
+              <h2 className="text-lg font-black text-text sm:text-xl">گروه‌ها</h2>
             </div>
             <button
               type="button"
@@ -1104,20 +1087,20 @@ export function DashboardPage({
           </div>
 
           {groupsLoading ? (
-            <div className="dashboard-panel-state rounded-2xl border border-dashed border-border bg-slate-50/80 p-6 text-center text-sm font-bold text-muted">
+            <div className="dashboard-panel-state rounded-2xl border border-dashed border-slate-200/90 bg-white/85 p-6 text-center text-sm font-bold text-muted shadow-[0_10px_24px_rgba(15,23,42,0.055)]">
               <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-slate-500" />
               در حال دریافت گروه‌ها...
             </div>
           ) : null}
 
           {!groupsLoading && groupsError ? (
-            <div className="dashboard-panel-error rounded-2xl border border-rose-100 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600">
+            <div className="dashboard-panel-error rounded-2xl border border-rose-200/80 bg-rose-50 p-6 text-center text-sm font-bold text-rose-600 shadow-[0_10px_24px_rgba(15,23,42,0.055)]">
               {groupsError}
             </div>
           ) : null}
 
           {!groupsLoading && !groupsError && groupCards.length === 0 ? (
-            <div className="dashboard-panel-empty rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 p-7 text-center">
+            <div className="dashboard-panel-empty rounded-2xl border border-dashed border-emerald-200 bg-white/85 p-7 text-center shadow-[0_10px_24px_rgba(15,23,42,0.055)]">
               <Users className="mx-auto mb-3 h-7 w-7 text-emerald-600" />
               <h3 className="text-base font-black text-text">هنوز گروه فعالی ندارید</h3>
               <button
@@ -1132,7 +1115,7 @@ export function DashboardPage({
           ) : null}
 
           {!groupsLoading && !groupsError && groupCards.length > 0 ? (
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-3">
               {groupCards.map((group) => (
                 <DashboardGroupCard
                   key={group.id}

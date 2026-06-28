@@ -227,7 +227,7 @@ const textareaClass =
   'min-h-[96px] w-full resize-none rounded-[18px] border border-emerald-200/90 bg-white/90 px-4 py-3 text-right text-sm font-semibold leading-7 text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 disabled:bg-slate-50 disabled:text-slate-400 dark:border-emerald-500/20 dark:bg-slate-900/80 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400/50 dark:focus:bg-slate-900 dark:disabled:bg-slate-900/50 dark:disabled:text-slate-500';
 
 const scrollAreaClass =
-  'min-h-0 overflow-y-auto overscroll-contain pl-1 pr-0 [scrollbar-width:thin] [scrollbar-color:rgba(16,185,129,0.45)_transparent] dark:[scrollbar-color:rgba(52,211,153,0.35)_transparent]';
+  'min-h-0 overflow-y-auto overscroll-auto pl-1 pr-0 [scrollbar-width:thin] [scrollbar-color:rgba(16,185,129,0.45)_transparent] dark:[scrollbar-color:rgba(52,211,153,0.35)_transparent]';
 
 function readDisplayString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';

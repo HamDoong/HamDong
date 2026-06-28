@@ -1,89 +1,225 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   Archive,
   ArrowLeft,
-  ChevronLeft,
-  Eye,
+  Coffee,
+  House,
+  Loader2,
   MoreVertical,
-  Trash2,
+  Plane,
+  ReceiptText,
   Users,
   X,
 } from 'lucide-react';
-import { MoneyWithWords } from '../lib/money';
+import { MoneyWithWords, formatMoneyNumber, normalizeMoneyAmount } from '../lib/money';
 import type { Group } from '../types';
 
-function GroupIllustration({ type }: { type: Group['illustration'] }) {
-  if (type === 'trip') {
-    return (
-      <div className="relative h-[74px] w-[74px] shrink-0 overflow-hidden rounded-[26px] border border-sky-100 bg-sky-50 shadow-[inset_0_0_18px_rgba(14,165,233,0.12)]">
-        <div className="absolute inset-x-0 top-0 h-[58%] bg-gradient-to-b from-sky-100 via-sky-50 to-white" />
-        <div className="absolute inset-x-0 bottom-0 h-[34%] bg-gradient-to-r from-[#F4D9A5] via-[#F2CF8F] to-[#F7DFC0]" />
-        <div className="absolute bottom-2 left-3 text-[23px]">🌴</div>
-        <div className="absolute bottom-3 right-2 text-[23px]">🚐</div>
-        <div className="absolute right-2 top-2 text-[16px]">☁️</div>
-      </div>
-    );
-  }
+function GroupIllustration({
+  type,
+  mobile = false,
+}: {
+  type: Group['illustration'];
+  mobile?: boolean;
+}) {
+  const Icon = type === 'trip' ? Plane : type === 'home' ? House : Coffee;
 
-  if (type === 'home') {
+  return (
+    <span
+      className={[
+        'group-card-artwork',
+        `group-card-artwork--${type}`,
+        mobile ? 'group-card-artwork--mobile' : '',
+      ].join(' ')}
+      aria-hidden="true"
+    >
+      <Icon className="h-6 w-6" strokeWidth={2.25} />
+    </span>
+  );
+}
+
+function MobileBalance({
+  amount,
+  tone,
+  archived,
+  loading,
+}: {
+  amount: string;
+  tone: Group['tone'];
+  archived: boolean;
+  loading: boolean;
+}) {
+  const numericAmount = normalizeMoneyAmount(amount);
+  const isBalanced = numericAmount === 0;
+  const isDebt = !isBalanced && tone === 'negative';
+  const label = archived ? 'آرشیو' : isBalanced ? 'تسویه' : isDebt ? 'بدهکار' : 'طلبکار';
+
+  if (loading) {
     return (
-      <div className="relative h-[74px] w-[74px] shrink-0 overflow-hidden rounded-[26px] border border-orange-100 bg-orange-50 shadow-[inset_0_0_18px_rgba(249,115,22,0.10)]">
-        <div className="absolute inset-x-0 bottom-0 h-[28%] bg-gradient-to-r from-lime-300 to-emerald-400" />
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[29px]">🏢</div>
-        <div className="absolute right-2 top-2 text-[16px]">☀️</div>
-      </div>
+      <span className="group-card-row-balance flex w-[76px] shrink-0 justify-end text-muted" role="status">
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </span>
     );
   }
 
   return (
-    <div className="relative h-[74px] w-[74px] shrink-0 overflow-hidden rounded-[26px] border border-amber-100 bg-amber-50 shadow-[inset_0_0_18px_rgba(245,158,11,0.10)]">
-      <div className="absolute inset-x-0 bottom-0 h-[24%] bg-[#E7C7A4]" />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[45%] text-[31px]">☕</div>
-      <div className="absolute right-4 top-4 text-[14px]">✨</div>
-    </div>
+    <span className="group-card-row-balance w-[92px] shrink-0 text-left">
+      {isBalanced ? (
+        <span className="block text-xs font-extrabold text-slate-500">تسویه</span>
+      ) : (
+        <span
+          className={[
+            'whitespace-nowrap text-[11px] font-extrabold',
+            isDebt ? 'text-rose-600' : 'text-emerald-600',
+          ].join(' ')}
+        >
+          {formatMoneyNumber(numericAmount)}
+        </span>
+      )}
+      <span
+        className={[
+          'mt-1 block text-[10px] font-bold',
+          archived ? 'text-amber-600' : isDebt ? 'text-rose-500' : 'text-emerald-600',
+        ].join(' ')}
+      >
+        {label}
+      </span>
+    </span>
   );
 }
 
-function getRoleLabel(role?: string) {
+function getRoleLabel(role?: string): string | null {
   const normalizedRole = String(role || '').toUpperCase();
 
   if (normalizedRole === 'OWNER') return 'مالک گروه';
   if (normalizedRole === 'ADMIN') return 'مدیر گروه';
-  if (normalizedRole === 'MEMBER') return 'عضو گروه';
 
-  return 'عضو گروه';
+  return null;
 }
 
-function AmountText({ amount, tone }: { amount: string; tone: Group['tone'] }) {
-  const isPositive = tone === 'positive';
+function getCleanMembersLabel(label?: string) {
+  return String(label || '۱ عضو')
+    .replace(/\s*•\s*فعال/g, '')
+    .replace(/\s*•\s*آرشیو شده/g, '')
+    .trim();
+}
+
+function AmountText({
+  amount,
+  tone,
+  archived,
+  loading,
+}: {
+  amount: string;
+  tone: Group['tone'];
+  archived: boolean;
+  loading: boolean;
+}) {
+  const numericAmount = normalizeMoneyAmount(amount);
+  const isBalanced = numericAmount === 0;
+  const isDebt = !isBalanced && tone === 'negative';
+  const isCredit = !isBalanced && tone === 'positive';
+  const label = archived
+    ? 'مانده‌ی این گروه'
+    : isDebt
+      ? 'شما باید پرداخت کنید'
+      : isCredit
+        ? 'شما باید دریافت کنید'
+        : 'این گروه تسویه شده';
 
   return (
-    <div className="rounded-[20px] border border-slate-100 bg-slate-50/70 px-4 py-3 text-right">
-      <div className="text-[11px] font-extrabold text-slate-500">
-        {isPositive ? 'وضعیت حساب' : 'نیاز به تسویه'}
+    <div
+      className={[
+        'group-card-amount',
+        isDebt ? 'group-card-amount--debt' : isCredit ? 'group-card-amount--credit' : 'group-card-amount--settled',
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-extrabold">{label}</span>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/75">
+          <ReceiptText className="h-4 w-4" />
+        </span>
       </div>
-      <MoneyWithWords
-        amount={amount}
-        className="mt-1"
-        valueClassName={[
-          'text-[19px] font-extrabold tracking-[-0.02em]',
-          isPositive ? 'text-emerald-600' : 'text-rose-500',
-        ].join(' ')}
-        textClassName="mt-1 text-[11px] font-semibold leading-5 text-slate-500"
-      />
+
+      {loading ? (
+        <div
+          className="mt-3 flex h-7 items-center gap-2 text-sm font-extrabold opacity-75"
+          role="status"
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          در حال محاسبه حساب
+        </div>
+      ) : (
+        <MoneyWithWords
+          amount={numericAmount}
+          className="mt-2"
+          valueClassName="text-[20px] font-extrabold tracking-[-0.02em]"
+          showText={false}
+        />
+      )}
     </div>
   );
 }
 
 interface GroupCardProps {
   group: Group;
+  balanceLoading?: boolean;
+  isLastMobile?: boolean;
   onOpen?: (group: Group) => void;
   onDelete?: (group: Group) => void;
 }
 
-export function GroupCard({ group, onOpen, onDelete }: GroupCardProps) {
+export function GroupCard({
+  group,
+  balanceLoading = false,
+  isLastMobile = false,
+  onOpen,
+  onDelete,
+}: GroupCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  const mobileMenuId = useId();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const archived = group.status === 'ARCHIVED';
+  const cleanMembersLabel = getCleanMembersLabel(group.membersLabel);
+  const roleLabel = getRoleLabel(group.role);
+  const canManageGroup = ['OWNER', 'ADMIN'].includes(String(group.role || '').toUpperCase());
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node;
+
+      if (
+        !menuRef.current?.contains(target) &&
+        !mobileMenuRef.current?.contains(target)
+      ) {
+        setMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        window.requestAnimationFrame(() => {
+          const visibleButton = mobileMenuButtonRef.current?.offsetParent
+            ? mobileMenuButtonRef.current
+            : menuButtonRef.current;
+          visibleButton?.focus();
+        });
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuOpen]);
 
   const handleOpen = () => {
     setMenuOpen(false);
@@ -96,97 +232,113 @@ export function GroupCard({ group, onOpen, onDelete }: GroupCardProps) {
   };
 
   return (
-    <article
-      className={[
-        'group relative flex min-h-[260px] flex-col overflow-visible rounded-[30px] border-2 bg-white p-4 text-right shadow-[0_18px_46px_rgba(15,23,42,0.075)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_24px_60px_rgba(15,23,42,0.11)] sm:p-5',
-        archived
-          ? 'border-amber-200 bg-amber-50/45 hover:border-amber-300'
-          : 'border-slate-200 hover:border-emerald-200',
-      ].join(' ')}
-      dir="rtl"
-      role="button"
-      tabIndex={0}
-      onClick={handleOpen}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          handleOpen();
-        }
-      }}
-    >
-      <div className="absolute left-4 top-4 z-20">
+    <>
+      <article
+        className={[
+          'group-card-row relative flex min-h-[82px] items-center px-3 py-2 lg:hidden',
+          isLastMobile ? 'group-card-row--last' : '',
+        ].join(' ')}
+        dir="rtl"
+      >
         <button
           type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setMenuOpen((prev) => !prev);
-          }}
-          className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-slate-100 bg-white text-slate-500 shadow-sm transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-800"
-          aria-label="گزینه‌های گروه"
+          onClick={handleOpen}
+          className="group-card-row-main flex min-w-0 flex-1 items-center gap-3 rounded-2xl text-right"
+          aria-label={`ورود به گروه ${group.name}`}
         >
-          {menuOpen ? <X className="h-5 w-5" /> : <MoreVertical className="h-5 w-5" />}
+          <GroupIllustration type={group.illustration} mobile />
+
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[15px] font-extrabold text-text">{group.name}</span>
+              {archived ? (
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-extrabold text-amber-700">
+                  آرشیو
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-1 flex items-center gap-1.5 text-xs font-bold text-muted">
+              <Users className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{cleanMembersLabel}</span>
+            </span>
+          </span>
+
+          <MobileBalance
+            amount={group.amount}
+            tone={group.tone}
+            archived={archived}
+            loading={balanceLoading}
+          />
         </button>
 
-        {menuOpen ? (
-          <div
-            onClick={(event) => event.stopPropagation()}
-            className="absolute left-0 top-12 z-30 w-[220px] overflow-hidden rounded-[24px] border border-slate-100 bg-white p-2 text-right shadow-[0_18px_55px_rgba(15,23,42,0.16)]"
-          >
+        {!archived && onDelete && canManageGroup ? (
+          <div ref={mobileMenuRef} className="relative mr-1 shrink-0">
             <button
+              ref={mobileMenuButtonRef}
               type="button"
-              onClick={handleOpen}
-              className="flex h-11 w-full items-center justify-between rounded-[18px] px-3 text-sm font-extrabold text-slate-700 transition hover:bg-slate-50"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              className="group-card-row-menu-button flex h-10 w-8 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              aria-label={`مدیریت گروه ${group.name}`}
+              aria-expanded={menuOpen}
+              aria-controls={menuOpen ? mobileMenuId : undefined}
             >
-              مشاهده جزئیات
-              <Eye className="h-4 w-4" />
+              {menuOpen ? <X className="h-4 w-4" /> : <MoreVertical className="h-4 w-4" />}
             </button>
 
-            {!archived ? (
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="mt-1 flex h-11 w-full items-center justify-between rounded-[18px] px-3 text-sm font-extrabold text-rose-600 transition hover:bg-rose-50"
+            {menuOpen ? (
+              <div
+                id={mobileMenuId}
+                aria-label="عملیات مدیریت گروه"
+                className="group-card-menu absolute left-0 top-11 z-30 w-[190px] overflow-hidden rounded-2xl border p-2 text-right"
               >
-                حذف از لیست
-                <Trash2 className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="mt-1 flex h-11 w-full items-center justify-between rounded-[18px] bg-amber-50 px-3 text-sm font-extrabold text-amber-700">
-                در آرشیو است
-                <Archive className="h-4 w-4" />
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="flex h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-extrabold text-amber-700 transition hover:bg-amber-50"
+                >
+                  انتقال به آرشیو
+                  <Archive className="h-4 w-4" />
+                </button>
               </div>
-            )}
+            ) : null}
           </div>
         ) : null}
-      </div>
+      </article>
 
-      <div className="mb-5 flex items-start justify-between gap-4 pl-12">
+    <article
+      className={[
+        'group-card-clean relative hidden min-h-[212px] flex-col overflow-visible rounded-3xl border p-4 text-right transition duration-200 sm:p-5 lg:flex',
+        archived ? 'group-card-clean--archived' : 'group-card-clean--active',
+      ].join(' ')}
+      dir="rtl"
+    >
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 text-right">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span
-              className={[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold',
-                archived
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-emerald-50 text-emerald-700',
-              ].join(' ')}
-            >
-              {archived ? <Archive className="h-3.5 w-3.5" /> : null}
-              {archived ? 'آرشیو شده' : 'فعال'}
-            </span>
+          {archived || roleLabel ? (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {archived ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-extrabold text-amber-700">
+                  <Archive className="h-3.5 w-3.5" />
+                  آرشیو شده
+                </span>
+              ) : null}
 
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-extrabold text-slate-600">
-              {getRoleLabel(group.role)}
-            </span>
-          </div>
+              {roleLabel ? (
+                <span className="group-card-role-pill inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-extrabold">
+                  {roleLabel}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
-          <h3 className="line-clamp-1 text-[20px] font-extrabold leading-8 text-text">
+          <h2 className="line-clamp-1 text-[20px] font-extrabold leading-8 text-text">
             {group.name}
-          </h3>
+          </h2>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1">
+            <span className="group-card-meta-pill inline-flex items-center gap-1.5 rounded-full px-2.5 py-1">
               <Users className="h-3.5 w-3.5" />
-              {group.membersLabel}
+              {cleanMembersLabel}
             </span>
           </div>
         </div>
@@ -194,37 +346,60 @@ export function GroupCard({ group, onOpen, onDelete }: GroupCardProps) {
         <GroupIllustration type={group.illustration} />
       </div>
 
-      {group.description ? (
-        <p className="mb-4 line-clamp-2 rounded-[18px] bg-slate-50/75 px-3 py-2 text-xs font-semibold leading-6 text-slate-500">
-          {group.description}
-        </p>
-      ) : null}
+      <div className="mt-auto space-y-3">
+        <AmountText
+          amount={group.amount}
+          tone={group.tone}
+          archived={archived}
+          loading={balanceLoading}
+        />
 
-      <div className="mt-auto space-y-4">
-        <AmountText amount={group.amount} tone={group.tone} />
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-xs font-bold text-muted">
-            {group.statusLabel || 'برای دیدن هزینه‌ها وارد گروه شو'}
-          </span>
-
+        <div className="relative flex items-center gap-2">
           <button
             type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              handleOpen();
-            }}
-            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[17px] bg-emerald-600 px-4 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(16,185,129,0.22)] transition hover:bg-emerald-700"
+            onClick={handleOpen}
+            className="group-card-open-button inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-extrabold transition"
+            aria-label={`ورود به گروه ${group.name}`}
           >
-            ورود به گروه
+            مشاهده گروه
             <ArrowLeft className="h-4 w-4" />
           </button>
+
+          {!archived && onDelete && canManageGroup ? (
+            <div ref={menuRef} className="relative shrink-0">
+              <button
+                ref={menuButtonRef}
+                type="button"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                className="group-card-menu-button flex h-11 w-11 items-center justify-center rounded-2xl border text-slate-500 transition hover:text-slate-800"
+                aria-label={`مدیریت گروه ${group.name}`}
+                aria-expanded={menuOpen}
+                aria-controls={menuOpen ? menuId : undefined}
+              >
+                {menuOpen ? <X className="h-5 w-5" /> : <MoreVertical className="h-5 w-5" />}
+              </button>
+
+              {menuOpen ? (
+                <div
+                  id={menuId}
+                  aria-label="عملیات مدیریت گروه"
+                  className="group-card-menu absolute bottom-[52px] left-0 z-30 w-[210px] overflow-hidden rounded-2xl border p-2 text-right"
+                >
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    className="flex h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-extrabold text-amber-700 transition hover:bg-amber-50"
+                  >
+                    انتقال به آرشیو
+                    <Archive className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
-
-      <div className="pointer-events-none absolute bottom-5 left-5 hidden h-8 w-8 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition group-hover:bg-emerald-50 group-hover:text-emerald-600 sm:flex">
-        <ChevronLeft className="h-4 w-4" />
-      </div>
     </article>
+    </>
   );
 }
