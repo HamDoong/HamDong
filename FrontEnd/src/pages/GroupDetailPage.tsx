@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Archive,
   ArrowLeft,
+  Banknote,
   Check,
   Copy,
-  Crown,
   Eye,
   HandCoins,
   Link2,
@@ -31,6 +31,8 @@ import {
   deleteExpense,
   listGroupExpenses,
   type BackendExpense,
+  type ExpenseSplitMethod,
+  type FeeType,
 } from '../lib/expenseApi';
 import {
   activateSettlementPlan,
@@ -40,7 +42,6 @@ import {
   createGroupSettlement,
   generateSettlementPlan,
   getGroupBalances,
-  getGroupDebts,
   getMyGroupBalance,
   getSettlementPlan,
   listGroupSettlements,
@@ -48,7 +49,6 @@ import {
   rejectSettlement,
   reportPlanItemPaid,
   type BalanceItem,
-  type DebtItem,
   type MyBalanceResponse,
   type SettlementItem,
   type SettlementPlan,
@@ -75,6 +75,7 @@ import {
   type BackendGroupType,
   type CreatedInvite,
 } from '../lib/groupApi';
+import { MoneyWithWords } from '../lib/money';
 import { getCurrentUser, type CurrentUser } from '../lib/userApi';
 
 interface GroupDetailPageProps {
@@ -84,11 +85,65 @@ interface GroupDetailPageProps {
   onGroupRemoved: (groupId: string) => void;
 }
 
-type QuickSection = 'expense-card' | 'members-card' | 'settlement-card' | 'settings-card';
-type VisualTone = 'neutral' | 'positive' | 'negative' | 'warning' | 'sky' | 'slate';
+type ModalName = 'expense' | 'settlement' | 'settings' | 'activity' | null;
+type ManualPaymentMode = 'FULL' | 'PARTIAL';
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
+}
+
+function toPersianNumber(value: string | number) {
+  return String(value).replace(/\d/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
+}
+
+function normalizeDigits(value: string) {
+  const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
+  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+
+  return value
+    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)));
+}
+
+function parseAmountToMinor(value: string) {
+  const digits = normalizeDigits(value).replace(/[^0-9]/g, '');
+  return Number(digits || 0);
+}
+
+function parsePercentage(value: string) {
+  const normalized = normalizeDigits(value).replace(/٫/g, '.').replace(/,/g, '.');
+  const numeric = Number(normalized.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function formatMoney(minor = 0) {
+  const absValue = Math.abs(Math.round(minor));
+  return `${toPersianNumber(absValue.toLocaleString('en-US'))} تومان`;
+}
+
+function formatSignedMoney(minor = 0) {
+  return formatMoney(minor);
+}
+
+function toPersianDate(value?: string) {
+  if (!value) return 'بدون تاریخ';
+
+  try {
+    return new Intl.DateTimeFormat('fa-IR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function getBackendMessage(error: unknown) {
+  return getFriendlyApiErrorMessage(error, {
+    defaultMessage: 'عملیات انجام نشد. لطفاً دوباره تلاش کن.',
+    invalidMessage: 'اطلاعات واردشده کامل یا درست نیست.',
+  });
 }
 
 function getMemberId(member: BackendGroupMember) {
@@ -114,55 +169,17 @@ function getRoleLabel(role?: string) {
   return role || 'عضو';
 }
 
-function getBackendMessage(error: unknown) {
-  return getFriendlyApiErrorMessage(error, {
-    defaultMessage: 'عملیات انجام نشد. لطفاً دوباره تلاش کن.',
-    invalidMessage: 'اطلاعات واردشده کامل یا درست نیست.',
-  });
+function getCurrentUserId(user: CurrentUser | null) {
+  return user?.id ? String(user.id) : '';
 }
 
-function toPersianNumber(value: string | number) {
-  return String(value).replace(/\d/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
-}
-
-function formatMoney(minor = 0) {
-  const absValue = Math.abs(Math.round(minor));
-  return `${toPersianNumber(absValue.toLocaleString('en-US'))} تومان`;
-}
-
-function formatSignedMoney(minor = 0) {
-  if (minor > 0) return `+${formatMoney(minor)}`;
-  if (minor < 0) return `-${formatMoney(minor)}`;
-  return formatMoney(0);
-}
-
-function getMyAccountStatus(minor = 0) {
-  if (minor > 0) {
-    return {
-      label: 'طلبکار',
-      amount: formatMoney(minor),
-      tone: 'positive' as const,
-    };
-  }
-
-  if (minor < 0) {
-    return {
-      label: 'بدهکار',
-      amount: formatMoney(minor),
-      tone: 'negative' as const,
-    };
-  }
-
-  return {
-    label: 'تسویه',
-    amount: formatMoney(0),
-    tone: 'neutral' as const,
-  };
-}
-
-function getRemainingPaymentsLabel(count: number) {
-  if (count <= 0) return 'تسویه';
-  return `${toPersianNumber(count)} پرداخت`;
+function getExpenseTotal(expense: BackendExpense) {
+  return (
+    expense.total_amount_minor ??
+    (expense.base_amount_minor || 0) +
+      (expense.tax_amount_minor || 0) +
+      (expense.service_fee_amount_minor || 0)
+  );
 }
 
 function getSettlementStatusLabel(status?: string) {
@@ -192,44 +209,25 @@ function canReviewPlanItem(item: SettlementPlanItem) {
   return item.status === 'REPORTED';
 }
 
-function parseAmountToMinor(value: string) {
-  const persianDigits = '۰۱۲۳۴۵۶۷۸۹';
-  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+const dashboardCard =
+  'dashboard-section-card rounded-[24px] border border-emerald-100/80 bg-white/95 text-text shadow-[0_18px_44px_rgba(15,23,42,0.075)] backdrop-blur dark:border-emerald-500/20 dark:bg-slate-950/90 dark:text-slate-100';
 
-  const normalized = value
-    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
-    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)));
+const dashboardQuietCard =
+  'dashboard-section-card dashboard-section-card--quiet rounded-[24px] border border-emerald-100/70 bg-white/[0.90] text-text shadow-[0_12px_32px_rgba(15,23,42,0.055)] backdrop-blur dark:border-emerald-500/15 dark:bg-slate-950/80 dark:text-slate-100';
 
-  const digits = normalized.replace(/[^0-9]/g, '');
-  return Number(digits || 0);
-}
+const dashboardRow =
+  'dashboard-list-row dashboard-list-card rounded-[22px] border border-emerald-100/80 bg-white/[0.92] text-right text-text shadow-[0_8px_22px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_14px_32px_rgba(15,23,42,0.07)] dark:border-emerald-500/15 dark:bg-slate-900/80 dark:text-slate-100 dark:hover:border-emerald-400/30 dark:hover:bg-slate-900';
 
-function getExpenseTotal(expense: BackendExpense) {
-  return (
-    expense.total_amount_minor ??
-    (expense.base_amount_minor || 0) +
-      (expense.tax_amount_minor || 0) +
-      (expense.service_fee_amount_minor || 0)
-  );
-}
+const controlRadius = 'rounded-[18px]';
 
-function toPersianDate(value?: string) {
-  if (!value) return 'بدون تاریخ';
+const inputClass =
+  'h-12 w-full rounded-[18px] border border-emerald-200/90 bg-white/90 px-4 text-right text-sm font-bold text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 disabled:bg-slate-50 disabled:text-slate-400 dark:border-emerald-500/20 dark:bg-slate-900/80 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400/50 dark:focus:bg-slate-900 dark:disabled:bg-slate-900/50 dark:disabled:text-slate-500';
 
-  try {
-    return new Intl.DateTimeFormat('fa-IR', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
-}
+const textareaClass =
+  'min-h-[96px] w-full resize-none rounded-[18px] border border-emerald-200/90 bg-white/90 px-4 py-3 text-right text-sm font-semibold leading-7 text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 disabled:bg-slate-50 disabled:text-slate-400 dark:border-emerald-500/20 dark:bg-slate-900/80 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400/50 dark:focus:bg-slate-900 dark:disabled:bg-slate-900/50 dark:disabled:text-slate-500';
 
-function getCurrentUserId(user: CurrentUser | null) {
-  return user?.id ? String(user.id) : '';
-}
+const scrollAreaClass =
+  'min-h-0 overflow-y-auto overscroll-auto pl-1 pr-0 [scrollbar-width:thin] [scrollbar-color:rgba(16,185,129,0.45)_transparent] dark:[scrollbar-color:rgba(52,211,153,0.35)_transparent]';
 
 function readDisplayString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -409,13 +407,51 @@ function getSettlementErrorDescription(error: unknown) {
   return message || 'اتصال یا اطلاعات پرداخت مشکل دارد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
 }
 
+type VisualTone = 'positive' | 'negative' | 'warning' | 'sky' | 'slate' | 'neutral';
+type QuickSection = 'expenses' | 'settlement' | 'settings' | 'members' | 'activity';
+
+function getMyAccountStatus(amount: number) {
+  if (amount > 0) {
+    return {
+      label: 'بدهکار',
+      amount: formatSignedMoney(amount),
+      tone: 'negative' as VisualTone,
+    };
+  }
+
+  if (amount < 0) {
+    return {
+      label: 'طلبکار',
+      amount: formatSignedMoney(amount),
+      tone: 'positive' as VisualTone,
+    };
+  }
+
+  return {
+    label: 'تسویه',
+    amount: formatSignedMoney(amount),
+    tone: 'slate' as VisualTone,
+  };
+}
+
+function getRemainingPaymentsLabel(count: number) {
+  return count > 0 ? `${toPersianNumber(count)} پرداخت` : 'بدون پرداخت';
+}
+
 function scrollToSection(id: QuickSection) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function MemberAvatar({ name }: { name: string }) {
+function MemberAvatar({ name, owner = false }: { name: string; owner?: boolean }) {
   return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-emerald-100 bg-gradient-to-br from-emerald-50 via-teal-50 to-white text-sm font-black text-emerald-700 shadow-[inset_3px_0_0_#10B981,0_10px_28px_rgba(15,23,42,0.045)]">
+    <div
+      className={cn(
+        'flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black shadow-[inset_3px_0_0_#10B981,0_10px_28px_rgba(15,23,42,0.045)]',
+        owner
+          ? 'border-orange-300 bg-orange-50 text-orange-700'
+          : 'border-emerald-100 bg-gradient-to-br from-emerald-50 via-teal-50 to-white text-emerald-700',
+      )}
+    >
       {name.slice(0, 1) || '؟'}
     </div>
   );
@@ -607,11 +643,11 @@ function RemainingPaymentsBox({
   );
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
+function EmptyState({ title, description, icon }: { title: string; description: string; icon?: ReactNode }) {
   return (
     <div className="rounded-[22px] border-2 border-dashed border-emerald-100/80 bg-white/[0.58] p-7 text-center shadow-[0_16px_38px_rgba(15,23,42,0.035)]">
       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-[18px] bg-white text-emerald-600 shadow-sm">
-        <Users className="h-6 w-6" />
+        {icon ?? <Users className="h-6 w-6" />}
       </div>
 
       <h3 className="text-lg font-black text-text">{title}</h3>
@@ -660,35 +696,40 @@ function QuickActionButton({
   );
 }
 
-function ActionButton({
+function Button({
   children,
   onClick,
   disabled,
   tone = 'primary',
   className,
+  type = 'button',
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-  tone?: 'primary' | 'soft' | 'danger' | 'dark';
+  tone?: 'primary' | 'secondary' | 'danger' | 'dark' | 'ghost';
   className?: string;
+  type?: 'button' | 'submit';
 }) {
   const toneClass =
     tone === 'primary'
-      ? 'bg-gradient-to-l from-[#00915F] to-[#00A86B] text-white shadow-[0_18px_42px_rgba(0,168,107,0.15)] hover:-translate-y-0.5'
+      ? 'bg-emerald-600 text-white shadow-[0_14px_32px_rgba(16,185,129,0.22)] ring-1 ring-emerald-500/20 hover:-translate-y-0.5 hover:bg-emerald-700 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400'
       : tone === 'danger'
-        ? 'border-2 border-rose-100 bg-rose-50 text-rose-600 shadow-[0_16px_36px_rgba(244,63,94,0.055)] hover:bg-rose-100'
+        ? 'border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15'
         : tone === 'dark'
-          ? 'bg-slate-900 text-white shadow-[0_16px_36px_rgba(15,23,42,0.12)] hover:bg-slate-800'
-          : 'border-2 border-slate-200 bg-white text-slate-700 shadow-[0_14px_32px_rgba(15,23,42,0.045)] hover:bg-slate-50';
+          ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white'
+          : tone === 'ghost'
+            ? 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            : 'border border-emerald-200 bg-emerald-50/80 text-emerald-700 shadow-[0_10px_24px_rgba(15,23,42,0.045)] hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/15';
 
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'inline-flex h-11 items-center justify-center gap-2 rounded-[17px] px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0',
+        'inline-flex min-h-11 items-center justify-center gap-2 px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0',
+        controlRadius,
         toneClass,
         className,
       )}
@@ -698,28 +739,174 @@ function ActionButton({
   );
 }
 
-function FieldSurface({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-[24px] border-2 border-emerald-100/80 bg-white/[0.78] p-4 shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
-      {children}
-    </div>
-  );
-}
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  tone = 'primary',
+  className,
+  type = 'button',
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  tone?: 'primary' | 'secondary' | 'danger' | 'dark' | 'ghost';
+  className?: string;
+  type?: 'button' | 'submit';
+}) {
+  const toneClass =
+    tone === 'primary'
+      ? 'bg-emerald-600 text-white shadow-[0_14px_32px_rgba(16,185,129,0.22)] ring-1 ring-emerald-500/20 hover:-translate-y-0.5 hover:bg-emerald-700 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400'
+      : tone === 'danger'
+        ? 'border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15'
+        : tone === 'dark'
+          ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white'
+          : tone === 'ghost'
+            ? 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            : 'border border-emerald-200 bg-emerald-50/80 text-emerald-700 shadow-[0_10px_24px_rgba(15,23,42,0.045)] hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/15';
 
-function ListRow({ children, tone = 'emerald' }: { children: ReactNode; tone?: 'emerald' | 'slate' }) {
-  const className =
-    tone === 'slate'
-      ? 'border-slate-200 bg-white/[0.88] hover:border-slate-300'
-      : 'border-emerald-100/80 bg-white/[0.86] hover:border-emerald-200';
-
   return (
-    <div
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
       className={cn(
-        'rounded-[22px] border-2 px-4 py-4 text-right transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_42px_rgba(15,23,42,0.05)]',
+        'inline-flex min-h-11 items-center justify-center gap-2 px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0',
+        controlRadius,
+        toneClass,
         className,
       )}
     >
       {children}
+    </button>
+  );
+}
+
+function Modal({
+  open,
+  title,
+  description,
+  icon,
+  children,
+  onClose,
+  size = 'md',
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  icon?: ReactNode;
+  children: ReactNode;
+  onClose: () => void;
+  size?: 'md' | 'lg';
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/36 px-3 py-3 backdrop-blur-sm sm:items-center dark:bg-black/55"
+      dir="rtl"
+    >
+      <div
+        className={cn(
+          'max-h-[92vh] w-full overflow-hidden rounded-[32px] border border-white/90 bg-white text-right text-text shadow-[0_28px_90px_rgba(15,23,42,0.18)] dark:border-emerald-500/15 dark:bg-slate-950 dark:text-slate-100 dark:shadow-[0_28px_90px_rgba(0,0,0,0.45)]',
+          size === 'lg' ? 'max-w-[900px]' : 'max-w-[620px]',
+        )}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-emerald-100/70 bg-white/[0.45] px-4 py-4 sm:px-5 dark:border-emerald-500/15 dark:bg-slate-900/60">
+          <div className="flex min-w-0 items-start gap-3 text-right">
+            {icon ? (
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] bg-emerald-50 text-emerald-600 shadow-[inset_3px_0_0_#10B981] dark:bg-emerald-500/10 dark:text-emerald-300 dark:shadow-[inset_3px_0_0_#34D399]">
+                {icon}
+              </span>
+            ) : null}
+
+            <div className="min-w-0 text-right">
+              <h2 className="text-xl font-black tracking-[-0.03em] text-text dark:text-slate-100">{title}</h2>
+              {description ? (
+                <p className="mt-1 text-sm font-bold leading-6 text-muted dark:text-slate-400">{description}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[18px] bg-slate-50 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+            aria-label="بستن"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(92vh-92px)] overflow-y-auto px-4 py-4 text-right sm:px-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block text-right">
+      <span className="mb-2 block text-sm font-black text-text dark:text-slate-100">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function MetaTags({ user, date }: { user: string; date: string }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-start gap-2 text-right text-xs font-semibold text-muted dark:text-slate-400">
+      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
+        {user}
+      </span>
+
+      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300">
+        {date}
+      </span>
+    </div>
+  );
+}
+
+function MiniNumberCard({
+  label,
+  value,
+  tone,
+  signed = false,
+}: {
+  label: string;
+  value: number | string | null | undefined;
+  tone: 'rose' | 'emerald' | 'slate';
+  signed?: boolean;
+}) {
+  const classes =
+    tone === 'rose'
+      ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+      : tone === 'emerald'
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+        : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200';
+
+  return (
+    <div className={cn('rounded-[20px] border px-4 py-3 text-right', classes)}>
+      <p className="text-xs font-extrabold opacity-75">{label}</p>
+      <div className="mt-1">
+        <MoneyWithWords
+          amount={value}
+          signed={signed}
+          className="min-w-0"
+          valueClassName="truncate text-lg font-black"
+          textClassName="mt-1 text-[10px] font-semibold opacity-70"
+          showText={true}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
+  return (
+    <div className="dashboard-section-header mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-transparent p-0 text-right">
+      <h2 className="text-lg font-black tracking-[-0.02em] text-text dark:text-slate-100">{title}</h2>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -731,7 +918,9 @@ export function GroupDetailPage({
   onGroupRemoved,
 }: GroupDetailPageProps) {
   const { notify, confirm } = useFeedback();
-  const autoSettlementKeyRef = useRef('');
+
+  const [modal, setModal] = useState<ModalName>(null);
+  const [showAdvancedExpense, setShowAdvancedExpense] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [group, setGroup] = useState<BackendGroup | null>(null);
@@ -739,7 +928,6 @@ export function GroupDetailPage({
   const [expenses, setExpenses] = useState<BackendExpense[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [myBalance, setMyBalance] = useState<MyBalanceResponse | null>(null);
-  const [debts, setDebts] = useState<DebtItem[]>([]);
   const [settlementPlan, setSettlementPlan] = useState<SettlementPlan | null>(null);
   const [settlements, setSettlements] = useState<SettlementItem[]>([]);
   const [invite, setInvite] = useState<CreatedInvite | null>(null);
@@ -753,12 +941,20 @@ export function GroupDetailPage({
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expensePayerId, setExpensePayerId] = useState('');
   const [expenseParticipantIds, setExpenseParticipantIds] = useState<string[]>([]);
+  const [expenseSplitMethod, setExpenseSplitMethod] = useState<ExpenseSplitMethod>('EQUAL');
+  const [expenseCustomShares, setExpenseCustomShares] = useState<Record<string, string>>({});
+  const [taxType, setTaxType] = useState<FeeType>('NONE');
+  const [taxValue, setTaxValue] = useState('');
+  const [serviceFeeType, setServiceFeeType] = useState<FeeType>('NONE');
+  const [serviceFeeValue, setServiceFeeValue] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [openingReceiptId, setOpeningReceiptId] = useState<string | null>(null);
 
   const [manualReceiverId, setManualReceiverId] = useState('');
   const [manualAmount, setManualAmount] = useState('');
   const [manualDescription, setManualDescription] = useState('');
+  const [manualPaymentMode, setManualPaymentMode] = useState<ManualPaymentMode>('FULL');
+  const [selectedManualPlanItemId, setSelectedManualPlanItemId] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
@@ -771,41 +967,44 @@ export function GroupDetailPage({
   const [leaveLoading, setLeaveLoading] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [autoSettlementTried, setAutoSettlementTried] = useState(false);
 
   const inviteUrl = useMemo(() => (invite ? getInviteUrl(invite) : ''), [invite]);
 
+  const currentUserId = getCurrentUserId(currentUser);
   const isArchived = group?.status === 'ARCHIVED';
   const isOwner = group?.my_role === 'OWNER';
   const canManageGroup = ['OWNER', 'ADMIN'].includes(group?.my_role || '');
-  const currentUserId = getCurrentUserId(currentUser);
 
-  const activeExpenses = expenses.filter(
-    (expense) => expense.status !== 'DELETED' && expense.status !== 'CANCELLED',
+  const activeExpenses = useMemo(
+    () => expenses.filter((expense) => expense.status !== 'DELETED' && expense.status !== 'CANCELLED'),
+    [expenses],
   );
 
-  const recentExpenses = [...activeExpenses].sort((a, b) => {
-    const left = new Date(a.expense_date || a.created_at || 0).getTime();
-    const right = new Date(b.expense_date || b.created_at || 0).getTime();
-    return right - left;
-  });
+  const recentExpenses = useMemo(() => {
+    return [...activeExpenses].sort((a, b) => {
+      const left = new Date(a.expense_date || a.created_at || 0).getTime();
+      const right = new Date(b.expense_date || b.created_at || 0).getTime();
+      return right - left;
+    });
+  }, [activeExpenses]);
 
-  const totalExpenseMinor = activeExpenses.reduce(
-    (sum, expense) => sum + getExpenseTotal(expense),
-    0,
+  const openPlanItems = settlementPlan?.items?.filter((item) => isOpenSettlementStatus(item.status)) || [];
+  const myDebtItems = openPlanItems.filter((item) => item.payer_user_id === currentUserId);
+  const myCreditItems = openPlanItems.filter((item) => item.receiver_user_id === currentUserId);
+
+  const totalMyDebtMinor = myDebtItems.reduce((sum, item) => sum + (item.amount_minor || 0), 0);
+  const totalMyCreditMinor = myCreditItems.reduce((sum, item) => sum + (item.amount_minor || 0), 0);
+
+  const manualPayOptions = openPlanItems.filter(
+    (item) => item.payer_user_id === currentUserId && ['PENDING', 'REJECTED'].includes(item.status || 'PENDING'),
   );
 
-  const openDebts = debts.filter(
-    (debt) => isOpenSettlementStatus(debt.status) && (debt.amount_minor || 0) > 0,
-  );
-
+  const totalExpenseMinor = activeExpenses.reduce((sum, expense) => sum + getExpenseTotal(expense), 0);
   const optimizedSettlements = useMemo(
     () => calculateOptimizedSettlements(balances, members),
     [balances, members],
   );
-  const openPlanItems =
-    settlementPlan?.items?.filter((item) => isOpenSettlementStatus(item.status)) || [];
-
   const currentUserOptimizedPayment = optimizedSettlements.find(
     (item) => item.payer_user_id === currentUserId,
   );
@@ -819,14 +1018,37 @@ export function GroupDetailPage({
   );
   const totalOpenDebtMinor = optimizedTotalDebtMinor;
   const remainingPaymentCount = optimizedSettlements.length;
-  const backendPaymentCount = openDebts.length || openPlanItems.length;
+  const backendPaymentCount = openPlanItems.length;
   const currentSuggestedPayment = currentUserOptimizedPayment || null;
+
+  const selectedManualPlanItem = manualPayOptions.find((item) => item.id === selectedManualPlanItemId) || null;
+
+  const accountTitle = myNetMinor < 0 ? 'بدهکار هستی' : myNetMinor > 0 ? 'طلبکار هستی' : 'حسابت صاف است';
+  const accountTone = myNetMinor < 0 ? 'rose' : myNetMinor > 0 ? 'emerald' : 'slate';
+
+  const baseAmountMinor = parseAmountToMinor(expenseAmount);
+
+  const taxAmountMinor = useMemo(() => {
+    if (taxType === 'FIXED') return parseAmountToMinor(taxValue);
+    if (taxType === 'PERCENTAGE') return Math.round((baseAmountMinor * parsePercentage(taxValue)) / 100);
+    return 0;
+  }, [baseAmountMinor, taxType, taxValue]);
+
+  const serviceFeeAmountMinor = useMemo(() => {
+    if (serviceFeeType === 'FIXED') return parseAmountToMinor(serviceFeeValue);
+    if (serviceFeeType === 'PERCENTAGE') return Math.round((baseAmountMinor * parsePercentage(serviceFeeValue)) / 100);
+    return 0;
+  }, [baseAmountMinor, serviceFeeType, serviceFeeValue]);
+
+  const expenseFinalTotalMinor = baseAmountMinor + taxAmountMinor + serviceFeeAmountMinor;
+
+  const customSharesTotalMinor = expenseParticipantIds.reduce((sum, userId) => {
+    return sum + parseAmountToMinor(expenseCustomShares[userId] || '');
+  }, 0);
 
   async function loadGroup() {
     try {
       setLoading(true);
-      setError(null);
-
       const backendGroup = await getGroupDetail(groupId);
 
       setGroup(backendGroup);
@@ -836,7 +1058,11 @@ export function GroupDetailPage({
       onGroupUpdated(backendGroup);
     } catch (err) {
       console.error(err);
-      setError('خطا در دریافت جزئیات گروه');
+      notify({
+        type: 'error',
+        title: 'دریافت گروه ناموفق بود',
+        description: getBackendMessage(err),
+      });
     } finally {
       setLoading(false);
     }
@@ -873,12 +1099,13 @@ export function GroupDetailPage({
       const ids = normalizedMembers.map(getMemberUserId).filter(Boolean);
       setExpenseParticipantIds(ids);
       setExpensePayerId(me?.id ? String(me.id) : ids[0] || '');
+      setManualReceiverId(ids.find((id) => id !== String(me?.id || '')) || '');
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
         title: 'دریافت اعضا ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        description: getBackendMessage(err),
       });
     } finally {
       setMembersLoading(false);
@@ -895,7 +1122,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'دریافت هزینه‌ها ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        description: getBackendMessage(err),
       });
     } finally {
       setExpensesLoading(false);
@@ -906,23 +1133,15 @@ export function GroupDetailPage({
     try {
       setSettlementLoading(true);
 
-      const [
-        balancesResult,
-        myBalanceResult,
-        debtsResult,
-        planResult,
-        settlementsResult,
-      ] = await Promise.allSettled([
+      const [balancesResult, myBalanceResult, planResult, settlementsResult] = await Promise.allSettled([
         getGroupBalances(groupId),
         getMyGroupBalance(groupId),
-        getGroupDebts(groupId),
         getSettlementPlan(groupId),
         listGroupSettlements(groupId),
       ]);
 
       setBalances(balancesResult.status === 'fulfilled' ? balancesResult.value.balances || [] : []);
       setMyBalance(myBalanceResult.status === 'fulfilled' ? myBalanceResult.value : null);
-      setDebts(debtsResult.status === 'fulfilled' ? debtsResult.value.debts || [] : []);
       setSettlementPlan(planResult.status === 'fulfilled' ? planResult.value : null);
       setSettlements(settlementsResult.status === 'fulfilled' ? settlementsResult.value || [] : []);
     } catch (err) {
@@ -930,7 +1149,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'دریافت تسویه‌ها ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        description: getBackendMessage(err),
       });
     } finally {
       setSettlementLoading(false);
@@ -941,29 +1160,29 @@ export function GroupDetailPage({
     await Promise.all([loadGroup(), loadMembers(), loadExpenses(), loadSettlementData()]);
   }
 
+  useEffect(() => {
+    void reloadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId]);
+
   async function refreshSmartSettlement(showNotification = true) {
     try {
       setSettlementSaving(true);
+      const generatedPlan = await generateSettlementPlan(groupId);
 
-      try {
-        const generatedPlan = await generateSettlementPlan(groupId);
-
-        if (generatedPlan?.id && generatedPlan.status === 'DRAFT') {
-          try {
-            await activateSettlementPlan(generatedPlan.id);
-            const latestPlan = await getSettlementPlan(groupId).catch(() => ({
-              ...generatedPlan,
-              status: 'ACTIVE',
-            }));
-            setSettlementPlan(latestPlan);
-          } catch {
-            setSettlementPlan(generatedPlan);
-          }
-        } else {
+      if (generatedPlan?.id && generatedPlan.status === 'DRAFT') {
+        try {
+          await activateSettlementPlan(generatedPlan.id);
+          const latestPlan = await getSettlementPlan(groupId).catch(() => ({
+            ...generatedPlan,
+            status: 'ACTIVE',
+          }));
+          setSettlementPlan(latestPlan);
+        } catch {
           setSettlementPlan(generatedPlan);
         }
-      } catch (planError) {
-        console.warn('Smart plan generation was skipped; refreshing balances instead:', planError);
+      } else {
+        setSettlementPlan(generatedPlan);
       }
 
       await loadSettlementData();
@@ -971,13 +1190,12 @@ export function GroupDetailPage({
       if (showNotification) {
         notify({
           type: 'success',
-          title: 'حساب کمینه بروزرسانی شد',
-          description: 'مانده‌های گروه دوباره دریافت شد و پرداخت نهایی از روی حساب کمینه نمایش داده شد.',
+          title: 'تسویه هوشمند بروزرسانی شد',
+          description: 'کمترین پرداخت‌های لازم دوباره حساب شد و پیشنهادهای جدید نمایش داده شد.',
         });
       }
     } catch (err) {
       console.error(err);
-
       if (showNotification) {
         notify({
           type: 'error',
@@ -991,41 +1209,50 @@ export function GroupDetailPage({
   }
 
   useEffect(() => {
-    void reloadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId]);
+    if (
+      autoSettlementTried ||
+      settlementLoading ||
+      expensesLoading ||
+      settlementPlan ||
+      activeExpenses.length === 0 ||
+      isArchived
+    ) {
+      return;
+    }
 
-  useEffect(() => {
-    if (settlementLoading || settlementSaving || expensesLoading || membersLoading) return;
-    if (isArchived) return;
-    if (members.length < 2) return;
-    if (activeExpenses.length === 0 || totalExpenseMinor <= 0) return;
-
-    const autoKey = `${groupId}:${activeExpenses.length}:${totalExpenseMinor}`;
-
-    if (autoSettlementKeyRef.current === autoKey) return;
-
-    autoSettlementKeyRef.current = autoKey;
+    setAutoSettlementTried(true);
     void refreshSmartSettlement(false);
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    groupId,
-    settlementLoading,
-    settlementSaving,
-    expensesLoading,
-    membersLoading,
-    isArchived,
-    members.length,
-    activeExpenses.length,
-    totalExpenseMinor,
-  ]);
+  }, [autoSettlementTried, settlementLoading, expensesLoading, settlementPlan, activeExpenses.length, isArchived]);
+
+  function selectManualPlanItem(item: SettlementPlanItem) {
+    setSelectedManualPlanItemId(item.id);
+    setManualReceiverId(item.receiver_user_id);
+    setManualPaymentMode('FULL');
+    setManualAmount(String(item.amount_minor));
+    setManualDescription('');
+  }
+
+  function openManualPaymentForItem(item: SettlementPlanItem) {
+    selectManualPlanItem(item);
+    setModal('settlement');
+  }
+
+  function resetManualPaymentForm() {
+    const firstOtherMember = members.find((member) => getMemberUserId(member) !== currentUserId);
+
+    setSelectedManualPlanItemId('');
+    setManualPaymentMode('FULL');
+    setManualAmount('');
+    setManualDescription('');
+    setManualReceiverId(firstOtherMember ? getMemberUserId(firstOtherMember) : '');
+  }
 
   async function handleSave() {
     if (!title.trim()) {
       notify({
         type: 'error',
-        title: 'عنوان گروه لازم است',
+        title: 'عنوان لازم است',
         description: 'برای گروه یک عنوان وارد کن.',
       });
       return;
@@ -1042,18 +1269,19 @@ export function GroupDetailPage({
 
       setGroup(updatedGroup);
       onGroupUpdated(updatedGroup);
+      setModal(null);
 
       notify({
         type: 'success',
-        title: 'تغییرات ذخیره شد',
+        title: 'ذخیره شد',
         description: 'اطلاعات گروه بروزرسانی شد.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'ویرایش گروه ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: 'ذخیره ناموفق بود',
+        description: getBackendMessage(err),
       });
     } finally {
       setSaving(false);
@@ -1061,11 +1289,9 @@ export function GroupDetailPage({
   }
 
   async function handleArchive() {
-    if (isArchived) return;
-
     const confirmed = await confirm({
       title: 'آرشیو گروه؟',
-      description: 'گروه از لیست فعال‌ها خارج می‌شود، اما اطلاعاتش باقی می‌ماند.',
+      description: 'گروه از لیست فعال‌ها خارج می‌شود.',
       confirmText: 'آرشیو کن',
       cancelText: 'انصراف',
       tone: 'warning',
@@ -1076,22 +1302,22 @@ export function GroupDetailPage({
     try {
       setArchiveLoading(true);
       await archiveGroup(groupId);
-
       const refreshedGroup = await getGroupDetail(groupId);
+
       setGroup(refreshedGroup);
       onGroupUpdated(refreshedGroup);
 
       notify({
         type: 'success',
         title: 'گروه آرشیو شد',
-        description: 'این گروه دیگر در لیست فعال‌ها نمایش داده نمی‌شود.',
+        description: 'گروه دیگر در لیست فعال‌ها نیست.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'آرشیو گروه ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: 'آرشیو ناموفق بود',
+        description: getBackendMessage(err),
       });
     } finally {
       setArchiveLoading(false);
@@ -1099,11 +1325,9 @@ export function GroupDetailPage({
   }
 
   async function handleRestore() {
-    if (!isArchived) return;
-
     const confirmed = await confirm({
-      title: 'بازگردانی گروه؟',
-      description: 'گروه دوباره به لیست گروه‌های فعال برمی‌گردد.',
+      title: 'فعال‌سازی گروه؟',
+      description: 'گروه دوباره به لیست فعال‌ها برمی‌گردد.',
       confirmText: 'فعال کن',
       cancelText: 'انصراف',
       tone: 'success',
@@ -1113,7 +1337,6 @@ export function GroupDetailPage({
 
     try {
       setArchiveLoading(true);
-
       const restoredGroup = await restoreGroup(groupId);
 
       setGroup(restoredGroup);
@@ -1122,14 +1345,14 @@ export function GroupDetailPage({
       notify({
         type: 'success',
         title: 'گروه فعال شد',
-        description: 'گروه دوباره در لیست فعال‌هاست.',
+        description: 'گروه دوباره قابل استفاده است.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'بازگردانی گروه ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: 'فعال‌سازی ناموفق بود',
+        description: getBackendMessage(err),
       });
     } finally {
       setArchiveLoading(false);
@@ -1140,15 +1363,15 @@ export function GroupDetailPage({
     if (isOwner) {
       notify({
         type: 'info',
-        title: 'مالک گروه نمی‌تواند خارج شود',
-        description: 'اول مالکیت را منتقل کن یا گروه را آرشیو کن.',
+        title: 'مالک نمی‌تواند خارج شود',
+        description: 'مالکیت را منتقل کن یا گروه را آرشیو کن.',
       });
       return;
     }
 
     const confirmed = await confirm({
       title: 'خروج از گروه؟',
-      description: 'بعد از خروج، این گروه از لیست تو حذف می‌شود.',
+      description: 'این گروه از لیست تو حذف می‌شود.',
       confirmText: 'خارج شو',
       cancelText: 'انصراف',
       tone: 'danger',
@@ -1158,12 +1381,11 @@ export function GroupDetailPage({
 
     try {
       setLeaveLoading(true);
-
       await leaveGroup(groupId);
 
       notify({
         type: 'success',
-        title: 'از گروه خارج شدی',
+        title: 'خارج شدی',
         description: 'گروه از لیست تو حذف شد.',
       });
 
@@ -1172,8 +1394,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'خروج از گروه ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: 'خروج ناموفق بود',
+        description: getBackendMessage(err),
       });
     } finally {
       setLeaveLoading(false);
@@ -1187,7 +1409,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'حذف عضو انجام نشد',
-        description: 'اطلاعات این عضو کامل نیست.',
+        description: 'اطلاعات عضو کامل نیست.',
       });
       return;
     }
@@ -1204,20 +1426,19 @@ export function GroupDetailPage({
 
     try {
       await removeGroupMember(groupId, memberId);
-
       setMembers((prev) => prev.filter((item) => getMemberId(item) !== memberId));
 
       notify({
         type: 'success',
         title: 'عضو حذف شد',
-        description: 'این عضو دیگر در گروه نیست.',
+        description: 'لیست اعضا بروزرسانی شد.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
         title: 'حذف عضو ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        description: getBackendMessage(err),
       });
     }
   }
@@ -1228,9 +1449,21 @@ export function GroupDetailPage({
     );
   }
 
-  async function handleCreateExpense() {
-    const amountMinor = parseAmountToMinor(expenseAmount);
+  function resetExpenseForm() {
+    setExpenseTitle('');
+    setExpenseAmount('');
+    setExpenseDescription('');
+    setReceiptFile(null);
+    setTaxType('NONE');
+    setTaxValue('');
+    setServiceFeeType('NONE');
+    setServiceFeeValue('');
+    setExpenseSplitMethod('EQUAL');
+    setExpenseCustomShares({});
+    setShowAdvancedExpense(false);
+  }
 
+  async function handleCreateExpense() {
     if (isArchived) {
       notify({
         type: 'error',
@@ -1249,11 +1482,11 @@ export function GroupDetailPage({
       return;
     }
 
-    if (!amountMinor || amountMinor <= 0) {
+    if (!baseAmountMinor || baseAmountMinor <= 0) {
       notify({
         type: 'error',
-        title: 'مبلغ معتبر نیست',
-        description: 'مبلغ هزینه را به عدد وارد کن.',
+        title: 'مبلغ درست نیست',
+        description: 'مبلغ هزینه را وارد کن.',
       });
       return;
     }
@@ -1262,7 +1495,7 @@ export function GroupDetailPage({
       notify({
         type: 'error',
         title: 'پرداخت‌کننده مشخص نیست',
-        description: 'یک عضو را به عنوان پرداخت‌کننده انتخاب کن.',
+        description: 'یک نفر را به عنوان پرداخت‌کننده انتخاب کن.',
       });
       return;
     }
@@ -1270,10 +1503,37 @@ export function GroupDetailPage({
     if (expenseParticipantIds.length === 0) {
       notify({
         type: 'error',
-        title: 'اعضای تقسیم مشخص نیستند',
-        description: 'حداقل یک عضو را برای تقسیم هزینه انتخاب کن.',
+        title: 'اعضا مشخص نیستند',
+        description: 'حداقل یک عضو را انتخاب کن.',
       });
       return;
+    }
+
+    const customParticipants = expenseParticipantIds.map((userId) => ({
+      user_id: userId,
+      base_share_minor: parseAmountToMinor(expenseCustomShares[userId] || ''),
+    }));
+
+    if (expenseSplitMethod === 'CUSTOM_AMOUNT') {
+      const hasInvalidShare = customParticipants.some((participant) => participant.base_share_minor <= 0);
+
+      if (hasInvalidShare) {
+        notify({
+          type: 'error',
+          title: 'سهم‌ها کامل نیستند',
+          description: 'برای همه اعضای انتخاب‌شده سهم وارد کن.',
+        });
+        return;
+      }
+
+      if (customSharesTotalMinor !== baseAmountMinor) {
+        notify({
+          type: 'error',
+          title: 'جمع سهم‌ها درست نیست',
+          description: `جمع سهم‌ها باید ${formatMoney(baseAmountMinor)} باشد.`,
+        });
+        return;
+      }
     }
 
     try {
@@ -1290,31 +1550,36 @@ export function GroupDetailPage({
         title: expenseTitle.trim(),
         description: expenseDescription.trim(),
         payer_user_id: expensePayerId,
-        base_amount_minor: amountMinor,
+        base_amount_minor: baseAmountMinor,
         currency: 'IRR',
-        split_method: 'EQUAL',
-        participant_user_ids: expenseParticipantIds,
+        split_method: expenseSplitMethod,
+        participant_user_ids: expenseSplitMethod === 'EQUAL' ? expenseParticipantIds : undefined,
+        participants: expenseSplitMethod === 'CUSTOM_AMOUNT' ? customParticipants : undefined,
+        tax_type: taxType,
+        tax_percentage: taxType === 'PERCENTAGE' ? String(parsePercentage(taxValue)) : undefined,
+        tax_amount_minor: taxType === 'FIXED' ? taxAmountMinor : undefined,
+        service_fee_type: serviceFeeType,
+        service_fee_percentage: serviceFeeType === 'PERCENTAGE' ? String(parsePercentage(serviceFeeValue)) : undefined,
+        service_fee_amount_minor: serviceFeeType === 'FIXED' ? serviceFeeAmountMinor : undefined,
         receipt_file_id: receiptFileId,
       });
 
-      setExpenseTitle('');
-      setExpenseAmount('');
-      setExpenseDescription('');
-      setReceiptFile(null);
-
+      resetExpenseForm();
+      setModal(null);
       await Promise.all([loadExpenses(), loadSettlementData()]);
+      void refreshSmartSettlement(false);
 
       notify({
         type: 'success',
         title: 'هزینه ثبت شد',
-        description: 'محاسبه هوشمند بروزرسانی می‌شود.',
+        description: 'حساب گروه بروزرسانی شد.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
         title: 'ثبت هزینه ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        description: getBackendMessage(err),
       });
     } finally {
       setExpenseSaving(false);
@@ -1331,8 +1596,8 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'مشاهده رسید ناموفق بود',
-        description: getBackendMessage(err) || 'فایل رسید باز نشد. دوباره تلاش کن.',
+        title: 'رسید باز نشد',
+        description: getBackendMessage(err),
       });
     } finally {
       setOpeningReceiptId(null);
@@ -1353,25 +1618,32 @@ export function GroupDetailPage({
     try {
       await deleteExpense(expense.id);
       await Promise.all([loadExpenses(), loadSettlementData()]);
+      void refreshSmartSettlement(false);
 
       notify({
         type: 'success',
         title: 'هزینه حذف شد',
-        description: 'محاسبه هوشمند بروزرسانی می‌شود.',
+        description: 'حساب گروه بروزرسانی شد.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
         title: 'حذف هزینه ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        description: getBackendMessage(err),
       });
     }
   }
 
   async function handleCreateManualSettlement(receiverUserId?: string, amountMinor?: number) {
-    const targetReceiverId = receiverUserId || manualReceiverId;
-    const targetAmountMinor = amountMinor ?? parseAmountToMinor(manualAmount);
+    const selectedItem = selectedManualPlanItem;
+    const isSelectedFullPayment = selectedItem && manualPaymentMode === 'FULL';
+    const targetReceiverId = selectedItem?.receiver_user_id || receiverUserId || manualReceiverId;
+    const targetAmountMinor = selectedItem
+      ? manualPaymentMode === 'FULL'
+        ? selectedItem.amount_minor
+        : parseAmountToMinor(manualAmount)
+      : amountMinor ?? parseAmountToMinor(manualAmount);
     const targetSuggestion = optimizedSettlements.find(
       (item) => item.receiver_user_id === targetReceiverId && item.payer_user_id === currentUserId,
     );
@@ -1397,17 +1669,8 @@ export function GroupDetailPage({
     if (!targetReceiverId) {
       notify({
         type: 'error',
-        title: 'دریافت‌کننده را انتخاب کن',
-        description: 'از پیشنهادهای تسویه یا لیست اعضا، کسی را که باید پول بگیرد انتخاب کن.',
-      });
-      return;
-    }
-
-    if (targetReceiverId === currentUserId) {
-      notify({
-        type: 'error',
-        title: 'پرداخت به خودت ممکن نیست',
-        description: 'برای تسویه باید یکی دیگر از اعضای گروه را انتخاب کنی.',
+        title: 'دریافت‌کننده مشخص نیست',
+        description: 'یک پرداخت یا یک عضو را انتخاب کن.',
       });
       return;
     }
@@ -1415,13 +1678,22 @@ export function GroupDetailPage({
     if (!targetAmountMinor || targetAmountMinor <= 0) {
       notify({
         type: 'error',
-        title: 'مبلغ پرداخت را وارد کن',
-        description: 'مبلغ باید عددی و بیشتر از صفر باشد؛ مثلاً ۲۰۰۰۰.',
+        title: 'مبلغ درست نیست',
+        description: 'مبلغ پرداخت را وارد کن.',
       });
       return;
     }
 
-    if (!receiverUserId && targetSuggestion && targetAmountMinor > targetSuggestion.amount_minor) {
+    if (selectedItem && targetAmountMinor > selectedItem.amount_minor) {
+      notify({
+        type: 'error',
+        title: 'مبلغ زیاد است',
+        description: `حداکثر مبلغ این پرداخت ${formatMoney(selectedItem.amount_minor)} است.`,
+      });
+      return;
+    }
+
+    if (!selectedItem && targetSuggestion && targetAmountMinor > targetSuggestion.amount_minor) {
       notify({
         type: 'info',
         title: 'مبلغ بیشتر از پیشنهاد تسویه است',
@@ -1433,23 +1705,34 @@ export function GroupDetailPage({
     try {
       setSettlementSaving(true);
 
-      await createGroupSettlement(groupId, {
-        receiver_user_id: targetReceiverId,
-        amount_minor: targetAmountMinor,
-        currency: 'IRR',
-        description: manualDescription || 'تسویه دستی در گروه',
-      });
+      if (isSelectedFullPayment) {
+        await reportPlanItemPaid(selectedItem.id);
+      } else {
+        await createGroupSettlement(groupId, {
+          receiver_user_id: targetReceiverId,
+          amount_minor: targetAmountMinor,
+          currency: 'IRR',
+          description:
+            manualDescription ||
+            (selectedItem
+              ? `پرداخت بخشی از بدهی به ${getPlanPartyName(selectedItem, 'receiver', members)}`
+              : 'تسویه دستی'),
+        });
+      }
 
       setManualReceiverId('');
       setManualAmount('');
       setManualDescription('');
 
+      resetManualPaymentForm();
       await loadSettlementData();
 
       notify({
         type: 'success',
-        title: 'پرداخت ثبت شد',
-        description: 'در انتظار تأیید دریافت‌کننده قرار گرفت.',
+        title: isSelectedFullPayment ? 'پرداخت گزارش شد' : 'پرداخت ثبت شد',
+        description: isSelectedFullPayment
+          ? 'در انتظار تأیید دریافت‌کننده است.'
+          : 'بعد از تأیید دریافت‌کننده، مبلغ از بدهی باقی‌مانده کم می‌شود.',
       });
     } catch (err) {
       console.error(err);
@@ -1463,10 +1746,7 @@ export function GroupDetailPage({
     }
   }
 
-  async function handlePlanItemAction(
-    item: SettlementPlanItem,
-    action: 'paid' | 'confirm' | 'reject',
-  ) {
+  async function handlePlanItemAction(item: SettlementPlanItem, action: 'paid' | 'confirm' | 'reject') {
     try {
       setSettlementSaving(true);
 
@@ -1476,10 +1756,14 @@ export function GroupDetailPage({
 
       await loadSettlementData();
 
+      if (action === 'confirm') {
+        void refreshSmartSettlement(false);
+      }
+
       notify({
         type: 'success',
-        title: 'وضعیت پرداخت بروزرسانی شد',
-        description: 'اطلاعات جدید نمایش داده شد.',
+        title: 'تسویه بروزرسانی شد',
+        description: 'وضعیت پرداخت تغییر کرد.',
       });
     } catch (err) {
       console.error(err);
@@ -1493,10 +1777,7 @@ export function GroupDetailPage({
     }
   }
 
-  async function handleSettlementAction(
-    settlement: SettlementItem,
-    action: 'confirm' | 'reject' | 'cancel',
-  ) {
+  async function handleSettlementAction(settlement: SettlementItem, action: 'confirm' | 'reject' | 'cancel') {
     try {
       setSettlementSaving(true);
 
@@ -1506,10 +1787,14 @@ export function GroupDetailPage({
 
       await loadSettlementData();
 
+      if (action === 'confirm' || action === 'cancel') {
+        void refreshSmartSettlement(false);
+      }
+
       notify({
         type: 'success',
         title: 'پرداخت بروزرسانی شد',
-        description: 'لیست پرداخت‌ها بروزرسانی شد.',
+        description: 'لیست پرداخت‌ها تازه شد.',
       });
     } catch (err) {
       console.error(err);
@@ -1536,8 +1821,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'لینک دعوت ساخته شد',
-        description: 'لینک را کپی کن و برای عضو جدید بفرست.',
+        title: 'لینک ساخته شد',
+        description: 'لینک دعوت آماده کپی است.',
       });
     } catch (err) {
       console.error(err);
@@ -1546,12 +1831,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'error',
-        title: permissionDenied
-          ? 'امکان ساخت لینک دعوت وجود ندارد'
-          : 'ساخت لینک دعوت انجام نشد',
-        description: permissionDenied
-          ? 'شما مدیر گروه نیستید و اجازه ساخت لینک دعوت را ندارید.'
-          : getBackendMessage(err),
+        title: permissionDenied ? 'اجازه ساخت لینک نداری' : 'ساخت لینک ناموفق بود',
+        description: permissionDenied ? 'فقط مدیر یا مالک می‌تواند لینک بسازد.' : getBackendMessage(err),
       });
     } finally {
       setInviteLoading(false);
@@ -1559,14 +1840,7 @@ export function GroupDetailPage({
   }
 
   async function handleCopyInvite() {
-    if (!inviteUrl) {
-      notify({
-        type: 'error',
-        title: 'لینک دعوت موجود نیست',
-        description: 'لینک آماده نشد. دوباره تلاش کن.',
-      });
-      return;
-    }
+    if (!inviteUrl) return;
 
     try {
       await navigator.clipboard.writeText(inviteUrl);
@@ -1575,14 +1849,13 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'لینک کپی شد',
-        description: 'حالا می‌تونی لینک را برای عضو جدید بفرستی.',
+        title: 'کپی شد',
+        description: 'لینک دعوت کپی شد.',
       });
     } catch {
-      setCopied(false);
       notify({
         type: 'error',
-        title: 'کپی لینک ناموفق بود',
+        title: 'کپی نشد',
         description: 'لینک را دستی کپی کن.',
       });
     }
@@ -1596,15 +1869,15 @@ export function GroupDetailPage({
     if (!inviteId) {
       notify({
         type: 'error',
-        title: 'لغو دعوت انجام نشد',
-        description: 'اطلاعات لازم برای لغو کامل نیست.',
+        title: 'لغو انجام نشد',
+        description: 'اطلاعات لینک کامل نیست.',
       });
       return;
     }
 
     const confirmed = await confirm({
       title: 'لغو لینک دعوت؟',
-      description: 'بعد از لغو، این لینک دیگر قابل استفاده نیست.',
+      description: 'این لینک دیگر قابل استفاده نخواهد بود.',
       confirmText: 'لغو کن',
       cancelText: 'انصراف',
       tone: 'danger',
@@ -1614,819 +1887,1231 @@ export function GroupDetailPage({
 
     try {
       await revokeGroupInvite(groupId, inviteId);
-
       setInvite(null);
 
       notify({
         type: 'success',
-        title: 'لینک دعوت لغو شد',
-        description: 'این دعوت دیگر فعال نیست.',
+        title: 'لینک لغو شد',
+        description: 'دعوت دیگر فعال نیست.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'لغو دعوت ناموفق بود',
-        description: getBackendMessage(err) || 'لطفاً دوباره تلاش کن.',
+        title: 'لغو لینک ناموفق بود',
+        description: getBackendMessage(err),
       });
     }
   }
 
+  if (loading && !group) {
+    return (
+      <main className="min-h-[70vh] px-4 py-8" dir="rtl">
+        <div className="dashboard-section-card mx-auto flex max-w-[1100px] items-center justify-center rounded-[24px] border border-emerald-100/80 bg-white/95 p-10 text-center shadow-[0_18px_44px_rgba(15,23,42,0.07)] backdrop-blur dark:border-emerald-500/20 dark:bg-slate-950/90">
+          <InlineLoader label="در حال دریافت گروه..." />
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="px-4 py-4 sm:px-6 sm:py-5 xl:px-8" dir="rtl">
-      <div className="mx-auto max-w-[1280px] space-y-5">
-        <section className="rounded-[30px] border-2 border-emerald-100/80 bg-white/95 p-4 shadow-[0_26px_64px_rgba(15,23,42,0.065)] backdrop-blur sm:p-5">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center" dir="ltr">
-            <div className="flex flex-wrap items-center gap-2 lg:justify-start">
-              <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex h-11 items-center gap-2 rounded-[16px] border-2 border-emerald-100 bg-emerald-50/60 px-4 text-sm font-black text-emerald-700 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white"
-              >
+    <main className="relative min-h-screen overflow-x-hidden px-3 pb-10 pt-3 text-right sm:px-5 xl:px-8" dir="rtl">
+      <div className="mx-auto max-w-[1160px] space-y-4 sm:space-y-5">
+        <header className={cn(dashboardCard, 'sticky top-3 z-40 p-3 sm:p-4')}>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setModal('settings')}
+              className="group flex min-w-0 flex-1 items-center gap-3 rounded-[20px] px-2 py-1 text-right transition hover:bg-emerald-50/60 dark:hover:bg-emerald-500/10"
+            >
+              <div className="dashboard-row-avatar flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-lg font-black text-emerald-700 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                {(group?.title || 'گ').slice(0, 1)}
+              </div>
+
+              <div className="min-w-0 text-right">
+                <h1 className="truncate text-lg font-black tracking-[-0.03em] text-text dark:text-slate-100 sm:text-xl">
+                  {group?.title || 'جزئیات گروه'}
+                </h1>
+
+                <p className="mt-0.5 text-xs font-bold text-muted dark:text-slate-400">
+                  {membersLoading ? 'در حال دریافت اعضا...' : `${toPersianNumber(members.length)} عضو`}
+                </p>
+              </div>
+            </button>
+
+            <Button tone="secondary" onClick={onBack} className="min-h-11 px-3 sm:px-4">
+              <span dir="rtl" className="inline-flex items-center gap-2">
+                <span className="hidden sm:inline">بازگشت</span>
                 <ArrowLeft className="h-4 w-4" />
-                بازگشت
-              </button>
+              </span>
+            </Button>
+          </div>
+        </header>
 
-              {isArchived ? (
-                <ActionButton tone="soft" onClick={handleRestore} disabled={archiveLoading}>
-                  {archiveLoading ? (
-                    <InlineLoader label="در حال فعال‌سازی..." />
-                  ) : (
-                    <>
-                      <RotateCcw className="h-4 w-4" />
-                      فعال‌سازی
-                    </>
-                  )}
-                </ActionButton>
-              ) : (
-                <ActionButton tone="soft" onClick={handleArchive} disabled={archiveLoading}>
-                  {archiveLoading ? (
-                    <InlineLoader label="در حال آرشیو..." />
-                  ) : (
-                    <>
-                      <Archive className="h-4 w-4" />
-                      آرشیو
-                    </>
-                  )}
-                </ActionButton>
+        <section dir="ltr" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+          <aside dir="rtl" className="order-1 space-y-4 xl:order-2 xl:h-[460px] xl:sticky xl:top-[104px]">
+            <div
+              className={cn(
+                'dashboard-balance-card flex h-full flex-col overflow-hidden rounded-[28px] border p-4 text-right shadow-[0_18px_44px_rgba(15,23,42,0.08)] dark:shadow-[0_24px_58px_rgba(0,0,0,0.28)]',
+                accountTone === 'rose'
+                  ? 'border-rose-200 bg-gradient-to-br from-white via-rose-50/90 to-orange-50/80 dark:border-rose-500/25 dark:from-slate-950 dark:via-slate-950 dark:to-rose-950/30'
+                  : accountTone === 'emerald'
+                    ? 'border-emerald-200 bg-gradient-to-br from-white via-emerald-50/90 to-sky-50/70 dark:border-emerald-500/25 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30'
+                    : 'border-slate-200 bg-gradient-to-br from-white via-slate-50/90 to-emerald-50/50 dark:border-slate-700 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900',
               )}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0 text-right">
+                  <p className="text-xs font-black text-muted dark:text-slate-400">وضعیت من</p>
+                  <h2
+                    className={cn(
+                      'mt-1 text-2xl font-black tracking-[-0.04em]',
+                      accountTone === 'rose'
+                        ? 'text-rose-700 dark:text-rose-200'
+                        : accountTone === 'emerald'
+                          ? 'text-emerald-700 dark:text-emerald-200'
+                          : 'text-slate-700 dark:text-slate-200',
+                    )}
+                  >
+                    {accountTitle}
+                  </h2>
+                </div>
 
-              {!isOwner ? (
-                <ActionButton tone="danger" onClick={handleLeave} disabled={leaveLoading}>
-                  <LogOut className="h-4 w-4" />
-                  {leaveLoading ? 'در حال خروج...' : 'خروج'}
-                </ActionButton>
-              ) : null}
-            </div>
+                <div
+                  className={cn(
+                    'flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] text-white shadow-[0_12px_26px_rgba(15,23,42,0.12)]',
+                    accountTone === 'rose'
+                      ? 'bg-rose-500 dark:bg-rose-500'
+                      : accountTone === 'emerald'
+                        ? 'bg-emerald-600 dark:bg-emerald-500'
+                        : 'bg-slate-700 dark:bg-slate-600',
+                  )}
+                >
+                  <Banknote className="h-6 w-6" />
+                </div>
+              </div>
 
-            <div className="min-w-0 text-center lg:text-right" dir="rtl">
-              <h1 className="truncate text-[30px] font-black leading-tight tracking-[-0.03em] text-text sm:text-[36px]">
-                {loading ? 'در حال دریافت گروه...' : group?.title || 'جزئیات گروه'}
-              </h1>
+              <div className="rounded-[22px] border border-white/80 bg-white/90 p-4 text-right shadow-[0_10px_28px_rgba(15,23,42,0.055)] dark:border-slate-700/80 dark:bg-slate-900/80">
+                <p className="text-xs font-extrabold text-muted dark:text-slate-400">خالص حساب تو</p>
+                <div className={cn('mt-1', accountTone === 'rose' ? 'text-rose-700 dark:text-rose-200' : accountTone === 'emerald' ? 'text-emerald-700 dark:text-emerald-200' : 'text-slate-700 dark:text-slate-200')}>
+                  <MoneyWithWords
+                    amount={myNetMinor}
+                    valueClassName="text-4xl font-black tracking-[-0.06em]"
+                    textClassName="mt-1 text-[10px] font-semibold opacity-70"
+                    showText={true}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <MiniNumberCard label="پرداخت کنی" value={totalMyDebtMinor} tone="rose" />
+                <MiniNumberCard label="دریافت کنی" value={totalMyCreditMinor} tone="emerald" />
+              </div>
+
+              <div className="mt-auto grid gap-2 pt-4">
+                <Button onClick={() => setModal('expense')} disabled={isArchived} className="h-12 w-full text-base">
+                  <Plus className="h-5 w-5" />
+                  ثبت هزینه
+                </Button>
+
+                <Button tone="secondary" onClick={() => setModal('settlement')} className="h-12 w-full">
+                  <HandCoins className="h-5 w-5" />
+                  جزئیات تسویه
+                </Button>
+              </div>
             </div>
+          </aside>
+
+          <div dir="rtl" className="order-2 space-y-4 xl:order-1 xl:h-[460px]">
+            <section
+              className={cn(
+                dashboardCard,
+                'flex h-full min-h-[360px] max-h-[560px] flex-col overflow-hidden p-4 sm:p-5 xl:max-h-[460px]',
+              )}
+            >
+              <SectionHeader
+                title="تسویه هوشمند من"
+                action={
+                  <Button
+                    tone="secondary"
+                    onClick={() => void refreshSmartSettlement()}
+                    disabled={settlementSaving || isArchived}
+                    className="min-h-10 px-3 text-xs"
+                  >
+                    {settlementSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    محاسبه
+                  </Button>
+                }
+              />
+
+              <div className={cn(scrollAreaClass, 'flex-1')}>
+                {settlementLoading ? (
+                  <div className="dashboard-panel-state flex min-h-[260px] items-center justify-center gap-2 rounded-[20px] border border-dashed border-emerald-200 bg-white/[0.65] p-6 text-sm font-bold text-muted dark:border-emerald-500/20 dark:bg-slate-900/70 dark:text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    در حال دریافت تسویه...
+                  </div>
+                ) : myDebtItems.length === 0 && myCreditItems.length === 0 ? (
+                  <EmptyState
+                    title="تسویه‌ای برای تو نیست"
+                    description="اگر هزینه‌ای ثبت شده، محاسبه را بزن."
+                    icon={<Check className="h-6 w-6" />}
+                  />
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="dashboard-section-card dashboard-section-card--quiet rounded-[24px] border border-rose-200 bg-rose-50/55 p-4 text-right dark:border-rose-500/25 dark:bg-rose-500/10">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="text-base font-black text-rose-700 dark:text-rose-200">پرداخت‌های تو</h3>
+                        <span className="rounded-[16px] bg-rose-600 px-3 py-1.5 text-xs font-black text-white dark:bg-rose-500 dark:text-white">
+                          {formatMoney(totalMyDebtMinor)}
+                        </span>
+                      </div>
+
+                      {myDebtItems.length === 0 ? (
+                        <div className="rounded-[20px] border border-dashed border-rose-200 bg-white/70 p-4 text-center text-xs font-bold text-muted dark:border-rose-500/25 dark:bg-slate-900/60 dark:text-slate-400">
+                          لازم نیست پولی پرداخت کنی.
+                        </div>
+                      ) : (
+                        <div className={cn(scrollAreaClass, 'max-h-[260px] space-y-2 pr-0.5')}>
+                          {myDebtItems.map((item) => (
+                            <div
+                              key={item.id}
+                              className="dashboard-list-row dashboard-list-card rounded-[20px] border border-rose-200 bg-white/95 p-3 text-right shadow-[0_8px_20px_rgba(15,23,42,0.035)] dark:border-rose-500/20 dark:bg-slate-900/80"
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0 text-right">
+                                  <p className="text-sm font-black text-text dark:text-slate-100">
+                                    به {getPlanPartyName(item, 'receiver', members)}
+                                  </p>
+                                  <p className="mt-1 text-xs font-bold text-muted dark:text-slate-400">
+                                    {getSettlementStatusLabel(item.status)}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-start gap-2">
+                                  <MoneyWithWords
+                                    amount={item.amount_minor}
+                                    className="rounded-[16px] bg-rose-50 px-3 py-2 text-sm font-black text-rose-700 dark:bg-rose-500/10 dark:text-rose-200"
+                                    valueClassName="text-sm font-black"
+                                    textClassName="mt-1 text-[10px] font-semibold text-rose-700/70 dark:text-rose-200/70"
+                                    showText={true}
+                                  />
+
+                                  {canReportPlanItem(item, settlementPlan) ? (
+                                    <Button
+                                      onClick={() => openManualPaymentForItem(item)}
+                                      className="min-h-10 px-3 text-xs"
+                                    >
+                                      پرداخت
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="dashboard-section-card dashboard-section-card--quiet rounded-[24px] border border-emerald-200 bg-emerald-50/60 p-4 text-right dark:border-emerald-500/25 dark:bg-emerald-500/10">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="text-base font-black text-emerald-700 dark:text-emerald-200">دریافت‌های تو</h3>
+                        <span className="rounded-[16px] bg-emerald-600 px-3 py-1.5 text-xs font-black text-white dark:bg-emerald-500 dark:text-white">
+                          {formatMoney(totalMyCreditMinor)}
+                        </span>
+                      </div>
+
+                      {myCreditItems.length === 0 ? (
+                        <div className="rounded-[20px] border border-dashed border-emerald-200 bg-white/70 p-4 text-center text-xs font-bold text-muted dark:border-emerald-500/25 dark:bg-slate-900/60 dark:text-slate-400">
+                          کسی به تو بدهکار نیست.
+                        </div>
+                      ) : (
+                        <div className={cn(scrollAreaClass, 'max-h-[260px] space-y-2 pr-0.5')}>
+                          {myCreditItems.map((item) => (
+                            <div
+                              key={item.id}
+                              className="dashboard-list-row dashboard-list-card rounded-[20px] border border-emerald-200 bg-white/95 p-3 text-right shadow-[0_8px_20px_rgba(15,23,42,0.035)] dark:border-emerald-500/20 dark:bg-slate-900/80"
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0 text-right">
+                                  <p className="text-sm font-black text-text dark:text-slate-100">
+                                    از {getPlanPartyName(item, 'payer', members)}
+                                  </p>
+                                  <p className="mt-1 text-xs font-bold text-muted dark:text-slate-400">
+                                    {getSettlementStatusLabel(item.status)}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-start gap-2">
+                                  <MoneyWithWords
+                                    amount={item.amount_minor}
+                                    className="rounded-[16px] bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+                                    valueClassName="text-sm font-black"
+                                    textClassName="mt-1 text-[10px] font-semibold text-emerald-700/70 dark:text-emerald-200/70"
+                                    showText={true}
+                                  />
+
+                                  {canReviewPlanItem(item) ? (
+                                    <>
+                                      <Button
+                                        onClick={() => void handlePlanItemAction(item, 'confirm')}
+                                        disabled={settlementSaving}
+                                        className="min-h-10 px-3 text-xs"
+                                      >
+                                        گرفتم
+                                      </Button>
+
+                                      <Button
+                                        tone="danger"
+                                        onClick={() => void handlePlanItemAction(item, 'reject')}
+                                        disabled={settlementSaving}
+                                        className="min-h-10 px-3 text-xs"
+                                      >
+                                        نگرفتم
+                                      </Button>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
 
-          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-stretch" dir="ltr">
-            <div className="flex min-h-[104px] items-center rounded-[24px] border-2 border-emerald-100/80 bg-white/[0.72] p-2.5 shadow-[0_18px_42px_rgba(15,23,42,0.04)]">
-              <div className="grid w-full grid-cols-2 place-items-center gap-2.5 sm:grid-cols-4">
-                <QuickActionButton
-                  id="expense-card"
-                  label="ثبت هزینه"
-                  icon={<ReceiptText className="h-5 w-5" />}
-                  tone="emerald"
-                />
+          <section
+            dir="rtl"
+            className={cn(dashboardCard, 'order-3 flex max-h-[470px] flex-col overflow-hidden p-4 sm:p-5 xl:col-span-2')}
+          >
+            <SectionHeader
+              title="هزینه‌های اخیر"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setModal('activity')}
+                  className="dashboard-section-action inline-flex min-h-10 items-center justify-center gap-2 rounded-[18px] border border-emerald-200 bg-emerald-50/80 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15"
+                >
+                  همه هزینه‌ها
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              }
+            />
 
-                <QuickActionButton
-                  id="members-card"
-                  label="اعضا"
-                  icon={<Users className="h-5 w-5" />}
-                  tone="sky"
+            <div className={cn(scrollAreaClass, 'flex-1')}>
+              {expensesLoading ? (
+                <div className="dashboard-panel-state flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-emerald-200 bg-white/[0.65] p-6 text-sm font-bold text-muted dark:border-emerald-500/20 dark:bg-slate-900/70 dark:text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  در حال دریافت...
+                </div>
+              ) : recentExpenses.length === 0 ? (
+                <EmptyState
+                  title="هزینه‌ای ثبت نشده"
+                  description="اولین هزینه را ثبت کن."
+                  icon={<ReceiptText className="h-6 w-6" />}
                 />
+              ) : (
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {recentExpenses.slice(0, 8).map((expense) => (
+                    <div key={expense.id} className={cn(dashboardRow, 'px-4 py-4 sm:px-5')}>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0 text-right">
+                          <p className="truncate text-sm font-black text-text dark:text-slate-100">{expense.title}</p>
+                          <MetaTags
+                            user={getUserDisplayFromId(expense.payer_user_id, members)}
+                            date={toPersianDate(expense.expense_date || expense.created_at)}
+                          />
+                        </div>
 
-                <QuickActionButton
-                  id="settlement-card"
-                  label="تسویه"
-                  icon={<HandCoins className="h-5 w-5" />}
-                  tone="orange"
-                />
+                        <div className="shrink-0 text-right">
+                          <p className="rounded-[16px] bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
+                            {formatMoney(getExpenseTotal(expense))}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </section>
+      </div>
 
-                <QuickActionButton
-                  id="settings-card"
-                  label="تنظیمات"
-                  icon={<Settings className="h-5 w-5" />}
-                  tone="slate"
-                />
+      <Modal
+        open={modal === 'expense'}
+        onClose={() => setModal(null)}
+        title="ثبت هزینه"
+        icon={<ReceiptText className="h-5 w-5" />}
+        size="lg"
+      >
+        <div className="space-y-4 text-right">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="عنوان">
+              <input
+                dir="rtl"
+                value={expenseTitle}
+                onChange={(event) => setExpenseTitle(event.target.value)}
+                placeholder="مثلاً شام"
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="مبلغ">
+              <input
+                dir="rtl"
+                value={expenseAmount}
+                onChange={(event) => setExpenseAmount(event.target.value)}
+                placeholder="مثلاً ۲۵۰٬۰۰۰"
+                inputMode="numeric"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <Field label="پرداخت‌کننده">
+            <select
+              value={expensePayerId}
+              onChange={(event) => setExpensePayerId(event.target.value)}
+              className={inputClass}
+            >
+              {members.map((member) => {
+                const userId = getMemberUserId(member);
+                return (
+                  <option key={userId} value={userId}>
+                    {getMemberName(member)}
+                  </option>
+                );
+              })}
+            </select>
+          </Field>
+
+          <div className={cn(dashboardQuietCard, 'flex max-h-[420px] flex-col overflow-hidden p-4 text-right')}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-black text-text dark:text-slate-100">تقسیم بین اعضا</h3>
+
+              <div className="flex rounded-[18px] bg-white p-1 shadow-[0_8px_20px_rgba(15,23,42,0.035)] dark:bg-slate-900">
+                <button
+                  type="button"
+                  onClick={() => setExpenseSplitMethod('EQUAL')}
+                  className={cn(
+                    'rounded-[18px] px-3 py-2 text-xs font-black transition',
+                    expenseSplitMethod === 'EQUAL'
+                      ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                      : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800',
+                  )}
+                >
+                  مساوی
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExpenseSplitMethod('CUSTOM_AMOUNT')}
+                  className={cn(
+                    'rounded-[18px] px-3 py-2 text-xs font-black transition',
+                    expenseSplitMethod === 'CUSTOM_AMOUNT'
+                      ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                      : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800',
+                  )}
+                >
+                  متفاوت
+                </button>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2" dir="rtl">
-              <HeaderMiniCard
-                label="حساب من"
-                status={myAccount.label}
-                value={myAccount.amount}
-                icon={<HandCoins className="h-4 w-4" />}
-                tone={myAccount.tone}
-              />
+            <div className={cn(scrollAreaClass, 'flex-1')}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {members.map((member) => {
+                  const userId = getMemberUserId(member);
+                  const selected = expenseParticipantIds.includes(userId);
 
-              <HeaderMiniCard
-                label="هزینه کل"
-                value={formatMoney(totalExpenseMinor)}
-                status={`${toPersianNumber(activeExpenses.length)} هزینه`}
-                icon={<ReceiptText className="h-4 w-4" />}
-                tone="positive"
-              />
+                  return (
+                    <div
+                      key={userId}
+                      className={cn(
+                        'dashboard-list-card rounded-[20px] border bg-white/92 p-3 text-right shadow-[0_8px_22px_rgba(15,23,42,0.035)] transition dark:bg-slate-900/80',
+                        selected
+                          ? 'border-emerald-300/80 dark:border-emerald-500/30'
+                          : 'border-emerald-200/70 opacity-70 dark:border-slate-700',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleExpenseParticipant(userId)}
+                        className="flex w-full items-center justify-between gap-3 text-right"
+                      >
+                        <div className="flex min-w-0 items-center gap-3 text-right">
+                          <MemberAvatar name={getMemberName(member)} owner={member.role === 'OWNER'} />
+                          <span className="truncate text-sm font-black text-text dark:text-slate-100">{getMemberName(member)}</span>
+                        </div>
+
+                        <span
+                          className={cn(
+                            'flex h-8 w-8 items-center justify-center rounded-[18px]',
+                            selected
+                              ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                              : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
+                          )}
+                        >
+                          {selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        </span>
+                      </button>
+
+                      {expenseSplitMethod === 'CUSTOM_AMOUNT' && selected ? (
+                        <input
+                          dir="rtl"
+                          inputMode="numeric"
+                          value={expenseCustomShares[userId] || ''}
+                          onChange={(event) => setExpenseCustomShares((prev) => ({ ...prev, [userId]: event.target.value }))}
+                          placeholder="سهم این نفر"
+                          className="mt-3 h-10 w-full rounded-[18px] border border-emerald-200/90 bg-slate-50 px-3 text-right text-xs font-bold outline-none focus:border-emerald-400 focus:bg-white dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-950"
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {expenseSplitMethod === 'CUSTOM_AMOUNT' ? (
+                <p className="mt-3 rounded-[18px] border border-emerald-200/70 bg-white px-3 py-2 text-right text-xs font-black text-slate-600 shadow-[0_8px_20px_rgba(15,23,42,0.035)] dark:border-emerald-500/20 dark:bg-slate-900 dark:text-slate-300">
+                  جمع سهم‌ها: {formatMoney(customSharesTotalMinor)} از {formatMoney(baseAmountMinor)}
+                </p>
+              ) : null}
             </div>
           </div>
-        </section>
 
-        {error ? (
-          <div className="rounded-[24px] border-2 border-rose-100 bg-rose-50 p-4 text-center text-sm font-black text-rose-600 shadow-[0_16px_38px_rgba(244,63,94,0.045)]">
-            {error}
+          <button
+            type="button"
+            onClick={() => setShowAdvancedExpense((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-[18px] border border-emerald-200/80 bg-white px-4 py-3 text-right text-sm font-black text-slate-700 shadow-[0_10px_26px_rgba(15,23,42,0.04)] transition hover:bg-emerald-50/40 dark:border-emerald-500/20 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-emerald-500/10"
+          >
+            گزینه‌های بیشتر
+            <Plus className={cn('h-4 w-4 transition', showAdvancedExpense && 'rotate-45')} />
+          </button>
+
+          {showAdvancedExpense ? (
+            <div className={cn(dashboardQuietCard, 'max-h-[360px] overflow-y-auto space-y-3 p-4 text-right')}>
+              <Field label="توضیح">
+                <textarea
+                  dir="rtl"
+                  value={expenseDescription}
+                  onChange={(event) => setExpenseDescription(event.target.value)}
+                  placeholder="اختیاری"
+                  className={textareaClass}
+                />
+              </Field>
+
+              <Field label="رسید">
+                <div className="flex min-h-12 items-center rounded-[18px] border border-emerald-200/90 bg-white px-3 py-2 text-right dark:border-emerald-500/20 dark:bg-slate-900/80">
+                  <Upload className="ml-2 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+                    onChange={(event) => setReceiptFile(event.target.files?.[0] || null)}
+                    className="w-full text-right text-xs font-bold text-slate-600 file:ml-3 file:rounded-[18px] file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-xs file:font-black file:text-emerald-700 dark:text-slate-300 dark:file:bg-emerald-500/10 dark:file:text-emerald-200"
+                  />
+                </div>
+              </Field>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-[135px_1fr] gap-2">
+                  <select
+                    value={taxType}
+                    onChange={(event) => setTaxType(event.target.value as FeeType)}
+                    className={inputClass}
+                  >
+                    <option value="NONE">بدون مالیات</option>
+                    <option value="PERCENTAGE">درصد مالیات</option>
+                    <option value="FIXED">مبلغ مالیات</option>
+                  </select>
+
+                  <input
+                    dir="rtl"
+                    value={taxValue}
+                    onChange={(event) => setTaxValue(event.target.value)}
+                    disabled={taxType === 'NONE'}
+                    placeholder="مقدار"
+                    className={inputClass}
+                  />
+                </div>
+
+                <div className="grid grid-cols-[135px_1fr] gap-2">
+                  <select
+                    value={serviceFeeType}
+                    onChange={(event) => setServiceFeeType(event.target.value as FeeType)}
+                    className={inputClass}
+                  >
+                    <option value="NONE">بدون خدمات</option>
+                    <option value="PERCENTAGE">درصد خدمات</option>
+                    <option value="FIXED">مبلغ خدمات</option>
+                  </select>
+
+                  <input
+                    dir="rtl"
+                    value={serviceFeeValue}
+                    onChange={(event) => setServiceFeeValue(event.target.value)}
+                    disabled={serviceFeeType === 'NONE'}
+                    placeholder="مقدار"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="dashboard-balance-mini dashboard-balance-mini--credit rounded-[22px] border border-emerald-300/80 bg-gradient-to-l from-white via-emerald-50/70 to-emerald-50/60 p-4 text-right shadow-[inset_3px_0_0_#10B981,0_0_0_1px_rgba(16,185,129,0.10),0_10px_24px_rgba(15,23,42,0.06)] dark:border-emerald-500/30 dark:bg-slate-900/80">
+            <p className="text-xs font-extrabold text-muted dark:text-slate-400">مبلغ نهایی</p>
+            <p className="mt-1 text-3xl font-black tracking-[-0.05em] text-emerald-700 dark:text-emerald-200">
+              {formatMoney(expenseFinalTotalMinor)}
+            </p>
           </div>
-        ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_370px]">
-          <section className="space-y-5">
-            <SectionCard
-              id="expense-card"
-              title="ثبت هزینه سریع"
-              icon={<ReceiptText className="h-5 w-5" />}
-              accent="emerald"
-            >
-              <FieldSurface>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">عنوان هزینه</span>
-                    <input
-                      dir="rtl"
-                      value={expenseTitle}
-                      onChange={(event) => setExpenseTitle(event.target.value)}
-                      placeholder="مثلاً شام، تاکسی، خرید..."
-                      className="h-12 w-full rounded-[18px] border-2 border-emerald-100 bg-white/80 px-4 text-sm font-bold text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </label>
+          <Button onClick={handleCreateExpense} disabled={expenseSaving || members.length === 0 || isArchived} className="h-12 w-full text-base">
+            {expenseSaving ? (
+              <InlineLoader label={receiptFile ? 'آپلود و ثبت...' : 'در حال ثبت...'} />
+            ) : (
+              <>
+                <Plus className="h-5 w-5" />
+                ثبت هزینه
+              </>
+            )}
+          </Button>
+        </div>
+      </Modal>
 
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">مبلغ</span>
-                    <input
-                      dir="rtl"
-                      inputMode="numeric"
-                      value={expenseAmount}
-                      onChange={(event) => setExpenseAmount(event.target.value)}
-                      placeholder="مثلاً ۲۵۰٬۰۰۰"
-                      className="h-12 w-full rounded-[18px] border-2 border-emerald-100 bg-white/80 px-4 text-sm font-bold text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </label>
+      <Modal
+        open={modal === 'settlement'}
+        onClose={() => setModal(null)}
+        title="جزئیات تسویه"
+        icon={<HandCoins className="h-5 w-5" />}
+        size="lg"
+      >
+        <div className="space-y-4 text-right">
+          <div className="dashboard-section-card dashboard-section-card--quiet rounded-[22px] border border-emerald-300/80 bg-gradient-to-l from-white via-emerald-50/80 to-emerald-50/70 p-4 text-right shadow-[0_12px_30px_rgba(15,23,42,0.07)] dark:border-emerald-500/20 dark:bg-slate-900/80">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-base font-black text-emerald-800 dark:text-emerald-200">تسویه هوشمند</h3>
 
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">پرداخت‌کننده</span>
-                    <select
-                      value={expensePayerId}
-                      onChange={(event) => setExpensePayerId(event.target.value)}
-                      className="h-12 w-full rounded-[18px] border-2 border-emerald-100 bg-white/80 px-4 text-sm font-bold text-text outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                    >
-                      {members.map((member) => {
+              <Button
+                tone="primary"
+                onClick={() => void refreshSmartSettlement()}
+                disabled={settlementSaving || isArchived}
+                className="h-11 shrink-0 px-4"
+              >
+                {settlementSaving ? (
+                  <InlineLoader label="در حال محاسبه..." />
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    محاسبه
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MiniNumberCard label="پرداخت من" value={formatMoney(totalMyDebtMinor)} tone="rose" />
+            <MiniNumberCard label="دریافت من" value={formatMoney(totalMyCreditMinor)} tone="emerald" />
+            <MiniNumberCard label="خالص حساب من" value={formatSignedMoney(myNetMinor)} tone={accountTone} />
+          </div>
+
+          <div className={cn(dashboardQuietCard, 'flex max-h-[460px] flex-col overflow-hidden p-4 text-right')}>
+            <h3 className="mb-3 text-right text-sm font-black text-text dark:text-slate-100">ثبت پرداخت</h3>
+
+            <div className={cn(scrollAreaClass, 'flex-1')}>
+              {manualPayOptions.length > 0 ? (
+                <div className="mb-4 space-y-2">
+                  {manualPayOptions.map((item) => {
+                    const selected = selectedManualPlanItemId === item.id;
+                    const remainingAmount = item.amount_minor;
+                    const partialAmount = parseAmountToMinor(manualAmount);
+                    const restAfterPartial =
+                      selected && manualPaymentMode === 'PARTIAL'
+                        ? Math.max(remainingAmount - partialAmount, 0)
+                        : remainingAmount;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          'dashboard-list-row dashboard-list-card rounded-[22px] border p-3 text-right transition',
+                          selected
+                            ? 'border-emerald-400 bg-emerald-50/80 shadow-[0_12px_28px_rgba(16,185,129,0.10)] dark:border-emerald-400/40 dark:bg-emerald-500/10'
+                            : 'border-emerald-200 bg-white/90 hover:border-emerald-300 dark:border-emerald-500/15 dark:bg-slate-900/80 dark:hover:border-emerald-400/30',
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => selectManualPlanItem(item)}
+                          className="flex w-full items-center justify-between gap-3 text-right"
+                        >
+                          <span
+                            className={cn(
+                              'flex h-8 w-8 items-center justify-center rounded-[18px]',
+                              selected
+                                ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                                : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
+                            )}
+                          >
+                            {selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                          </span>
+
+                          <div className="min-w-0 flex-1 text-right">
+                            <p className="truncate text-sm font-black text-text dark:text-slate-100">
+                              پرداخت به {getPlanPartyName(item, 'receiver', members)}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-muted dark:text-slate-400">
+                              مانده: {formatMoney(remainingAmount)}
+                            </p>
+                          </div>
+                        </button>
+
+                        {selected ? (
+                          <div className="mt-3 space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManualPaymentMode('FULL');
+                                  setManualAmount(String(item.amount_minor));
+                                }}
+                                className={cn(
+                                  'rounded-[18px] border px-3 py-2 text-xs font-black transition',
+                                  manualPaymentMode === 'FULL'
+                                    ? 'border-emerald-400 bg-emerald-600 text-white dark:bg-emerald-500'
+                                    : 'border-emerald-200 bg-white text-slate-600 hover:bg-emerald-50 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-emerald-500/10',
+                                )}
+                              >
+                                پرداخت کامل
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManualPaymentMode('PARTIAL');
+                                  setManualAmount('');
+                                }}
+                                className={cn(
+                                  'rounded-[18px] border px-3 py-2 text-xs font-black transition',
+                                  manualPaymentMode === 'PARTIAL'
+                                    ? 'border-emerald-400 bg-emerald-600 text-white dark:bg-emerald-500'
+                                    : 'border-emerald-200 bg-white text-slate-600 hover:bg-emerald-50 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-emerald-500/10',
+                                )}
+                              >
+                                پرداخت بخشی
+                              </button>
+                            </div>
+
+                            {manualPaymentMode === 'PARTIAL' ? (
+                              <div className="space-y-2">
+                                <input
+                                  dir="rtl"
+                                  inputMode="numeric"
+                                  value={manualAmount}
+                                  onChange={(event) => setManualAmount(event.target.value)}
+                                  placeholder="مبلغ"
+                                  className={inputClass}
+                                />
+
+                                <div className="rounded-[18px] border border-emerald-200 bg-white/90 px-3 py-2 text-right text-xs font-black text-slate-600 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-300">
+                                  باقی‌مانده: {formatMoney(restAfterPartial)}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <input
+                              dir="rtl"
+                              value={manualDescription}
+                              onChange={(event) => setManualDescription(event.target.value)}
+                              placeholder="توضیح"
+                              className={inputClass}
+                            />
+
+                            <Button onClick={() => void handleCreateManualSettlement()} disabled={settlementSaving} className="h-12 w-full text-base">
+                              {manualPaymentMode === 'FULL' ? 'گزارش پرداخت کامل' : 'ثبت پرداخت بخشی'}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="dashboard-panel-empty mb-4 rounded-[20px] border border-dashed border-emerald-200 bg-white/70 p-4 text-center text-xs font-bold text-muted dark:border-emerald-500/20 dark:bg-slate-900/70 dark:text-slate-400">
+                  پرداختی برای ثبت نداری.
+                </div>
+              )}
+
+              <div className="rounded-[20px] border border-emerald-200 bg-white/85 p-3 text-right dark:border-emerald-500/20 dark:bg-slate-900/80">
+                <h4 className="mb-3 text-right text-xs font-black text-slate-600 dark:text-slate-300">پرداخت آزاد</h4>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <select
+                    value={manualReceiverId}
+                    onChange={(event) => {
+                      setSelectedManualPlanItemId('');
+                      setManualReceiverId(event.target.value);
+                    }}
+                    className={inputClass}
+                  >
+                    <option value="">دریافت‌کننده</option>
+                    {members
+                      .filter((member) => getMemberUserId(member) !== currentUserId)
+                      .map((member) => {
                         const userId = getMemberUserId(member);
-
                         return (
                           <option key={userId} value={userId}>
                             {getMemberName(member)}
                           </option>
                         );
                       })}
-                    </select>
-                  </label>
+                  </select>
 
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">رسید اختیاری</span>
-                    <div className="relative flex min-h-12 items-center rounded-[18px] border-2 border-emerald-100 bg-white/80 px-3 py-2 transition focus-within:border-emerald-300 focus-within:bg-white focus-within:ring-4 focus-within:ring-emerald-500/10">
-                      <Upload className="ml-2 h-4 w-4 text-emerald-600" />
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
-                        onChange={(event) => setReceiptFile(event.target.files?.[0] || null)}
-                        className="w-full text-xs font-bold text-slate-600 file:ml-3 file:rounded-[12px] file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-xs file:font-black file:text-emerald-700"
-                      />
-                    </div>
-                  </label>
-                </div>
-
-                {receiptFile ? (
-                  <div className="mt-3 flex items-center justify-between gap-3 rounded-[18px] border-2 border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 shadow-[inset_3px_0_0_#10B981]">
-                    <span className="min-w-0 truncate">رسید انتخاب‌شده: {receiptFile.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setReceiptFile(null)}
-                      className="shrink-0 rounded-full bg-white p-1 text-rose-500 shadow-sm"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : null}
-
-                <label className="mt-4 block text-right">
-                  <span className="mb-2 block text-sm font-black text-text">توضیح اختیاری</span>
-                  <textarea
+                  <input
                     dir="rtl"
-                    value={expenseDescription}
-                    onChange={(event) => setExpenseDescription(event.target.value)}
-                    placeholder="اگر خواستی توضیح کوتاهی بنویس..."
-                    className="min-h-[86px] w-full resize-none rounded-[18px] border-2 border-emerald-100 bg-white/80 px-4 py-3 text-sm font-semibold leading-7 text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
+                    inputMode="numeric"
+                    value={!selectedManualPlanItemId ? manualAmount : ''}
+                    onChange={(event) => {
+                      setSelectedManualPlanItemId('');
+                      setManualAmount(event.target.value);
+                    }}
+                    placeholder="مبلغ"
+                    className={inputClass}
                   />
-                </label>
-              </FieldSurface>
 
-              <div className="mt-4 rounded-[24px] border-2 border-sky-100/80 bg-gradient-to-l from-white via-sky-50/70 to-sky-50/40 p-4 shadow-[inset_3px_0_0_#0EA5E9,0_16px_38px_rgba(14,165,233,0.04)]">
-                <div className="mb-3 flex items-center justify-between gap-3 text-right">
-                  <h3 className="text-sm font-black text-text">تقسیم بین اعضا</h3>
-
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-sky-700 shadow-sm">
-                    {toPersianNumber(expenseParticipantIds.length)} نفر
-                  </span>
+                  <input
+                    dir="rtl"
+                    value={!selectedManualPlanItemId ? manualDescription : ''}
+                    onChange={(event) => {
+                      setSelectedManualPlanItemId('');
+                      setManualDescription(event.target.value);
+                    }}
+                    placeholder="توضیح"
+                    className={inputClass}
+                  />
                 </div>
 
-                {membersLoading ? (
-                  <div className="flex items-center justify-center gap-2 rounded-[18px] bg-white p-4 text-sm font-bold text-muted shadow-sm">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    در حال دریافت اعضا...
-                  </div>
-                ) : null}
+                <div className="mt-3 flex justify-start">
+                  <Button
+                    onClick={() => void handleCreateManualSettlement()}
+                    disabled={settlementSaving || Boolean(selectedManualPlanItemId)}
+                    className="h-12 min-w-[136px] px-6 text-base"
+                  >
+                    ثبت
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {members.map((member) => {
-                    const userId = getMemberUserId(member);
-                    const selected = expenseParticipantIds.includes(userId);
+          <div className={cn(dashboardCard, 'flex max-h-[460px] flex-col overflow-hidden p-4 text-right')}>
+            <SectionHeader title="همه تسویه‌ها" />
+
+            <div className={cn(scrollAreaClass, 'flex-1')}>
+              {settlementLoading ? (
+                <div className="dashboard-panel-state flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-emerald-200 bg-white/[0.65] p-6 text-sm font-bold text-muted dark:border-emerald-500/20 dark:bg-slate-900/70 dark:text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  در حال دریافت...
+                </div>
+              ) : openPlanItems.length === 0 ? (
+                <EmptyState
+                  title="تسویه‌ای وجود ندارد"
+                  description="اگر هزینه‌ای ثبت شده، محاسبه را بزن."
+                  icon={<Check className="h-6 w-6" />}
+                />
+              ) : (
+                <div className="space-y-2">
+                  {openPlanItems.map((item) => {
+                    const isPayer = item.payer_user_id === currentUserId;
+                    const isReceiver = item.receiver_user_id === currentUserId;
 
                     return (
-                      <button
-                        key={userId}
-                        type="button"
-                        onClick={() => toggleExpenseParticipant(userId)}
-                        className={cn(
-                          'flex items-center justify-between rounded-[18px] border-2 px-3 py-3 text-right text-sm font-black transition hover:-translate-y-0.5',
-                          selected
-                            ? 'border-sky-200 bg-white text-sky-700 shadow-[inset_3px_0_0_#0EA5E9,0_12px_28px_rgba(14,165,233,0.04)]'
-                            : 'border-slate-200 bg-white/75 text-slate-600 hover:border-sky-200 hover:bg-white',
-                        )}
-                      >
-                        <span>{getMemberName(member)}</span>
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sky-600 shadow-sm">
-                          {selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      <div key={item.id} className={cn(dashboardRow, 'p-4')}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="text-right">
+                            <p className="text-sm font-black text-text dark:text-slate-100">
+                              {getPlanPartyName(item, 'payer', members)} ← {getPlanPartyName(item, 'receiver', members)}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-muted dark:text-slate-400">{getSettlementStatusLabel(item.status)}</p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-start gap-2">
+                            <span className="rounded-[18px] border border-orange-200/80 bg-orange-50 px-3 py-2 text-sm font-black text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200">
+                              {formatMoney(item.amount_minor)}
+                            </span>
+
+                            {isPayer && canReportPlanItem(item, settlementPlan) ? (
+                              <Button onClick={() => void handlePlanItemAction(item, 'paid')} disabled={settlementSaving} className="min-h-10 px-3 text-xs">
+                                پرداخت کردم
+                              </Button>
+                            ) : null}
+
+                            {isReceiver && canReviewPlanItem(item) ? (
+                              <>
+                                <Button onClick={() => void handlePlanItemAction(item, 'confirm')} disabled={settlementSaving} className="min-h-10 px-3 text-xs">
+                                  گرفتم
+                                </Button>
+
+                                <Button tone="danger" onClick={() => void handlePlanItemAction(item, 'reject')} disabled={settlementSaving} className="min-h-10 px-3 text-xs">
+                                  نگرفتم
+                                </Button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {settlements.length > 0 ? (
+            <div className={cn(dashboardQuietCard, 'flex max-h-[360px] flex-col overflow-hidden p-4 text-right')}>
+              <h3 className="mb-3 text-right text-sm font-black text-text dark:text-slate-100">پرداخت‌های ثبت‌شده</h3>
+
+              <div className={cn(scrollAreaClass, 'flex-1 space-y-2')}>
+                {settlements.slice(0, 20).map((settlement) => {
+                  const isPayer = settlement.payer_user_id === currentUserId;
+                  const isReceiver = settlement.receiver_user_id === currentUserId;
+
+                  return (
+                    <div key={settlement.id} className={cn(dashboardRow, 'p-4')}>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-right">
+                          <p className="text-sm font-black text-text dark:text-slate-100">
+                            {getUserDisplayFromId(settlement.payer_user_id, members)} به {getUserDisplayFromId(settlement.receiver_user_id, members)}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-muted dark:text-slate-400">{getSettlementStatusLabel(settlement.status)}</p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-start gap-2">
+                          <span className="rounded-[18px] border border-emerald-200 bg-white px-3 py-2 text-sm font-black text-slate-700 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-200">
+                            {formatMoney(settlement.amount_minor)}
+                          </span>
+
+                          {isReceiver && settlement.status === 'PENDING_CONFIRMATION' ? (
+                            <>
+                              <Button onClick={() => void handleSettlementAction(settlement, 'confirm')} className="min-h-9 px-3 text-xs">
+                                گرفتم
+                              </Button>
+
+                              <Button tone="danger" onClick={() => void handleSettlementAction(settlement, 'reject')} className="min-h-9 px-3 text-xs">
+                                نگرفتم
+                              </Button>
+                            </>
+                          ) : null}
+
+                          {isPayer && settlement.status === 'PENDING_CONFIRMATION' ? (
+                            <Button tone="secondary" onClick={() => void handleSettlementAction(settlement, 'cancel')} className="min-h-9 px-3 text-xs">
+                              لغو
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={modal === 'settings'}
+        onClose={() => setModal(null)}
+        title="اطلاعات گروه"
+        icon={<Settings className="h-5 w-5" />}
+        size="lg"
+      >
+        <div className="space-y-4 text-right">
+          <div className="dashboard-section-card dashboard-section-card--quiet rounded-[22px] border border-emerald-200 bg-emerald-50/55 p-4 text-right dark:border-emerald-500/20 dark:bg-slate-900/80">
+            <h3 className="text-lg font-black text-text dark:text-slate-100">{group?.title || 'گروه'}</h3>
+            <p className="mt-1 text-xs font-bold text-muted dark:text-slate-400">{toPersianNumber(members.length)} عضو</p>
+
+            {group?.description ? (
+              <p className="mt-3 rounded-[18px] border border-emerald-100 bg-white/80 px-3 py-3 text-sm font-semibold leading-7 text-slate-700 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-300">
+                {group.description}
+              </p>
+            ) : (
+              <p className="mt-3 rounded-[18px] border border-dashed border-emerald-200 bg-white/70 px-3 py-3 text-sm font-semibold text-muted dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-400">
+                توضیحی برای گروه ثبت نشده.
+              </p>
+            )}
+          </div>
+
+          <div className="dashboard-section-card dashboard-section-card--quiet rounded-[22px] border border-emerald-300/80 bg-gradient-to-l from-white via-emerald-50/70 to-emerald-50/60 p-4 text-right shadow-[inset_3px_0_0_#10B981,0_0_0_1px_rgba(16,185,129,0.10),0_10px_24px_rgba(15,23,42,0.06)] dark:border-emerald-500/25 dark:bg-slate-900/80">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] bg-emerald-600 text-white shadow-[0_10px_22px_rgba(16,185,129,0.22)] dark:bg-emerald-500">
+                <Link2 className="h-5 w-5" />
+              </div>
+
+              <div className="text-right">
+                <h3 className="text-base font-black text-emerald-800 dark:text-emerald-200">دعوت عضو جدید</h3>
+              </div>
+            </div>
+
+            {!invite ? (
+              <Button onClick={handleCreateInvite} disabled={inviteLoading || !canManageGroup} className="w-full">
+                <Link2 className="h-4 w-4" />
+                {inviteLoading ? 'در حال ساخت...' : 'ساخت لینک دعوت'}
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <input
+                  readOnly
+                  dir="ltr"
+                  value={inviteUrl || 'لینکی آماده نیست'}
+                  className="h-11 w-full rounded-[18px] border border-emerald-200 bg-white px-3 text-right text-xs font-semibold text-slate-700 outline-none dark:border-emerald-500/20 dark:bg-slate-950 dark:text-slate-200"
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button tone="secondary" onClick={() => void handleCopyInvite()} disabled={!inviteUrl} className="h-10">
+                    <Copy className="h-4 w-4" />
+                    {copied ? 'کپی شد' : 'کپی لینک'}
+                  </Button>
+
+                  <Button tone="danger" onClick={() => void handleRevokeInvite()} className="h-10">
+                    <Trash2 className="h-4 w-4" />
+                    لغو لینک
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className={cn(dashboardCard, 'flex max-h-[430px] flex-col overflow-hidden p-4 text-right')}>
+            <SectionHeader title="اعضا" />
+
+            <div className={cn(scrollAreaClass, 'flex-1')}>
+              {membersLoading ? (
+                <div className="dashboard-panel-state flex items-center justify-center gap-2 rounded-[20px] border border-dashed border-emerald-200 bg-white/[0.65] p-5 text-sm font-bold text-muted dark:border-emerald-500/20 dark:bg-slate-900/70 dark:text-slate-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  در حال دریافت اعضا...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {members.map((member) => {
+                    const memberId = getMemberId(member);
+                    const userId = getMemberUserId(member);
+                    const isSelf = userId === currentUserId;
+                    const memberIsOwner = member.role === 'OWNER';
+                    const canRemoveMember = canManageGroup && !isSelf && member.role !== 'OWNER';
+
+                    return (
+                      <div key={memberId || userId} className={cn(dashboardRow, 'p-3')}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-black',
+                                memberIsOwner
+                                  ? 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200',
+                              )}
+                            >
+                              {getRoleLabel(member.role)}
+                            </span>
+
+                            {canRemoveMember ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveMember(member)}
+                                className="flex h-9 w-9 items-center justify-center rounded-[18px] border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15"
+                                aria-label="حذف عضو"
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div className="flex min-w-0 items-center gap-3 text-right">
+                            <div className="min-w-0 text-right">
+                              <p className="truncate text-sm font-black text-text dark:text-slate-100">
+                                {getMemberName(member)} {isSelf ? '(شما)' : ''}
+                              </p>
+                              <p className="mt-1 truncate text-xs font-semibold text-muted dark:text-slate-400">
+                                {getMemberPhone(member) || 'بدون شماره'}
+                              </p>
+                            </div>
+
+                            <MemberAvatar name={getMemberName(member)} owner={memberIsOwner} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {balances.length > 0 ? (
+            <div className={cn(dashboardQuietCard, 'flex max-h-[360px] flex-col overflow-hidden p-4 text-right')}>
+              <SectionHeader title="حساب اعضا" />
+
+              <div className={cn(scrollAreaClass, 'flex-1')}>
+                <div className="space-y-2">
+                  {balances.map((balance) => {
+                    const amount = balance.net_balance_minor || 0;
+
+                    return (
+                      <div key={balance.user_id} className={cn(dashboardRow, 'flex items-center justify-between gap-3 px-3 py-3 text-sm font-bold')}>
+                        <span className="truncate text-text dark:text-slate-100">{getBalanceDisplayName(balance, members)}</span>
+                        <span
+                          className={
+                            amount < 0
+                              ? 'text-rose-600 dark:text-rose-200'
+                              : amount > 0
+                                ? 'text-emerald-600 dark:text-emerald-200'
+                                : 'text-slate-600 dark:text-slate-300'
+                          }
+                        >
+                          {formatSignedMoney(amount)}
                         </span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
               </div>
+            </div>
+          ) : null}
 
-              <div className="mt-5 flex justify-end">
-                <ActionButton
-                  onClick={handleCreateExpense}
-                  disabled={expenseSaving || members.length === 0 || isArchived}
-                  className="h-12 px-6"
-                >
-                  {expenseSaving ? (
-                    <InlineLoader
-                      label={receiptFile ? 'در حال آپلود و ثبت...' : 'در حال ثبت...'}
-                    />
+          {canManageGroup ? (
+            <div className={cn(dashboardQuietCard, 'max-h-[420px] overflow-y-auto space-y-4 p-4 text-right')}>
+              <Field label="عنوان گروه">
+                <input
+                  dir="rtl"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  disabled={!canManageGroup}
+                  className={inputClass}
+                />
+              </Field>
+
+              <Field label="توضیحات">
+                <textarea
+                  dir="rtl"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  disabled={!canManageGroup}
+                  className={textareaClass}
+                />
+              </Field>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button onClick={handleSave} disabled={saving || !canManageGroup} className="h-12">
+                  {saving ? (
+                    <InlineLoader label="در حال ذخیره..." />
                   ) : (
                     <>
-                      <Plus className="h-4 w-4" />
-                      ثبت هزینه
+                      <Save className="h-4 w-4" />
+                      ذخیره
                     </>
                   )}
-                </ActionButton>
-              </div>
-            </SectionCard>
+                </Button>
 
-            <SectionCard
-              title="هزینه‌های اخیر"
-              icon={<ReceiptText className="h-5 w-5" />}
-              accent="slate"
-            >
-              {expensesLoading ? (
-                <div className="flex items-center justify-center gap-2 rounded-[22px] border-2 border-slate-100 bg-slate-50 p-6 text-center text-sm font-bold text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  در حال دریافت هزینه‌ها...
-                </div>
-              ) : null}
-
-              {!expensesLoading && recentExpenses.length === 0 ? (
-                <EmptyState
-                  title="هنوز هزینه‌ای ثبت نشده"
-                  description="اولین هزینه را از بخش ثبت هزینه سریع وارد کن."
-                />
-              ) : null}
-
-              <div className="space-y-3">
-                {recentExpenses.slice(0, 10).map((expense) => {
-                  const payerName = getUserDisplayFromId(expense.payer_user_id, members);
-
-                  return (
-                    <ListRow key={expense.id}>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0 text-right">
-                          <div className="truncate text-base font-black text-text">
-                            {expense.title}
-                          </div>
-
-                          <div className="mt-1 text-xs font-bold leading-6 text-muted">
-                            پرداخت‌کننده: {payerName} •{' '}
-                            {toPersianDate(expense.expense_date || expense.created_at)}
-                          </div>
-
-                          {expense.description ? (
-                            <div className="mt-1 line-clamp-2 text-xs font-semibold leading-6 text-slate-500">
-                              {expense.description}
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                          <span className="rounded-[16px] border-2 border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700 shadow-sm">
-                            {formatMoney(getExpenseTotal(expense))}
-                          </span>
-
-                          {expense.receipt_file_id ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleOpenReceipt(expense.receipt_file_id)}
-                              disabled={openingReceiptId === expense.receipt_file_id}
-                              className="inline-flex h-10 items-center justify-center gap-2 rounded-[15px] border-2 border-sky-100 bg-sky-50 px-3 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:opacity-60"
-                            >
-                              {openingReceiptId === expense.receipt_file_id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                              رسید
-                            </button>
-                          ) : null}
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteExpense(expense)}
-                            className="inline-flex h-10 items-center justify-center gap-2 rounded-[15px] border-2 border-rose-100 bg-rose-50 px-3 text-xs font-black text-rose-600 transition hover:bg-rose-100"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            حذف
-                          </button>
-                        </div>
-                      </div>
-                    </ListRow>
-                  );
-                })}
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              id="settlement-card"
-              title="تسویه حساب"
-              icon={<HandCoins className="h-5 w-5" />}
-              accent="orange"
-              badge={
-                <button
-                  type="button"
-                  onClick={() => void refreshSmartSettlement(true)}
-                  disabled={settlementSaving || settlementLoading || isArchived}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-[16px] border-2 border-orange-100 bg-orange-50 px-3 text-xs font-black text-orange-700 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {settlementSaving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  دوباره حساب کن
-                </button>
-              }
-            >
-              {settlementLoading ? (
-                <div className="flex items-center justify-center gap-2 rounded-[22px] border-2 border-orange-100 bg-orange-50 p-6 text-center text-sm font-bold text-orange-700">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  در حال حساب کردن...
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <AccountStatusBox amount={myNetMinor} />
-
-                    <RemainingPaymentsBox
-                      count={remainingPaymentCount}
-                      totalMinor={totalOpenDebtMinor}
-                      tone={myAccount.tone}
-                    />
-                  </div>
-
-
-                  <div className="rounded-[24px] border-2 border-orange-200/80 bg-gradient-to-l from-white via-orange-50/70 to-orange-50/50 p-4 shadow-[inset_3px_0_0_#F97316,0_18px_44px_rgba(249,115,22,0.055)]">
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="text-right">
-                        <h3 className="text-base font-black text-text">
-                          پیشنهاد تسویه کمینه
-                        </h3>
-                      </div>
-
-                      {remainingPaymentCount > 0 ? (
-                        <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-black text-orange-700 shadow-sm">
-                          {toPersianNumber(remainingPaymentCount)} پرداخت نهایی
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {backendPaymentCount > remainingPaymentCount && remainingPaymentCount > 0 ? (
-                      <div className="mb-3 rounded-[18px] border-2 border-emerald-100 bg-emerald-50/80 p-3 text-right text-xs font-bold leading-6 text-emerald-700">
-                        به جای {toPersianNumber(backendPaymentCount)} پرداخت جداگانه، با {toPersianNumber(remainingPaymentCount)} پرداخت حساب گروه صاف می‌شود.
-                      </div>
-                    ) : null}
-
-                    {settlementSaving ? (
-                      <div className="mb-3 flex items-center justify-center gap-2 rounded-[20px] border-2 border-orange-100 bg-white p-4 text-center text-sm font-bold text-orange-700">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        در حال بروزرسانی تسویه...
-                      </div>
-                    ) : null}
-
-                    {optimizedSettlements.length === 0 ? (
-                      <div className="rounded-[20px] border-2 border-dashed border-orange-200 bg-white p-6 text-center text-sm font-semibold text-muted shadow-sm">
-                        فعلاً پرداختی لازم نیست؛ حساب اعضای گروه تسویه است.
-                      </div>
-                    ) : null}
-
-                    <div className="space-y-3">
-                      {optimizedSettlements.map((item) => {
-                        const isPayer = item.payer_user_id === currentUserId;
-                        const isReceiver = item.receiver_user_id === currentUserId;
-
-                        return (
-                          <ListRow key={item.id} tone="slate">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="text-right">
-                                <div className="text-sm font-black text-text">
-                                  {item.payerName} به {item.receiverName}
-                                </div>
-
-                                <div className="mt-1 text-base font-black text-orange-700">
-                                  {formatMoney(item.amount_minor)}
-                                </div>
-
-                                <div className="mt-1 text-xs font-bold text-muted">
-                                  همین یک پرداخت، سهم نهایی این دو نفر را صاف می‌کند.
-                                </div>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                                {isPayer ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCreateManualSettlement(item.receiver_user_id, item.amount_minor)}
-                                    disabled={settlementSaving}
-                                    className="h-9 rounded-[13px] border-2 border-emerald-100 bg-emerald-50 px-3 text-xs font-black text-emerald-700 disabled:opacity-60"
-                                  >
-                                    ثبت همین پرداخت
-                                  </button>
-                                ) : null}
-
-                                {isReceiver ? (
-                                  <span className="rounded-[13px] border-2 border-sky-100 bg-sky-50 px-3 py-2 text-xs font-black text-sky-700">
-                                    منتظر پرداخت
-                                  </span>
-                                ) : null}
-
-                                {!isPayer && !isReceiver ? (
-                                  <span className="rounded-[13px] border-2 border-slate-100 bg-white px-3 py-2 text-xs font-black text-slate-500">
-                                    پرداخت بین اعضای دیگر
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                          </ListRow>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-
-
-                  {balances.length > 0 ? (
-                    <FieldSurface>
-                      <h3 className="mb-3 text-right text-base font-black text-text">
-                        حساب اعضا
-                      </h3>
-
-                      <div className="space-y-2">
-                        {balances.map((balance) => {
-                          const amount = balance.net_balance_minor || 0;
-
-                          return (
-                            <div
-                              key={balance.user_id}
-                              className="flex items-center justify-between rounded-[18px] border-2 border-slate-100 bg-white/86 px-3 py-3 text-sm font-bold shadow-sm"
-                            >
-                              <span className="text-text">
-                                {getBalanceDisplayName(balance, members)}
-                              </span>
-
-                              <span
-                                className={
-                                  amount < 0
-                                    ? 'text-rose-600'
-                                    : amount > 0
-                                      ? 'text-emerald-600'
-                                      : 'text-slate-600'
-                                }
-                              >
-                                {formatSignedMoney(amount)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </FieldSurface>
-                  ) : null}
-
-                  {settlements.length > 0 ? (
-                    <FieldSurface>
-                      <h3 className="mb-3 text-right text-base font-black text-text">
-                        پرداخت‌های ثبت‌شده
-                      </h3>
-
-                      <div className="space-y-3">
-                        {settlements.slice(0, 5).map((settlement) => {
-                          const isPayer = settlement.payer_user_id === currentUserId;
-                          const isReceiver = settlement.receiver_user_id === currentUserId;
-
-                          return (
-                            <ListRow key={settlement.id} tone="slate">
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="text-right">
-                                  <div className="text-sm font-black text-text">
-                                    {getUserDisplayFromId(settlement.payer_user_id, members)} به{' '}
-                                    {getUserDisplayFromId(settlement.receiver_user_id, members)}
-                                  </div>
-
-                                  <div className="mt-1 text-xs font-bold text-muted">
-                                    {getSettlementStatusLabel(settlement.status)} •{' '}
-                                    {toPersianDate(settlement.created_at)}
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                                  <span className="rounded-[14px] border-2 border-slate-100 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm">
-                                    {formatMoney(settlement.amount_minor)}
-                                  </span>
-
-                                  {isReceiver && settlement.status === 'PENDING_CONFIRMATION' ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSettlementAction(settlement, 'confirm')}
-                                        disabled={settlementSaving}
-                                        className="h-9 rounded-[13px] border-2 border-emerald-100 bg-emerald-50 px-3 text-xs font-black text-emerald-700 disabled:opacity-60"
-                                      >
-                                        گرفتم
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSettlementAction(settlement, 'reject')}
-                                        disabled={settlementSaving}
-                                        className="h-9 rounded-[13px] border-2 border-rose-100 bg-rose-50 px-3 text-xs font-black text-rose-600 disabled:opacity-60"
-                                      >
-                                        نگرفتم
-                                      </button>
-                                    </>
-                                  ) : null}
-
-                                  {isPayer && settlement.status === 'PENDING_CONFIRMATION' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSettlementAction(settlement, 'cancel')}
-                                      disabled={settlementSaving}
-                                      className="h-9 rounded-[13px] border-2 border-slate-200 bg-slate-100 px-3 text-xs font-black text-slate-700 disabled:opacity-60"
-                                    >
-                                      لغو
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </ListRow>
-                          );
-                        })}
-                      </div>
-                    </FieldSurface>
-                  ) : null}
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              id="settings-card"
-              title="تنظیمات گروه"
-              icon={<Settings className="h-5 w-5" />}
-              accent="slate"
-            >
-              <FieldSurface>
-                <div className="space-y-4">
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">
-                      عنوان گروه
-                    </span>
-
-                    <input
-                      dir="rtl"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      className="h-12 w-full rounded-[18px] border-2 border-slate-200 bg-white/80 px-4 text-sm font-bold text-text outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </label>
-
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">
-                      نوع گروه
-                    </span>
-
-                    <select
-                      value={groupType}
-                      onChange={(event) => setGroupType(event.target.value as BackendGroupType)}
-                      className="h-12 w-full rounded-[18px] border-2 border-slate-200 bg-white/80 px-4 text-sm font-bold text-text outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                    >
-                      <option value="GENERAL">عمومی</option>
-                      <option value="EVENT">رویداد</option>
-                    </select>
-                  </label>
-
-                  <label className="block text-right">
-                    <span className="mb-2 block text-sm font-black text-text">
-                      توضیحات
-                    </span>
-
-                    <textarea
-                      dir="rtl"
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      className="min-h-[110px] w-full resize-none rounded-[18px] border-2 border-slate-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-7 text-text outline-none transition focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
-                    />
-                  </label>
-
-                  <ActionButton
-                    onClick={handleSave}
-                    disabled={saving || !canManageGroup}
-                    className="h-12 w-full"
-                  >
-                    {saving ? (
-                      <InlineLoader label="در حال ذخیره..." />
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4" />
-                        ذخیره تغییرات
-                      </>
-                    )}
-                  </ActionButton>
-
-                  {!canManageGroup ? (
-                    <p className="text-center text-xs font-bold text-amber-700">
-                      فقط مدیر یا مالک گروه می‌تواند تنظیمات را ویرایش کند.
-                    </p>
-                  ) : null}
-                </div>
-              </FieldSurface>
-            </SectionCard>
-          </section>
-
-          <aside className="space-y-5">
-            <SectionCard
-              id="members-card"
-              title="اعضای گروه"
-              icon={<Users className="h-5 w-5" />}
-              accent="sky"
-            >
-              <div className="rounded-[24px] border-2 border-emerald-200/80 bg-gradient-to-l from-white via-emerald-50/80 to-emerald-50/50 p-4 text-right shadow-[inset_3px_0_0_#10B981,0_16px_38px_rgba(16,185,129,0.045)]">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="text-base font-black text-emerald-700">
-                    دعوت عضو جدید
-                  </h3>
-
-                  <Link2 className="h-5 w-5 text-emerald-600" />
-                </div>
-
-                {!invite ? (
-                  <ActionButton
-                    onClick={handleCreateInvite}
-                    disabled={inviteLoading || !canManageGroup}
-                    className="w-full"
-                  >
-                    <Link2 className="h-4 w-4" />
-                    {inviteLoading ? 'در حال ساخت...' : 'ساخت لینک دعوت'}
-                  </ActionButton>
+                {isArchived ? (
+                  <Button tone="secondary" onClick={handleRestore} disabled={archiveLoading} className="h-12">
+                    <RotateCcw className="h-4 w-4" />
+                    فعال‌سازی
+                  </Button>
                 ) : (
-                  <div className="space-y-3">
-                    <input
-                      readOnly
-                      dir="ltr"
-                      value={inviteUrl || 'لینکی برای نمایش آماده نیست'}
-                      className="h-11 w-full rounded-[16px] border-2 border-emerald-100 bg-white px-3 text-left text-xs font-semibold text-slate-700 outline-none shadow-sm"
-                    />
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCopyInvite}
-                        disabled={!inviteUrl}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-[15px] bg-white px-3 text-xs font-black text-emerald-700 shadow-sm transition hover:bg-emerald-50 disabled:opacity-60"
-                      >
-                        <Copy className="h-4 w-4" />
-                        {copied ? 'کپی شد' : 'کپی'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleRevokeInvite}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-[15px] bg-rose-50 px-3 text-xs font-black text-rose-600 transition hover:bg-rose-100"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        لغو
-                      </button>
-                    </div>
-
-                    {invite.expires_at ? (
-                      <p className="text-center text-xs font-bold text-emerald-700/75">
-                        اعتبار تا: {toPersianDate(invite.expires_at)}
-                      </p>
-                    ) : null}
-                  </div>
+                  <Button tone="secondary" onClick={handleArchive} disabled={archiveLoading || !canManageGroup} className="h-12">
+                    <Archive className="h-4 w-4" />
+                    آرشیو
+                  </Button>
                 )}
-
-                {!canManageGroup ? (
-                  <p className="mt-3 text-center text-xs font-bold text-amber-700">
-                    فقط مدیر یا مالک گروه می‌تواند لینک دعوت بسازد.
-                  </p>
-                ) : null}
               </div>
+            </div>
+          ) : null}
 
-              <div className="mt-4 space-y-3">
-                {membersLoading ? (
-                  <div className="flex items-center justify-center gap-2 rounded-[22px] border-2 border-sky-100 bg-sky-50 p-5 text-center text-sm font-bold text-sky-700">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    در حال دریافت اعضا...
-                  </div>
-                ) : null}
-
-                {!membersLoading && members.length === 0 ? (
-                  <EmptyState
-                    title="هنوز عضوی برای نمایش نیست"
-                    description="بعد از دعوت عضوها، لیست اینجا نمایش داده می‌شود."
-                  />
-                ) : null}
-
-                {members.map((member) => {
-                  const memberId = getMemberId(member);
-                  const userId = getMemberUserId(member);
-                  const isSelf = userId === currentUserId;
-                  const canRemoveMember = canManageGroup && !isSelf && member.role !== 'OWNER';
-
-                  return (
-                    <ListRow key={memberId || userId}>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <MemberAvatar name={getMemberName(member)} />
-
-                          <div className="min-w-0 text-right">
-                            <div className="truncate text-sm font-black text-text">
-                              {getMemberName(member)} {isSelf ? '(شما)' : ''}
-                            </div>
-
-                            <div className="mt-1 truncate text-xs font-semibold text-muted">
-                              {getMemberPhone(member)}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-2 sm:justify-end">
-                          <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
-                            <Crown className="h-3.5 w-3.5" />
-                            {getRoleLabel(member.role)}
-                          </span>
-
-                          {canRemoveMember ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveMember(member)}
-                              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[13px] border-2 border-rose-100 bg-rose-50 px-3 text-xs font-black text-rose-600 transition hover:bg-rose-100"
-                            >
-                              <UserMinus className="h-3.5 w-3.5" />
-                              حذف
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-                    </ListRow>
-                  );
-                })}
-              </div>
-            </SectionCard>
-          </aside>
+          {!isOwner ? (
+            <Button tone="danger" onClick={handleLeave} disabled={leaveLoading} className="h-12 w-full">
+              <LogOut className="h-4 w-4" />
+              {leaveLoading ? 'در حال خروج...' : 'خروج از گروه'}
+            </Button>
+          ) : null}
         </div>
-      </div>
+      </Modal>
+
+      <Modal
+        open={modal === 'activity'}
+        onClose={() => setModal(null)}
+        title="همه هزینه‌ها"
+        icon={<ReceiptText className="h-5 w-5" />}
+        size="lg"
+      >
+        <div className="max-h-[70vh] overflow-y-auto">
+          {recentExpenses.length === 0 ? (
+            <EmptyState
+              title="هزینه‌ای ثبت نشده"
+              description="اولین هزینه را ثبت کن."
+              icon={<ReceiptText className="h-6 w-6" />}
+            />
+          ) : (
+            <div className="space-y-2 text-right">
+              {recentExpenses.map((expense) => {
+                const receiptId = (expense as BackendExpense & { receipt_file_id?: string }).receipt_file_id;
+                const isOpening = Boolean(receiptId && openingReceiptId === receiptId);
+
+                return (
+                  <div key={expense.id} className={cn(dashboardRow, 'p-4')}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 text-right">
+                        <p className="truncate text-sm font-black text-text dark:text-slate-100">{expense.title}</p>
+
+                        <MetaTags
+                          user={getUserDisplayFromId(expense.payer_user_id, members)}
+                          date={toPersianDate(expense.expense_date || expense.created_at)}
+                        />
+
+                        {expense.description ? (
+                          <p className="mt-2 line-clamp-2 text-right text-xs font-semibold leading-6 text-slate-600 dark:text-slate-400">
+                            {expense.description}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="flex shrink-0 flex-wrap items-center justify-start gap-2">
+                        <span className="rounded-[18px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                          {formatMoney(getExpenseTotal(expense))}
+                        </span>
+
+                        {receiptId ? (
+                          <Button
+                            tone="secondary"
+                            onClick={() => void handleOpenReceipt(receiptId)}
+                            disabled={isOpening}
+                            className="min-h-10 px-3 text-xs"
+                          >
+                            {isOpening ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                            رسید
+                          </Button>
+                        ) : null}
+
+                        <Button
+                          tone="danger"
+                          onClick={() => void handleDeleteExpense(expense)}
+                          className="min-h-10 px-3 text-xs"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          حذف
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Modal>
     </main>
   );
 }

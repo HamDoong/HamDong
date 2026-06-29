@@ -37,6 +37,7 @@ import {
 } from '../lib/groupApi';
 import { getCurrentUser } from '../lib/userApi';
 import { uploadReceipt, openMediaFile } from '../lib/mediaApi';
+import { MoneyWithWords } from '../lib/money';
 import { humanizeMachineLabel } from '../lib/userMessages';
 
 type ActivityFilter = 'all' | 'received' | 'paid' | 'settled';
@@ -1213,14 +1214,17 @@ export function ActivitiesPage() {
                           </div>
 
                           <div className="flex items-center gap-2 md:justify-center">
-                            <span
-                              className={[
+                            <MoneyWithWords
+                              amount={amount}
+                              signed={true}
+                              className="text-base font-extrabold sm:text-lg"
+                              valueClassName={[
                                 'text-base font-extrabold sm:text-lg',
                                 amount >= 0 ? 'text-emerald-600' : 'text-rose-500',
                               ].join(' ')}
-                            >
-                              {formatSignedMoney(amount)}
-                            </span>
+                              textClassName="mt-1 text-[10px] opacity-70"
+                              showText={true}
+                            />
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:flex-wrap md:items-center md:justify-end">
@@ -1656,14 +1660,14 @@ export function ActivitiesPage() {
                   <div className="rounded-2xl border border-border p-4">
                     <span className="text-xs text-muted">مبلغ هزینه</span>
                     <div className="mt-2 font-extrabold text-text">
-                      {formatMoney(detailExpense.base_amount_minor)}
+                      <MoneyWithWords amount={detailExpense.base_amount_minor} valueClassName="font-extrabold text-text" textClassName="mt-1 text-[10px] font-semibold text-slate-500" showText={true} />
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-border p-4">
                     <span className="text-xs text-muted">مبلغ کل</span>
                     <div className="mt-2 font-extrabold text-emerald-600">
-                      {formatMoney(getExpenseTotal(detailExpense))}
+                      <MoneyWithWords amount={getExpenseTotal(detailExpense)} valueClassName="font-extrabold text-emerald-600" textClassName="mt-1 text-[10px] font-semibold text-slate-500" showText={true} />
                     </div>
                   </div>
 
@@ -1715,11 +1719,12 @@ export function ActivitiesPage() {
                         </span>
 
                         <span className="font-bold text-emerald-600">
-                          {formatMoney(
-                            participant.total_share_minor ||
-                              participant.base_share_minor ||
-                              0,
-                          )}
+                          <MoneyWithWords
+                            amount={participant.total_share_minor || participant.base_share_minor || 0}
+                            valueClassName="font-bold text-emerald-600"
+                            textClassName="mt-1 text-[10px] font-semibold text-slate-500"
+                            showText={true}
+                          />
                         </span>
                       </div>
                     ))}

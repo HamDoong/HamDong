@@ -375,9 +375,9 @@ function buildCreateGroupBasePayload(input: CreateGroupInput) {
 }
 
 function buildCreateGroupMemberPayload(input: CreateGroupInput) {
-  const memberUserIds = uniqueStrings(input.member_user_ids);
-  const memberPhones = uniqueStrings(input.member_phones);
-  const memberEmails = uniqueStrings(input.member_emails);
+  const memberUserIds = uniqueStrings(input.member_user_ids ?? []);
+  const memberPhones = uniqueStrings(input.member_phones ?? []);
+  const memberEmails = uniqueStrings(input.member_emails ?? []);
 
   if (!memberUserIds.length && !memberPhones.length && !memberEmails.length) {
     return null;

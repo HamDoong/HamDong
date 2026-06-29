@@ -15,6 +15,7 @@ import {
 import { listGroupExpenses, type BackendExpense, type ExpenseParticipant } from '../lib/expenseApi';
 import { getGroupBalances, getMyGroupBalance, getSettlementPlan, listGroupSettlements, type BalanceItem, type SettlementItem, type SettlementPlanItem } from '../lib/settlementApi';
 import { getMyGroups, type BackendGroup } from '../lib/groupApi';
+import { MoneyWithWords } from '../lib/money';
 import { getCurrentUser } from '../lib/userApi';
 import { humanizeMachineLabel } from '../lib/userMessages';
 import { Users } from 'lucide-react';
@@ -133,8 +134,7 @@ function formatMoney(amount: number) {
 }
 
 function formatSignedMoney(amount: number) {
-  const sign = amount > 0 ? '+' : amount < 0 ? '-' : '';
-  return `${sign}${formatMoney(amount)}`;
+  return formatMoney(amount);
 }
 
 function getAvatarText(value: string) {
@@ -630,7 +630,7 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
                   ) : (
                     <>
                       <span className="text-[34px] font-black tracking-normal md:text-[44px]">
-                        {formatMoney(Math.abs(summary.netMinor))}
+                        <MoneyWithWords amount={Math.abs(summary.netMinor)} valueClassName="text-[34px] font-black tracking-normal md:text-[44px]" textClassName="mt-2 text-sm font-semibold text-white/70" showText={true} />
                       </span>
                       <span className="mb-2 text-xl font-bold text-white/90">{netLabel}</span>
                     </>
@@ -649,21 +649,21 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
               <div className="border-white/20 lg:border-r lg:pr-8">
                 <div className="text-sm text-white/75">در انتظار دریافت</div>
                 <div className="mt-3 text-2xl font-black text-emerald-200">
-                  +{formatMoney(summary.creditMinor)}
+                  <MoneyWithWords amount={summary.creditMinor} valueClassName="text-2xl font-black text-emerald-200" textClassName="mt-1 text-xs font-semibold text-emerald-100/80" showText={true} />
                 </div>
               </div>
 
               <div className="border-white/20 lg:border-r lg:pr-8">
                 <div className="text-sm text-white/75">در انتظار پرداخت</div>
                 <div className="mt-3 text-2xl font-black text-orange-300">
-                  -{formatMoney(summary.debtMinor)}
+                  <MoneyWithWords amount={-summary.debtMinor} valueClassName="text-2xl font-black text-orange-300" textClassName="mt-1 text-xs font-semibold text-orange-100/80" showText={true} />
                 </div>
               </div>
 
               <div className="border-white/20 lg:border-r lg:pr-8">
                 <div className="text-sm text-white/75">تسویه‌های باز</div>
                 <div className="mt-3 text-2xl font-black text-white">
-                  {formatMoney(summary.openSettlementMinor)}
+                  <MoneyWithWords amount={summary.openSettlementMinor} valueClassName="text-2xl font-black text-white" textClassName="mt-1 text-xs font-semibold text-white/70" showText={true} />
                 </div>
               </div>
             </div>

@@ -12,7 +12,7 @@
   min-height: 100dvh;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: auto;
   flex-direction: column;
   padding-bottom: var(--login-footer-height);
   color: #16213a;
