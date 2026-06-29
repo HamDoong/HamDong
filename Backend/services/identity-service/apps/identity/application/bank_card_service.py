@@ -17,7 +17,6 @@ from apps.identity.domain.models import User, UserBankCard
 from apps.identity.infrastructure.repositories import RefreshTokenRepository
 
 
-SAFE_FALLBACK_HOLDER_NAME = "Bank Card"
 MAX_ACTIVE_BANK_CARDS = 10
 _TEXT_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -65,6 +64,34 @@ def normalize_holder_name(value: Any) -> str:
     if _TEXT_CONTROL_RE.search(normalized):
         raise BankCardError("INVALID_HOLDER_NAME", "Holder name contains invalid characters.")
     return normalized
+
+
+def resolve_holder_name(input_holder_name: Any, user: User) -> str:
+    provided_value = " ".join(str(input_holder_name or "").split())
+    if provided_value:
+        return normalize_holder_name(provided_value)
+
+    fallback_parts = [
+        " ".join(str(user.first_name or "").split()),
+        " ".join(str(user.last_name or "").split()),
+    ]
+    fallback_value = " ".join(part for part in fallback_parts if part)
+    if not fallback_value:
+        raise BankCardError(
+            "INVALID_HOLDER_NAME",
+            "Holder name is required when user first name and last name are empty.",
+        )
+    return normalize_holder_name(fallback_value)
+
+
+def serialize_bank_card_owner(user: User) -> dict[str, Any]:
+    return {
+        "user_id": str(user.id),
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "art_name": user.art_name,
+        "avatar_url": user.avatar_url,
+    }
 
 
 def normalize_bank_name(value: Any) -> str | None:
@@ -190,12 +217,12 @@ class BankCardService:
         user: User,
         *,
         card_number: Any,
-        holder_name: Any,
+        holder_name: Any = None,
         bank_name: Any = None,
         is_default: bool | None = None,
     ) -> tuple[UserBankCard, bool]:
         normalized_card_number = normalize_card_number(card_number)
-        normalized_holder_name = normalize_holder_name(holder_name)
+        normalized_holder_name = resolve_holder_name(holder_name, user)
         normalized_bank_name = normalize_bank_name(bank_name)
         card_hash = hash_card_number(user.id, normalized_card_number)
         existing = UserBankCard.objects.filter(user=user, card_number_hash=card_hash).first()
@@ -328,7 +355,7 @@ class BankCardService:
                     continue
                 if item.get("holder_name") is not None:
                     try:
-                        normalize_holder_name(item.get("holder_name"))
+                        resolve_holder_name(item.get("holder_name"), user)
                     except BankCardError as exc:
                         field_errors[f"cards[{index}].holder_name"] = [exc.message]
                 if item.get("bank_name") is not None:
@@ -348,7 +375,7 @@ class BankCardService:
                     continue
                 try:
                     normalized_card_number = normalize_card_number(item.get("card_number"))
-                    normalized_holder_name = normalize_holder_name(item.get("holder_name"))
+                    normalized_holder_name = resolve_holder_name(item.get("holder_name"), user)
                     normalized_bank_name = normalize_bank_name(item.get("bank_name"))
                 except BankCardError as exc:
                     target = {
@@ -396,6 +423,8 @@ class BankCardService:
                     for key in ("holder_name", "bank_name", "is_default", "is_active")
                     if key in item
                 }
+                if "holder_name" in update_payload:
+                    update_payload["holder_name"] = resolve_holder_name(update_payload.get("holder_name"), user)
                 card = self.update_card(user, card.id, update_payload)
                 results.append(serialize_bank_card(card, client_id=client_id))
                 continue

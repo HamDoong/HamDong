@@ -47,7 +47,9 @@ class UserBankCardApiTests(TestCase):
     def test_bank_card_crud_and_internal_payment_context(self):
         response = self.client.get(self.cards_url, **self.auth_headers)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json(), {"items": []})
+        self.assertEqual(response.json()["items"], [])
+        self.assertEqual(response.json()["owner"]["user_id"], str(self.user.id))
+        self.assertEqual(response.json()["owner"]["art_name"], self.user.art_name)
 
         response = self.client.post(
             self.cards_url,
