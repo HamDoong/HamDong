@@ -398,6 +398,32 @@ class GatewayTransactionRepository:
         return obj
 
     @staticmethod
+    def record_request(
+        gateway_tx: GatewayTransaction,
+        *,
+        status: str,
+        provider_reference: str | None = None,
+        provider_status: str | None = None,
+        response_payload: dict | None = None,
+    ):
+        if provider_reference:
+            gateway_tx.provider_reference = provider_reference
+        if provider_status:
+            gateway_tx.provider_status = provider_status
+        gateway_tx.status = status
+        gateway_tx.last_verify_response = response_payload or {}
+        gateway_tx.save(
+            update_fields=[
+                "provider_reference",
+                "provider_status",
+                "status",
+                "last_verify_response",
+                "updated_at",
+            ]
+        )
+        return gateway_tx
+
+    @staticmethod
     def record_verification(
         gateway_tx: GatewayTransaction,
         *,

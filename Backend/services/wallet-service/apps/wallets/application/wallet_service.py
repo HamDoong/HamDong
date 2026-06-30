@@ -57,7 +57,7 @@ from apps.wallets.domain.rules import (
 )
 from apps.wallets.infrastructure.clients import IdentityBankCardClient
 from apps.wallets.infrastructure.event_envelope import build_event_envelope
-from apps.wallets.infrastructure.payment_providers import get_provider_adapter
+from apps.wallets.infrastructure.payment_providers import PaymentProviderRequestError, get_provider_adapter
 from apps.wallets.infrastructure.repositories import (
     GatewayTransactionRepository,
     LedgerRepository,
@@ -640,7 +640,7 @@ class WalletService:
 
     def _validate_payment_provider(self, provider: str) -> str:
         normalized = str(provider or "").upper().strip()
-        if normalized != PaymentProviderChoices.FAKE:
+        if normalized not in {PaymentProviderChoices.FAKE, PaymentProviderChoices.ZARINPAL}:
             raise InvalidProviderError()
         return normalized
 
@@ -675,6 +675,7 @@ class WalletService:
         purpose = self._validate_payment_purpose(purpose)
         expires_in_minutes = int(getattr(settings, "PAYMENT_INTENT_EXPIRES_IN_MINUTES", 30))
         adapter = get_provider_adapter(provider)
+
         with transaction.atomic():
             wallet, _ = WalletRepository.get_or_create_for_user(requester_user_id, currency=currency, for_update=True)
             if wallet.status != "ACTIVE":
@@ -684,6 +685,7 @@ class WalletService:
                 self._expire_payment_intent_if_needed(existing)
                 existing = PaymentIntentRepository.get_for_wallet(wallet, existing.id)
                 return self._payment_intent_payload(existing)
+
             now = timezone.now()
             intent = PaymentIntentRepository.create(
                 wallet=wallet,
@@ -697,8 +699,6 @@ class WalletService:
                 expires_at=now + timedelta(minutes=expires_in_minutes),
                 metadata={},
             )
-            intent.payment_url = adapter.build_payment_url(intent)
-            intent.save(update_fields=["payment_url", "updated_at"])
             if purpose == PaymentPurposeChoices.WALLET_TOP_UP:
                 TopUpRepository.create(
                     wallet=wallet,
@@ -708,6 +708,80 @@ class WalletService:
                     status=TopUpStatusChoices.PENDING,
                     provider=provider,
                     idempotency_key=idempotency_key,
+                )
+
+        try:
+            request_result = adapter.request_payment(intent)
+        except PaymentProviderRequestError as exc:
+            with transaction.atomic():
+                wallet, _ = WalletRepository.get_or_create_for_user(requester_user_id, currency=currency, for_update=True)
+                intent = PaymentIntentRepository.get_for_wallet_update(wallet, intent.id)
+                top_up = TopUpRepository.get_by_payment_intent(intent)
+                safe_payload = self._json_safe(exc.payload or {"provider": provider})
+                intent.metadata = {"provider_request": safe_payload}
+                intent.provider_reference = exc.provider_reference
+                intent.save(update_fields=["metadata", "provider_reference", "updated_at"])
+                PaymentIntentRepository.set_status(
+                    intent,
+                    PaymentIntentStatusChoices.FAILED,
+                    failure_reason="Payment provider request failed.",
+                    provider_reference=exc.provider_reference,
+                )
+                gateway_tx = None
+                if provider == PaymentProviderChoices.ZARINPAL or exc.provider_reference:
+                    gateway_tx = GatewayTransactionRepository.get_or_create_for_intent(
+                        intent,
+                        defaults={"provider": provider, "status": GatewayTransactionStatusChoices.FAILED},
+                    )
+                    GatewayTransactionRepository.record_request(
+                        gateway_tx,
+                        status=GatewayTransactionStatusChoices.FAILED,
+                        provider_reference=exc.provider_reference,
+                        provider_status=exc.provider_status,
+                        response_payload=safe_payload,
+                    )
+                if top_up:
+                    TopUpRepository.mark_failed(
+                        top_up,
+                        gateway_transaction=gateway_tx,
+                        provider_reference=exc.provider_reference,
+                        reason="Payment provider request failed.",
+                    )
+            raise WalletServiceError(
+                "Payment provider request failed.",
+                code="PAYMENT_PROVIDER_REQUEST_FAILED",
+                status_code=502 if exc.retryable else 400,
+            )
+
+        with transaction.atomic():
+            wallet, _ = WalletRepository.get_or_create_for_user(requester_user_id, currency=currency, for_update=True)
+            intent = PaymentIntentRepository.get_for_wallet_update(wallet, intent.id)
+            top_up = TopUpRepository.get_by_payment_intent(intent)
+
+            intent.payment_url = request_result.payment_url
+            intent.provider_reference = request_result.provider_reference
+            intent.metadata = {"provider_request": self._json_safe(request_result.payload or {})}
+            intent.save(update_fields=["payment_url", "provider_reference", "metadata", "updated_at"])
+
+            if top_up and request_result.provider_reference:
+                top_up.provider_reference = request_result.provider_reference
+                top_up.save(update_fields=["provider_reference", "updated_at"])
+
+            if provider == PaymentProviderChoices.ZARINPAL or request_result.provider_reference:
+                gateway_tx = GatewayTransactionRepository.get_or_create_for_intent(
+                    intent,
+                    defaults={
+                        "provider": provider,
+                        "status": GatewayTransactionStatusChoices.VERIFYING,
+                        "provider_reference": request_result.provider_reference,
+                    },
+                )
+                GatewayTransactionRepository.record_request(
+                    gateway_tx,
+                    status=GatewayTransactionStatusChoices.VERIFYING,
+                    provider_reference=request_result.provider_reference,
+                    provider_status=request_result.provider_status,
+                    response_payload=self._json_safe(request_result.payload or {}),
                 )
             return self._payment_intent_payload(intent)
 
@@ -721,13 +795,25 @@ class WalletService:
         return self._payment_intent_payload(intent)
 
     def _extract_callback_parts(self, payload: dict[str, Any]):
-        payment_intent_id = payload.get("payment_intent_id") or payload.get("authority") or payload.get("intent_id")
-        provider_reference = payload.get("provider_reference") or payload.get("ref") or payload.get("reference")
+        payment_intent_id = payload.get("payment_intent_id") or payload.get("intent_id")
+        provider_reference = (
+            payload.get("provider_reference")
+            or payload.get("ref")
+            or payload.get("reference")
+            or payload.get("Authority")
+            or payload.get("authority")
+        )
         amount_minor = payload.get("amount_minor")
         if amount_minor in (None, ""):
             amount_minor = payload.get("amount")
         currency = payload.get("currency") or CurrencyChoices.IRR
-        provider_status = payload.get("result") or payload.get("status") or payload.get("provider_status") or "success"
+        provider_status = (
+            payload.get("provider_status")
+            or payload.get("Status")
+            or payload.get("status")
+            or payload.get("result")
+            or "success"
+        )
         return payment_intent_id, provider_reference, amount_minor, currency, provider_status
 
     def handle_gateway_callback(self, provider: str, payload: dict[str, Any], *, method: str = "POST"):
@@ -749,6 +835,8 @@ class WalletService:
         )
         if not intent:
             return {"message": "Callback received."}
+
+        normalized_provider_status = str(provider_status or "").upper()
         with transaction.atomic():
             intent = PaymentIntent.objects.select_for_update().select_related("wallet").get(pk=intent.pk)
             existing_ref = GatewayTransactionRepository.find_by_provider_reference(provider, str(provider_reference)) if provider_reference else None
@@ -764,15 +852,40 @@ class WalletService:
                 payload=payload,
                 callback_at=timezone.now(),
             )
-            if intent.status not in {PaymentIntentStatusChoices.SUCCEEDED, PaymentIntentStatusChoices.EXPIRED, PaymentIntentStatusChoices.CANCELLED}:
-                PaymentIntentRepository.mark_callback_received(
+            top_up = TopUpRepository.get_by_payment_intent(intent)
+
+            if intent.status in {PaymentIntentStatusChoices.SUCCEEDED, PaymentIntentStatusChoices.EXPIRED, PaymentIntentStatusChoices.CANCELLED}:
+                return {"message": "Callback received."}
+
+            failure_statuses = {"FAIL", "FAILED", "CANCELLED", "CANCELED"}
+            if provider == PaymentProviderChoices.ZARINPAL and normalized_provider_status == "NOK":
+                failure_statuses.add("NOK")
+
+            if normalized_provider_status in failure_statuses:
+                gateway_tx.status = GatewayTransactionStatusChoices.FAILED
+                gateway_tx.save(update_fields=["status", "updated_at"])
+                PaymentIntentRepository.set_status(
                     intent,
+                    PaymentIntentStatusChoices.FAILED,
+                    failure_reason="Provider callback reported failed payment.",
                     provider_reference=gateway_tx.provider_reference,
-                    callback_at=gateway_tx.last_callback_at,
                 )
-                top_up = TopUpRepository.get_by_payment_intent(intent)
-                if top_up and top_up.status == TopUpStatusChoices.PENDING:
-                    TopUpRepository.mark_processing(top_up, gateway_transaction=gateway_tx, provider_reference=gateway_tx.provider_reference)
+                if top_up and top_up.status != TopUpStatusChoices.COMPLETED:
+                    TopUpRepository.mark_failed(
+                        top_up,
+                        gateway_transaction=gateway_tx,
+                        provider_reference=gateway_tx.provider_reference,
+                        reason="Provider callback reported failed payment.",
+                    )
+                return {"message": "Callback received."}
+
+            PaymentIntentRepository.mark_callback_received(
+                intent,
+                provider_reference=gateway_tx.provider_reference,
+                callback_at=gateway_tx.last_callback_at,
+            )
+            if top_up and top_up.status == TopUpStatusChoices.PENDING:
+                TopUpRepository.mark_processing(top_up, gateway_transaction=gateway_tx, provider_reference=gateway_tx.provider_reference)
         return {"message": "Callback received."}
 
     def _emit_top_up_completed_event(self, *, intent: PaymentIntent, top_up: TopUp, tx: WalletTransaction, completed_at):

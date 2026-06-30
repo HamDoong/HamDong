@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -220,7 +220,39 @@ class PaymentIntentListCreateView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(tags=["Payments"], request=PaymentIntentCreateSerializer, responses={201: PaymentIntentSerializer})
+    @extend_schema(
+        tags=["Payments"],
+        request=PaymentIntentCreateSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=PaymentIntentSerializer,
+                examples=[
+                    OpenApiExample(
+                        "Zarinpal create intent",
+                        value={
+                            "payment_intent_id": "00000000-0000-0000-0000-000000000000",
+                            "purpose": "WALLET_TOP_UP",
+                            "amount_minor": 1000000,
+                            "currency": "IRR",
+                            "provider": "ZARINPAL",
+                            "status": "REDIRECT_REQUIRED",
+                            "payment_url": "https://sandbox.zarinpal.com/pg/StartPay/S000000000000000000000000000000000000",
+                            "provider_reference": "S000000000000000000000000000000000000",
+                            "expires_at": "2026-06-30T12:00:00Z",
+                            "created_at": "2026-06-30T11:30:00Z",
+                            "updated_at": "2026-06-30T11:30:00Z",
+                            "verified_at": None,
+                            "top_up_id": "00000000-0000-0000-0000-000000000001",
+                            "wallet_transaction_id": None,
+                            "failure_reason": None,
+                            "provider_status": "100",
+                        },
+                        response_only=True,
+                    )
+                ],
+            )
+        },
+    )
     def post(self, request, *args, **kwargs):
         serializer = PaymentIntentCreateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -255,11 +287,27 @@ class PaymentGatewayCallbackView(APIView):
         parameters=[
             OpenApiParameter("payment_intent_id", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("provider_reference", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("Authority", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("authority", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("Status", str, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("status", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("amount_minor", int, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("currency", str, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("result", str, OpenApiParameter.QUERY, required=False),
         ],
-        responses={200: CallbackAcceptedSerializer},
+        responses={
+            200: OpenApiResponse(
+                response=CallbackAcceptedSerializer,
+                examples=[
+                    OpenApiExample(
+                        "Zarinpal callback",
+                        value={"message": "Callback received."},
+                        response_only=True,
+                    )
+                ],
+            ),
+            409: OpenApiResponse(response=MessageSerializer),
+        },
     )
     def get(self, request, provider, *args, **kwargs):
         serializer = PaymentGatewayCallbackSerializer(data=request.query_params)
@@ -294,7 +342,50 @@ class PaymentGatewayVerifyView(APIView):
     @extend_schema(
         tags=["Payments"],
         request=PaymentIntentVerifySerializer,
-        responses={200: PaymentIntentVerifyResponseSerializer},
+        responses={
+            200: OpenApiResponse(
+                response=PaymentIntentVerifyResponseSerializer,
+                examples=[
+                    OpenApiExample(
+                        "Zarinpal verify succeeded",
+                        value={
+                            "payment_intent_id": "00000000-0000-0000-0000-000000000000",
+                            "top_up_id": "00000000-0000-0000-0000-000000000001",
+                            "wallet_transaction_id": "00000000-0000-0000-0000-000000000002",
+                            "status": "SUCCEEDED",
+                            "amount_minor": 1000000,
+                            "currency": "IRR",
+                            "provider": "ZARINPAL",
+                            "provider_reference": "S000000000000000000000000000000000000",
+                            "verified_at": "2026-06-30T12:00:00Z",
+                            "wallet_balance_minor": 1000000,
+                            "failure_reason": None,
+                        },
+                        response_only=True,
+                    ),
+                    OpenApiExample(
+                        "Zarinpal verify retryable",
+                        value={
+                            "payment_intent_id": "00000000-0000-0000-0000-000000000000",
+                            "top_up_id": "00000000-0000-0000-0000-000000000001",
+                            "wallet_transaction_id": None,
+                            "status": "RETRYABLE",
+                            "amount_minor": 1000000,
+                            "currency": "IRR",
+                            "provider": "ZARINPAL",
+                            "provider_reference": "S000000000000000000000000000000000000",
+                            "verified_at": None,
+                            "wallet_balance_minor": 0,
+                            "failure_reason": "Provider verification timed out.",
+                        },
+                        response_only=True,
+                    ),
+                ],
+            ),
+            401: OpenApiResponse(response=MessageSerializer),
+            404: OpenApiResponse(response=MessageSerializer),
+            409: OpenApiResponse(response=MessageSerializer),
+        },
     )
     def post(self, request, provider, *args, **kwargs):
         serializer = PaymentIntentVerifySerializer(data=request.data)
