@@ -3,6 +3,15 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.wallets.domain.models import (
+    CurrencyChoices,
+    PaymentIntentStatusChoices,
+    PaymentProviderChoices,
+    PaymentPurposeChoices,
+    WalletTransactionStatusChoices,
+    WalletTransactionTypeChoices,
+)
+
 
 class FlexibleDateTimeField(serializers.DateTimeField):
     def to_internal_value(self, value):
@@ -11,40 +20,11 @@ class FlexibleDateTimeField(serializers.DateTimeField):
         return super().to_internal_value(value)
 
 
-TRANSACTION_TYPES = [
-    "TOP_UP",
-    "WITHDRAWAL",
-    "TRANSFER_SENT",
-    "TRANSFER_RECEIVED",
-    "SETTLEMENT_PAYMENT",
-    "SETTLEMENT_RECEIVED",
-    "REFUND",
-    "ADJUSTMENT",
-]
-TRANSACTION_STATUSES = [
-    "PENDING",
-    "PROCESSING",
-    "COMPLETED",
-    "FAILED",
-    "CANCELLED",
-]
-PAYMENT_PURPOSES = [
-    "WALLET_TOP_UP",
-    "SETTLEMENT_PAYMENT",
-]
-PAYMENT_PROVIDERS = [
-    "FAKE",
-]
-PAYMENT_INTENT_STATUSES = [
-    "REDIRECT_REQUIRED",
-    "CALLBACK_RECEIVED",
-    "PROCESSING",
-    "SUCCEEDED",
-    "FAILED",
-    "RETRYABLE",
-    "EXPIRED",
-    "CANCELLED",
-]
+TRANSACTION_TYPES = [choice for choice, _ in WalletTransactionTypeChoices.choices]
+TRANSACTION_STATUSES = [choice for choice, _ in WalletTransactionStatusChoices.choices]
+PAYMENT_PURPOSES = [choice for choice, _ in PaymentPurposeChoices.choices]
+PAYMENT_PROVIDERS = [choice for choice, _ in PaymentProviderChoices.choices]
+PAYMENT_INTENT_STATUSES = [choice for choice, _ in PaymentIntentStatusChoices.choices]
 
 
 class WalletSerializer(serializers.Serializer):
@@ -133,7 +113,7 @@ class WithdrawalCreateSerializer(serializers.Serializer):
         return int(value)
 
     def validate_currency(self, value):
-        if value != "IRR":
+        if value != CurrencyChoices.IRR:
             raise serializers.ValidationError("Only IRR currency is supported in this phase.")
         return value
 
@@ -183,7 +163,7 @@ class PaymentIntentCreateSerializer(serializers.Serializer):
         return int(value)
 
     def validate_currency(self, value):
-        if value != "IRR":
+        if value != CurrencyChoices.IRR:
             raise serializers.ValidationError("Only IRR currency is supported in this phase.")
         return value
 
@@ -238,15 +218,20 @@ class PaymentGatewayCallbackSerializer(serializers.Serializer):
     payment_intent_id = serializers.UUIDField(required=False)
     provider_reference = serializers.CharField(required=False, allow_blank=False)
     amount_minor = serializers.IntegerField(required=False)
+    amount = serializers.IntegerField(required=False)
     currency = serializers.CharField(required=False)
     result = serializers.CharField(required=False)
     status = serializers.CharField(required=False)
+    Status = serializers.CharField(required=False)
     reference = serializers.CharField(required=False)
     ref = serializers.CharField(required=False)
     authority = serializers.CharField(required=False)
+    Authority = serializers.CharField(required=False)
+    provider_status = serializers.CharField(required=False)
+    intent_id = serializers.UUIDField(required=False)
 
     def validate_currency(self, value):
-        if value != "IRR":
+        if value != CurrencyChoices.IRR:
             raise serializers.ValidationError("Only IRR currency is supported in this phase.")
         return value
 

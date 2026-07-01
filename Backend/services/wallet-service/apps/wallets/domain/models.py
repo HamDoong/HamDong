@@ -66,6 +66,7 @@ class TopUpStatusChoices(models.TextChoices):
 
 class PaymentProviderChoices(models.TextChoices):
     FAKE = "FAKE", "Fake Provider"
+    ZARINPAL = "ZARINPAL", "Zarinpal"
 
 
 class PaymentPurposeChoices(models.TextChoices):

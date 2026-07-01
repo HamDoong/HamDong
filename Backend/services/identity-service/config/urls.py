@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
@@ -5,6 +7,7 @@ from apps.identity.api.views import (
     DeactivateAccountView,
     HealthView,
     InternalPaymentContextBankCardsView,
+    MeAvatarView,
     MeBankCardDetailView,
     MeBankCardsBulkView,
     MeBankCardsView,
@@ -40,6 +43,7 @@ urlpatterns = [
         name="admin_user_detail",
     ),
     path("api/v1/users/me/", MeView.as_view(), name="get_current_user"),
+    path("api/v1/users/me/avatar/", MeAvatarView.as_view(), name="me_avatar"),
     path(
         "api/v1/users/me/bank-cards/", MeBankCardsView.as_view(), name="me_bank_cards"
     ),
@@ -70,3 +74,7 @@ urlpatterns = [
         name="internal_payment_context_bank_cards",
     ),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
