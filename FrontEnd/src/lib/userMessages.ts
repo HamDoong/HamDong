@@ -336,7 +336,8 @@ function formatMoney(value: string) {
     return '';
   }
 
-  return `${amount.toLocaleString('fa-IR')} تومان`;
+  const sign = amount < 0 ? '-' : '';
+  return `تومان \u2066${sign}${Math.abs(amount).toLocaleString('fa-IR')}\u2069`;
 }
 
 function readContext(...sources: unknown[]) {

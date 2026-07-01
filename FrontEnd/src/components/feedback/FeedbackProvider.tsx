@@ -42,6 +42,7 @@ interface FeedbackContextValue {
 }
 
 const FeedbackContext = createContext<FeedbackContextValue | null>(null);
+const TOAST_DURATION_MS = 20_000;
 
 function getToastClasses(type: ToastType) {
   if (type === 'success') {
@@ -89,7 +90,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
 
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, 4200);
+    }, TOAST_DURATION_MS);
   }, []);
 
   const confirm = useCallback((options: ConfirmOptions) => {

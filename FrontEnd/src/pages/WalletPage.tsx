@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   CheckCircle2,
   CreditCard,
+  Eye,
+  Grid3X3,
   History,
   Loader2,
   Plus,
   ReceiptText,
   RefreshCw,
+  Scale,
+  TrendingUp,
+  Users,
   WalletCards,
   type LucideIcon,
 } from 'lucide-react';
@@ -18,7 +24,6 @@ import { getMyGroups, type BackendGroup } from '../lib/groupApi';
 import { MoneyWithWords } from '../lib/money';
 import { getCurrentUser } from '../lib/userApi';
 import { humanizeMachineLabel } from '../lib/userMessages';
-import { Users } from 'lucide-react';
 
 type TransactionTone = 'positive' | 'negative';
 type TransactionStatus = 'received' | 'paid' | 'pending';
@@ -32,6 +37,8 @@ interface WalletTransaction {
   id: string;
   title: string;
   subtitle: string;
+  groupTitle: string;
+  kindLabel: string;
   time: string;
   amount: number;
   status: TransactionStatus;
@@ -130,11 +137,14 @@ function formatDate(value?: string | null) {
 }
 
 function formatMoney(amount: number) {
-  return `${Math.abs(Math.round(amount)).toLocaleString('fa-IR')} تومان`;
+  const digits = Math.abs(Math.round(amount)).toLocaleString('fa-IR');
+  return `تومان \u2066${digits}\u2069`;
 }
 
 function formatSignedMoney(amount: number) {
-  return formatMoney(amount);
+  const digits = Math.abs(Math.round(amount)).toLocaleString('fa-IR');
+  const sign = amount > 0 ? '+' : amount < 0 ? '−' : '';
+  return `تومان \u2066${sign}${digits}\u2069`;
 }
 
 function getAvatarText(value: string) {
@@ -218,6 +228,8 @@ function buildSettlementTransaction(
     id: `settlement-${settlement.id}`,
     title,
     subtitle: `گروه «${getGroupTitle(group)}»`,
+    groupTitle: getGroupTitle(group),
+    kindLabel: amount >= 0 ? 'طلب' : 'پرداخت',
     time: formatDate(settlement.created_at),
     amount,
     status: amount >= 0 ? 'received' : 'paid',
@@ -253,6 +265,8 @@ function buildExpenseTransaction(
     id: `expense-${expense.id}`,
     title,
     subtitle: `گروه «${getGroupTitle(group)}»`,
+    groupTitle: getGroupTitle(group),
+    kindLabel: amount >= 0 ? 'پرداخت' : 'هزینه',
     time: formatDate(expense.expense_date || expense.created_at),
     amount,
     status: amount >= 0 ? 'received' : 'paid',
@@ -297,11 +311,13 @@ function ActionButton({
   label,
   onClick,
   loading = false,
+  tone = 'secondary',
 }: {
   icon: LucideIcon;
   label: string;
   onClick?: () => void;
   loading?: boolean;
+  tone?: 'primary' | 'secondary';
 }) {
   const ButtonIcon = loading ? Loader2 : Icon;
 
@@ -310,10 +326,18 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="group flex h-[72px] items-center justify-center gap-3 rounded-3xl border border-border bg-white px-5 text-base font-bold text-text shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-[0_18px_45px_rgba(15,23,42,0.07)] disabled:cursor-not-allowed disabled:opacity-70"
+      className={[
+        'group flex h-12 items-center justify-center gap-2 rounded-[16px] border px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-70',
+        tone === 'primary'
+          ? 'border-emerald-600 bg-emerald-600 text-white shadow-[0_14px_30px_rgba(5,150,105,0.18)] hover:bg-emerald-700 dark:border-emerald-500 dark:bg-emerald-500 dark:hover:bg-emerald-400'
+          : 'border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/35 dark:bg-slate-950 dark:text-emerald-200 dark:hover:bg-emerald-500/10',
+      ].join(' ')}
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 transition group-hover:bg-emerald-600 group-hover:text-white">
-        <ButtonIcon className={['h-5.5 w-5.5', loading ? 'animate-spin' : ''].join(' ')} />
+      <span className={[
+        'flex h-8 w-8 items-center justify-center rounded-[12px] transition',
+        tone === 'primary' ? 'bg-white/14 text-white' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-200',
+      ].join(' ')}>
+        <ButtonIcon className={['h-4 w-4', loading ? 'animate-spin' : ''].join(' ')} />
       </span>
       {label}
     </button>
@@ -322,65 +346,30 @@ function ActionButton({
 
 function TransactionRow({ transaction }: { transaction: WalletTransaction }) {
   const isPositive = transaction.tone === 'positive';
-  const DirectionIcon = isPositive ? ArrowDown : ArrowUp;
-  const Icon = transaction.icon;
 
   return (
-    <div className="grid grid-cols-[minmax(92px,150px)_minmax(0,1fr)] items-center gap-4 border-b border-border px-5 py-4 last:border-b-0 md:grid-cols-[minmax(120px,180px)_minmax(110px,150px)_minmax(0,1fr)]">
-      <div className="text-left">
-        <div
-          className={[
-            'text-lg font-extrabold tracking-normal',
-            isPositive ? 'text-emerald-600' : 'text-rose-500',
-          ].join(' ')}
-        >
-          {formatSignedMoney(transaction.amount)}
-        </div>
+    <div className="grid min-w-0 gap-3 border-b border-slate-100 px-4 py-3.5 last:border-b-0 md:grid-cols-[minmax(170px,1.35fr)_minmax(90px,0.6fr)_minmax(80px,0.5fr)_minmax(120px,0.75fr)_minmax(110px,0.7fr)] md:items-center dark:border-slate-800">
+      <div className="min-w-0 overflow-hidden text-right">
+        <p title={transaction.title} className="block max-w-full truncate text-sm font-black text-text dark:text-slate-100">{transaction.title}</p>
+        <p title={transaction.subtitle} className="mt-1 block max-w-full truncate text-[11px] font-semibold text-muted dark:text-slate-400 md:hidden">{transaction.subtitle}</p>
       </div>
 
-      <div className="hidden md:flex md:justify-center">
-        <span
-          className={[
-            'inline-flex h-8 items-center justify-center rounded-xl px-4 text-xs font-bold',
-            transaction.status === 'received'
-              ? 'bg-emerald-50 text-emerald-600'
-              : transaction.status === 'paid'
-                ? 'bg-rose-50 text-rose-500'
-                : 'bg-amber-50 text-amber-600',
-          ].join(' ')}
-        >
-          {transaction.statusLabel}
+      <p title={transaction.groupTitle} className="min-w-0 truncate text-xs font-black text-slate-700 dark:text-slate-200"><span className="font-semibold text-muted md:hidden">گروه: </span>{transaction.groupTitle}</p>
+
+      <div className="min-w-0">
+        <span className={[
+          'inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-[10px] font-black',
+          isPositive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-200',
+        ].join(' ')}>
+          {transaction.kindLabel}
         </span>
       </div>
 
-      <div className="flex min-w-0 items-center justify-end gap-4">
-        <div className="min-w-0 text-right">
-          <div className="truncate text-base font-bold text-text">{transaction.title}</div>
-          <div className="mt-1 truncate text-sm text-muted">{transaction.subtitle}</div>
-        </div>
+      <p title={formatSignedMoney(transaction.amount)} className={['min-w-0 truncate text-sm font-black', isPositive ? 'text-emerald-600 dark:text-emerald-200' : 'text-rose-500 dark:text-rose-200'].join(' ')}><span className="font-semibold text-muted md:hidden">مبلغ: </span>{formatSignedMoney(transaction.amount)}</p>
 
-        <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${transaction.avatarClassName} text-sm font-bold text-white`}
-        >
-          {transaction.avatar}
-        </div>
-
-        <div className="hidden w-24 shrink-0 text-center text-sm text-muted sm:block">
-          {transaction.time}
-        </div>
-
-        <div
-          className={[
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full',
-            isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500',
-          ].join(' ')}
-        >
-          <DirectionIcon className="h-5 w-5" />
-        </div>
-
-        <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500 xl:flex">
-          <Icon className="h-5 w-5" />
-        </div>
+      <div className="min-w-0 overflow-hidden text-xs font-semibold text-muted dark:text-slate-400">
+        <p title={transaction.time} className="truncate">{transaction.time}</p>
+        <p className="mt-1 truncate text-[10px]">{transaction.statusLabel}</p>
       </div>
     </div>
   );
@@ -397,11 +386,11 @@ function EmptyState({
 }) {
   return (
     <div className="p-8 text-center">
-      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-200">
         <Icon className="h-6 w-6" />
       </div>
-      <h3 className="text-base font-extrabold text-text">{title}</h3>
-      <p className="mx-auto mt-2 max-w-[360px] text-sm leading-7 text-muted">{description}</p>
+      <h3 className="text-base font-extrabold text-text dark:text-slate-100">{title}</h3>
+      <p className="mx-auto mt-2 max-w-[360px] text-sm leading-7 text-muted dark:text-slate-400">{description}</p>
     </div>
   );
 }
@@ -410,16 +399,16 @@ function SettlementSuggestionRow({ item }: { item: SettlementSuggestion }) {
   const isPositive = item.tone === 'positive';
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border py-4 last:border-b-0">
+    <div className="flex min-w-0 items-center justify-between gap-4 border-b border-slate-100 py-3.5 last:border-b-0 dark:border-slate-800">
       <div className="text-left">
-        <div className={['text-sm font-black', isPositive ? 'text-emerald-600' : 'text-rose-500'].join(' ')}>
+        <div className={['text-sm font-black', isPositive ? 'text-emerald-600 dark:text-emerald-200' : 'text-rose-500 dark:text-rose-200'].join(' ')}>
           {formatMoney(item.amountMinor)}
         </div>
-        <div className="mt-1 text-xs text-muted">{item.statusLabel}</div>
+        <div className="mt-1 text-xs text-muted dark:text-slate-400">{item.statusLabel}</div>
       </div>
       <div className="min-w-0 text-right">
-        <div className="truncate text-sm font-bold text-text">{item.personName}</div>
-        <div className="mt-1 truncate text-xs text-muted">
+        <div className="truncate text-sm font-bold text-text dark:text-slate-100">{item.personName}</div>
+        <div className="mt-1 truncate text-xs text-muted dark:text-slate-400">
           {item.description} در «{item.groupTitle}»
         </div>
       </div>
@@ -429,17 +418,20 @@ function SettlementSuggestionRow({ item }: { item: SettlementSuggestion }) {
 
 function GroupBalanceRow({ item }: { item: WalletGroupBalance }) {
   const isPositive = item.netMinor >= 0;
+  const isSettled = item.netMinor === 0;
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border py-4 last:border-b-0">
-      <div className={['text-sm font-black', isPositive ? 'text-emerald-600' : 'text-rose-500'].join(' ')}>
-        {formatSignedMoney(item.netMinor)}
+    <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 py-3 last:border-b-0 dark:border-slate-800">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-black text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{getAvatarText(item.groupTitle)}</span>
+      <div className="min-w-0 flex-1 text-right">
+        <div title={item.groupTitle} className="truncate text-sm font-black text-text dark:text-slate-100">{item.groupTitle}</div>
       </div>
-      <div className="min-w-0 text-right">
-        <div className="truncate text-sm font-bold text-text">{item.groupTitle}</div>
-        <div className="mt-1 text-xs text-muted">
-          {isPositive ? 'طلب شما در این گروه' : 'بدهی شما در این گروه'}
-        </div>
+      <span className={[
+        'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black',
+        isSettled ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300' : isPositive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-200',
+      ].join(' ')}>{isSettled ? 'تسویه‌شده' : isPositive ? 'طلبکارید' : 'بدهکارید'}</span>
+      <div title={formatSignedMoney(item.netMinor)} className={['max-w-[120px] shrink-0 truncate text-left text-sm font-black', isSettled ? 'text-slate-500 dark:text-slate-300' : isPositive ? 'text-emerald-600 dark:text-emerald-200' : 'text-rose-500 dark:text-rose-200'].join(' ')}>
+        {formatSignedMoney(item.netMinor)}
       </div>
     </div>
   );
@@ -577,196 +569,162 @@ export function WalletPage({ onOpenActivities, onOpenGroups }: WalletPageProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const netTone = summary.netMinor >= 0 ? 'positive' : 'negative';
-  const netLabel = summary.netMinor >= 0 ? 'طلبکار هستید' : 'بدهکار هستید';
-  const HeroDirectionIcon = summary.netMinor >= 0 ? ArrowDown : ArrowUp;
-  const topGroups = useMemo(() => groupBalances.slice(0, 5), [groupBalances]);
+  const netLabel = summary.netMinor > 0 ? 'طلبکار هستید' : summary.netMinor < 0 ? 'بدهکار هستید' : 'حساب‌ها تسویه‌اند';
+  const topGroups = useMemo(() => groupBalances.slice(0, 3), [groupBalances]);
+  const bannerLabel = summary.netMinor > 0
+    ? `${formatMoney(summary.netMinor)} طلب دارید`
+    : summary.netMinor < 0
+      ? `${formatMoney(summary.netMinor)} بدهی دارید`
+      : 'همه حساب‌های شما تسویه است';
+  const bannerSuggestion = summary.netMinor > 0
+    ? 'طلب‌ها را بررسی کنید و در صورت نیاز یادآوری بفرستید.'
+    : summary.netMinor < 0
+      ? 'پرداخت‌های باز را بررسی و تسویه کنید.'
+      : 'با ثبت هزینه جدید، وضعیت حساب‌ها اینجا به‌روز می‌شود.';
 
   return (
-    <main className="px-4 py-6 sm:px-6 xl:px-8">
-      <div className="mx-auto grid max-w-[1240px] gap-6 xl:grid-cols-[minmax(0,1fr)_354px]">
-        <section className="min-w-0 space-y-6">
-          <div className="flex flex-col gap-4 text-right sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-[32px] font-extrabold leading-tight text-text">کیف پول</h1>
-              <p className="mt-2 text-base text-muted">
-                خلاصه حساب گروه‌ها، تسویه‌ها و رفت‌وآمدهای مالی تو در اینجا نمایش داده می‌شود.
-              </p>
-            </div>
+    <main dir="rtl" className="px-3 py-4 text-right sm:px-6 sm:py-6 xl:px-8">
+      <div className="mx-auto max-w-[1180px] space-y-5">
+        <section dir="ltr" className="grid items-center gap-4 rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_14px_38px_rgba(15,23,42,0.055)] md:grid-cols-[auto_minmax(0,1fr)_auto] dark:border-slate-700 dark:bg-slate-950/90 dark:shadow-[0_18px_48px_rgba(0,0,0,0.22)]">
+          <button
+            type="button"
+            onClick={onOpenGroups}
+            className="order-3 inline-flex h-11 items-center justify-center gap-2 rounded-[14px] border border-emerald-500 bg-white px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-50 md:order-1 dark:bg-slate-950 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
+          >
+            <Eye className="h-4 w-4" />
+            {summary.netMinor > 0 ? 'مشاهده طلب‌ها' : 'مشاهده گروه‌ها'}
+          </button>
 
+          <div dir="rtl" className="order-2 min-w-0 text-center md:text-right">
+            <p className="text-sm font-black leading-7 text-text dark:text-slate-100 sm:text-base">
+              {summary.netMinor === 0 ? (
+                <>حساب شما در {summary.activeGroupCount.toLocaleString('fa-IR')} گروه <span className="text-emerald-600 dark:text-emerald-300">کاملاً تسویه است</span></>
+              ) : (
+                <>شما در {summary.activeGroupCount.toLocaleString('fa-IR')} گروه، مجموعاً <span className="text-emerald-600 dark:text-emerald-300">{bannerLabel}</span></>
+              )}
+            </p>
+            <p className="mt-1 text-xs font-semibold leading-6 text-muted dark:text-slate-400"><span className="font-black text-emerald-600 dark:text-emerald-300">پیشنهاد:</span> {bannerSuggestion}</p>
           </div>
 
-          {error ? (
-            <div className="rounded-3xl border border-rose-100 bg-rose-50 p-5 text-center text-sm font-bold text-rose-600">
-              {error}
-            </div>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => void loadWalletData()}
+            disabled={loading}
+            className="order-1 mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 transition hover:bg-emerald-100 disabled:opacity-60 md:order-3 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/15"
+            aria-label="به‌روزرسانی کیف پول"
+          >
+            {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <TrendingUp className="h-6 w-6" />}
+          </button>
+        </section>
 
-          {partialWarning ? (
-            <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5 text-center text-sm font-bold text-amber-700">
-              {partialWarning}
-            </div>
-          ) : null}
+        {error ? <div className="rounded-[18px] border border-rose-200 bg-rose-50 p-4 text-center text-sm font-bold text-rose-600 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200">{error}</div> : null}
+        {partialWarning ? <div className="rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-center text-sm font-bold text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">{partialWarning}</div> : null}
 
-          <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#007A4F] via-[#009966] to-[#006B4D] p-7 text-white shadow-[0_24px_60px_rgba(0,128,89,0.22)]">
-            <div className="pointer-events-none absolute -left-16 -top-16 h-52 w-52 rounded-full bg-white/10 blur-2xl" />
-            <div className="pointer-events-none absolute bottom-3 right-8 text-[88px] opacity-15">
-              <WalletCards />
-            </div>
-
-            <div className="relative grid gap-8 lg:grid-cols-[1.3fr_1fr_1fr_1fr] lg:items-center">
-              <div className="text-right">
-                <div className="mb-5 flex items-center justify-end gap-3 text-sm font-semibold text-white/85">
-                  <WalletCards className="h-4.5 w-4.5" />
-                  خالص حساب گروه‌ها
-                </div>
-
-                <div className="flex flex-wrap items-end justify-end gap-3">
-                  {loading ? (
-                    <span className="inline-flex items-center gap-2 text-2xl font-black">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                      در حال دریافت
-                    </span>
-                  ) : (
-                    <>
-                      <span className="text-[34px] font-black tracking-normal md:text-[44px]">
-                        <MoneyWithWords amount={Math.abs(summary.netMinor)} valueClassName="text-[34px] font-black tracking-normal md:text-[44px]" textClassName="mt-2 text-sm font-semibold text-white/70" showText={true} />
-                      </span>
-                      <span className="mb-2 text-xl font-bold text-white/90">{netLabel}</span>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onOpenGroups}
-                  className="mt-6 h-11 rounded-2xl border border-white/45 px-5 text-sm font-bold text-white transition hover:bg-white/12"
-                >
-                  مشاهده گروه‌ها
-                </button>
+        <section dir="ltr" className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-stretch">
+          <aside dir="rtl" className="order-2 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.05)] xl:order-1 dark:border-slate-700 dark:bg-slate-950/90">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-200"><Users className="h-4 w-4" /></span>
+                <h2 className="text-base font-black text-text dark:text-slate-100">وضعیت گروه‌ها</h2>
               </div>
-
-              <div className="border-white/20 lg:border-r lg:pr-8">
-                <div className="text-sm text-white/75">در انتظار دریافت</div>
-                <div className="mt-3 text-2xl font-black text-emerald-200">
-                  <MoneyWithWords amount={summary.creditMinor} valueClassName="text-2xl font-black text-emerald-200" textClassName="mt-1 text-xs font-semibold text-emerald-100/80" showText={true} />
-                </div>
-              </div>
-
-              <div className="border-white/20 lg:border-r lg:pr-8">
-                <div className="text-sm text-white/75">در انتظار پرداخت</div>
-                <div className="mt-3 text-2xl font-black text-orange-300">
-                  <MoneyWithWords amount={-summary.debtMinor} valueClassName="text-2xl font-black text-orange-300" textClassName="mt-1 text-xs font-semibold text-orange-100/80" showText={true} />
-                </div>
-              </div>
-
-              <div className="border-white/20 lg:border-r lg:pr-8">
-                <div className="text-sm text-white/75">تسویه‌های باز</div>
-                <div className="mt-3 text-2xl font-black text-white">
-                  <MoneyWithWords amount={summary.openSettlementMinor} valueClassName="text-2xl font-black text-white" textClassName="mt-1 text-xs font-semibold text-white/70" showText={true} />
-                </div>
-              </div>
+              <span className="text-xs font-bold text-muted dark:text-slate-400">{summary.activeGroupCount.toLocaleString('fa-IR')} گروه</span>
             </div>
-          </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <ActionButton icon={Plus} label="ثبت هزینه" onClick={onOpenActivities} />
-            <ActionButton icon={Users} label="گروه‌ها" onClick={onOpenGroups} />
-            <ActionButton icon={CreditCard} label="تسویه حساب" onClick={onOpenGroups} />
-            <ActionButton icon={RefreshCw} label="به‌روزرسانی" onClick={loadWalletData} loading={loading} />
-          </div>
+            <div className="px-4">
+              {topGroups.length > 0 ? topGroups.map((item) => <GroupBalanceRow key={item.groupId} item={item} />) : (
+                <div className="py-8 text-center text-sm font-semibold leading-7 text-muted dark:text-slate-400">هنوز بالانسی برای گروه‌های شما وجود ندارد.</div>
+              )}
+            </div>
 
-          <div className="overflow-hidden rounded-3xl border border-border bg-white shadow-soft">
-            <div className="flex items-center justify-between border-b border-border px-6 py-5">
-              <button
-                type="button"
-                onClick={onOpenActivities}
-                className="text-sm font-bold text-emerald-600 transition hover:text-emerald-700"
-              >
-                مشاهده فعالیت‌ها
+            <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+              <button type="button" onClick={onOpenGroups} className="flex h-11 w-full items-center justify-center gap-2 rounded-[14px] border border-slate-200 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
+                <Grid3X3 className="h-4 w-4" />
+                مشاهده همه گروه‌ها
               </button>
-              <h2 className="text-2xl font-extrabold text-text">تراکنش‌های اخیر</h2>
             </div>
+          </aside>
 
-            {loading ? (
-              <EmptyState
-                icon={Loader2}
-                title="در حال دریافت تراکنش‌ها"
-                description="در حال آماده‌کردن تراکنش‌های اخیر هستیم."
-              />
-            ) : null}
+          <div dir="rtl" className="order-1 min-w-0 xl:order-2">
+            <section className="relative overflow-hidden rounded-[24px] bg-gradient-to-br from-[#007A4F] via-[#009966] to-[#006B4D] p-5 text-white shadow-[0_20px_48px_rgba(0,128,89,0.22)] sm:p-6">
+              <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+              <div className="relative">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-white/85">خالص حساب شما</p>
+                    <div className="mt-2">
+                      {loading ? (
+                        <span className="inline-flex items-center gap-2 text-2xl font-black"><Loader2 className="h-6 w-6 animate-spin" />در حال دریافت</span>
+                      ) : (
+                        <MoneyWithWords amount={Math.abs(summary.netMinor)} valueClassName="text-[34px] font-black tracking-[-0.04em] sm:text-[44px]" textClassName="mt-1 text-xs font-semibold text-white/70" showText={true} />
+                      )}
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-2 text-xs font-black text-white ring-1 ring-white/15"><CheckCircle2 className="h-4 w-4" />{netLabel}</span>
+                </div>
 
-            {!loading && transactions.length === 0 ? (
-              <EmptyState
-                icon={History}
-                title="تراکنشی برای نمایش نیست"
-                description="بعد از ثبت هزینه یا تسویه حساب در گروه‌ها، ردیف‌های کیف پول اینجا نمایش داده می‌شوند."
-              />
-            ) : null}
-
-            {!loading && transactions.length > 0 ? (
-              <div>
-                {transactions.map((transaction) => (
-                  <TransactionRow key={transaction.id} transaction={transaction} />
-                ))}
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="flex min-w-0 items-center justify-between gap-3 rounded-[18px] border border-white/20 bg-white/[0.06] p-4">
+                    <div className="min-w-0"><p className="text-xs font-bold text-white/75">طلب شما</p><p title={formatMoney(summary.creditMinor)} className="mt-2 truncate text-lg font-black text-white">{formatMoney(summary.creditMinor)}</p><p className="mt-1 text-[10px] font-semibold text-white/65">از {groupBalances.filter((item) => item.netMinor > 0).length.toLocaleString('fa-IR')} گروه</p></div>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-emerald-100"><ArrowDown className="h-5 w-5" /></span>
+                  </div>
+                  <div className="flex min-w-0 items-center justify-between gap-3 rounded-[18px] border border-white/20 bg-white/[0.06] p-4">
+                    <div className="min-w-0"><p className="text-xs font-bold text-white/75">بدهی شما</p><p title={formatMoney(summary.debtMinor)} className="mt-2 truncate text-lg font-black text-white">{formatMoney(summary.debtMinor)}</p><p className="mt-1 text-[10px] font-semibold text-white/65">در {groupBalances.filter((item) => item.netMinor < 0).length.toLocaleString('fa-IR')} گروه</p></div>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-orange-100"><ArrowUp className="h-5 w-5" /></span>
+                  </div>
+                </div>
               </div>
-            ) : null}
-          </div>
+            </section>
 
-          <div className="overflow-hidden rounded-3xl border border-border bg-white shadow-soft">
-            <div className="flex items-center justify-between border-b border-border px-6 py-5">
-              <button
-                type="button"
-                onClick={onOpenGroups}
-                className="text-sm font-bold text-emerald-600 transition hover:text-emerald-700"
-              >
-                مشاهده گروه‌ها
-              </button>
-              <h2 className="text-2xl font-extrabold text-text">تسویه‌های پیشنهادی</h2>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <ActionButton tone="primary" icon={Plus} label="ثبت هزینه" onClick={onOpenActivities} />
+              <ActionButton tone="secondary" icon={CreditCard} label="تسویه حساب" onClick={onOpenGroups} />
             </div>
-
-            <div className="px-5">
-              {settlementSuggestions.map((item) => (
-                <SettlementSuggestionRow key={item.id} item={item} />
-              ))}
-            </div>
-
-            {!loading && settlementSuggestions.length === 0 ? (
-              <EmptyState
-                icon={CheckCircle2}
-                title="تسویه بازی ندارید"
-                description="اگر برای تسویه گروه‌ها پیشنهادی وجود داشته باشد، اینجا به تو نشان داده می‌شود."
-              />
-            ) : null}
           </div>
         </section>
 
-        <aside className="space-y-6">
-          <div className="rounded-3xl border border-border bg-white p-6 shadow-soft">
-            <div className="mb-4 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={onOpenGroups}
-                className="text-sm font-bold text-emerald-600 transition hover:text-emerald-700"
-              >
-                همه
-              </button>
-              <h2 className="text-xl font-extrabold text-text">حساب گروه‌ها</h2>
+        <section dir="ltr" className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-stretch">
+          <div dir="rtl" className="order-2 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.05)] xl:order-1 dark:border-slate-700 dark:bg-slate-950/90">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:px-5">
+              <h2 className="text-lg font-black text-text dark:text-slate-100">تراکنش‌های اخیر</h2>
+              <button type="button" onClick={onOpenActivities} className="inline-flex items-center gap-1 text-xs font-black text-emerald-600 hover:text-emerald-700 dark:text-emerald-300">مشاهده همه تراکنش‌ها<ArrowLeft className="h-4 w-4" /></button>
             </div>
 
-            {topGroups.length > 0 ? (
-              <div>
-                {topGroups.map((item) => (
-                  <GroupBalanceRow key={item.groupId} item={item} />
-                ))}
+            {transactions.length > 0 ? (
+              <div className="hidden min-w-0 grid-cols-[minmax(170px,1.35fr)_minmax(90px,0.6fr)_minmax(80px,0.5fr)_minmax(120px,0.75fr)_minmax(110px,0.7fr)] gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3 text-[11px] font-black text-slate-500 md:grid dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
+                <span>عنوان تراکنش</span><span>گروه</span><span>نوع</span><span>مبلغ</span><span>تاریخ</span>
               </div>
+            ) : null}
+
+            {loading ? <EmptyState icon={Loader2} title="در حال دریافت تراکنش‌ها" description="در حال آماده‌کردن تراکنش‌های اخیر هستیم." /> : null}
+            {!loading && transactions.length === 0 ? <EmptyState icon={History} title="تراکنشی برای نمایش نیست" description="بعد از ثبت هزینه یا تسویه، تراکنش‌ها اینجا نمایش داده می‌شوند." /> : null}
+            {!loading && transactions.length > 0 ? <div>{transactions.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} />)}</div> : null}
+          </div>
+
+          <aside dir="rtl" className="order-1 flex min-h-[390px] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.05)] xl:order-2 dark:border-slate-700 dark:bg-slate-950/90">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-200"><Scale className="h-4 w-4" /></span>
+              <h2 className="text-base font-black text-text dark:text-slate-100">پیشنهادهای تسویه حساب</h2>
+            </div>
+
+            {settlementSuggestions.length > 0 ? (
+              <div className="flex-1 px-4">{settlementSuggestions.map((item) => <SettlementSuggestionRow key={item.id} item={item} />)}</div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm leading-7 text-muted">
-                هنوز بالانسی برای گروه‌های شما دریافت نشده است.
+              <div className="flex flex-1 flex-col items-center justify-center px-6 py-7 text-center">
+                <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-200">
+                  <WalletCards className="h-12 w-12" />
+                  <CheckCircle2 className="absolute -bottom-1 -right-1 h-10 w-10 rounded-full bg-white fill-emerald-600 text-white dark:bg-slate-950" />
+                </div>
+                <h3 className="mt-5 text-base font-black text-text dark:text-slate-100">همه حساب‌ها فعلاً تسویه‌اند</h3>
+                <p className="mt-2 text-xs font-semibold leading-7 text-muted dark:text-slate-400">پس از ثبت هزینه یا پرداخت جدید، پیشنهادها اینجا نمایش داده می‌شوند.</p>
               </div>
             )}
-          </div>
-        </aside>
+
+            <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-3 dark:border-slate-800">
+              <button type="button" onClick={onOpenActivities} className="flex h-10 items-center justify-center gap-1.5 rounded-[12px] bg-emerald-600 px-2 text-xs font-black text-white transition hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400"><Plus className="h-4 w-4" />ثبت هزینه جدید</button>
+              <button type="button" onClick={onOpenGroups} className="flex h-10 items-center justify-center gap-1.5 rounded-[12px] border border-emerald-400 px-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-500/35 dark:text-emerald-200 dark:hover:bg-emerald-500/10"><Eye className="h-4 w-4" />مشاهده طلب‌ها</button>
+            </div>
+          </aside>
+        </section>
       </div>
     </main>
   );

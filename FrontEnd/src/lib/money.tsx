@@ -96,14 +96,15 @@ export function formatMoneyNumber(
   const rounded = Math.round(Math.abs(amount));
   const currency = options?.currency ?? 'تومان';
   const sign = options?.signed && amount < 0 ? '-' : options?.signed && amount > 0 ? '+' : '';
-  return `${sign}${toPersianNumber(rounded.toLocaleString('en-US'))} ${currency}`;
+  const digits = toPersianNumber(rounded.toLocaleString('en-US'));
+  return `${currency} \u2066${sign}${digits}\u2069`;
 }
 
 export function formatMoneyText(
   value: number | string | null | undefined,
   currency = 'تومان',
 ) {
-  return `${numberToPersianWords(value)} ${currency}`;
+  return `${currency} ${numberToPersianWords(value)}`;
 }
 
 export function formatSignedMoney(value: number | string | null | undefined, currency = 'تومان') {

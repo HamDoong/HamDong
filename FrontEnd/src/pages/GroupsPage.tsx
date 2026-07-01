@@ -47,7 +47,7 @@ function toPersianNumber(value: string | number) {
 }
 
 function formatMoney(minor = 0) {
-  return `${toPersianNumber(Math.abs(Math.round(minor)).toLocaleString('en-US'))} تومان`;
+  return `تومان \u2066${toPersianNumber(Math.abs(Math.round(minor)).toLocaleString('en-US'))}\u2069`;
 }
 
 function getSignedMoneyLabel(minor = 0) {

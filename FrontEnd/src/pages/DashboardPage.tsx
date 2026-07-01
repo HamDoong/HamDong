@@ -8,6 +8,7 @@ import {
   CreditCard,
   Home,
   Loader2,
+  MoreVertical,
   Mountain,
   Plus,
   ReceiptText,
@@ -33,7 +34,10 @@ import {
   type BackendNotificationMessage,
 } from '../lib/notificationApi';
 import {
+  confirmPlanItem,
   getSettlementPlan,
+  rejectPlanItem,
+  sendPlanItemReminder,
   type SettlementPlanItem,
 } from '../lib/settlementApi';
 import { getCurrentUser } from '../lib/userApi';
@@ -55,12 +59,14 @@ interface DashboardPageProps {
 
 interface SettlementSuggestion {
   id: string;
-  name: string;
   description: string;
   amount: number;
   tone: Group['tone'];
-  avatarText: string;
   groupId?: string;
+  groupName: string;
+  itemId?: string;
+  status?: string;
+  referenceDate?: string;
 }
 
 interface DashboardEvent {
@@ -71,6 +77,12 @@ interface DashboardEvent {
   icon: LucideIcon;
   toneClassName: string;
   createdAt: number;
+  groupId?: string;
+}
+
+interface ActionNotice {
+  tone: 'success' | 'info' | 'error';
+  message: string;
 }
 
 function formatMoney(amount: number) {
@@ -94,10 +106,6 @@ function getMemberCountText(label: string) {
 
 function getPersonName(...values: Array<string | null | undefined>) {
   return values.find((value) => value && value.trim())?.trim() || 'عضو گروه';
-}
-
-function getAvatarText(value: string) {
-  return value.trim().slice(0, 1) || '؟';
 }
 
 function isArchivedGroup(group: Group) {
@@ -166,6 +174,14 @@ function formatEventDate(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(timestamp));
+}
+
+function formatTaskAge(value?: string | null) {
+  const timestamp = getDateTimestamp(value);
+  if (!timestamp) return null;
+
+  const days = Math.max(0, Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)));
+  return days === 0 ? 'کمتر از یک روز بدون تغییر' : `${days.toLocaleString('fa-IR')} روز بدون تغییر`;
 }
 
 function getExpenseTotal(expense: BackendExpense) {
@@ -250,6 +266,7 @@ function expenseToEvent(
     icon: WalletCards,
     toneClassName: 'bg-emerald-50 text-emerald-600',
     createdAt: getDateTimestamp(date),
+    groupId: getGroupId(group),
   };
 }
 
@@ -262,6 +279,7 @@ function planItemToSuggestion(
   item: SettlementPlanItem,
   group: Group,
   currentUserId: string | null,
+  referenceDate?: string,
 ): SettlementSuggestion | null {
   if (!isOpenPlanItem(item)) return null;
 
@@ -272,21 +290,22 @@ function planItemToSuggestion(
 
   if (currentUserId && !isPayer && !isReceiver) return null;
 
-  const name = isPayer ? receiverName : isReceiver ? payerName : `${payerName} به ${receiverName}`;
   const description = isPayer
-    ? `پرداخت پیشنهادی در گروه «${group.name}»`
+    ? `پرداخت به ${receiverName} در گروه «${group.name}»`
     : isReceiver
-      ? `دریافت پیشنهادی در گروه «${group.name}»`
+      ? `دریافت از ${payerName} در گروه «${group.name}»`
       : `تسویه پیشنهادی گروه «${group.name}»`;
 
   return {
     id: `plan-${item.id}`,
-    name,
     description,
     amount: item.amount_minor,
     tone: isPayer ? 'negative' : 'positive',
-    avatarText: getAvatarText(name),
     groupId: getGroupId(group),
+    groupName: group.name,
+    itemId: item.id,
+    status: item.status,
+    referenceDate,
   };
 }
 
@@ -301,14 +320,13 @@ function balanceToSuggestion(
 
   return {
     id: `balance-${balance.groupId}`,
-    name,
     description: isDebt
       ? 'برای تسویه این گروه پرداخت لازم دارید'
       : 'در این گروه طلبکار هستید',
     amount: Math.abs(balance.netMinor),
     tone: isDebt ? 'negative' : 'positive',
-    avatarText: getAvatarText(name),
     groupId: balance.groupId,
+    groupName: name,
   };
 }
 
@@ -338,7 +356,7 @@ function SectionCard({
       : 'rounded-[24px] border border-slate-200/85 bg-white/95 shadow-[0_20px_50px_rgba(15,23,42,0.095)] ring-1 ring-white/80 backdrop-blur';
 
   return (
-    <section className={`dashboard-section-card dashboard-section-card--${variant} min-w-0 overflow-hidden ${variantClassName} ${className}`}>
+    <section className={`dashboard-section-card dashboard-section-card--${variant} min-w-0 ${variantClassName} ${className}`}>
       {children}
     </section>
   );
@@ -452,9 +470,9 @@ function QuickActionCard({
       <div className={['dashboard-quick-action-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] transition group-hover:scale-105', toneClasses.icon].join(' ')}>
         <Icon className="h-6 w-6" />
       </div>
-      <div className="min-w-0">
-        <div className={['flex items-center justify-end gap-2 text-base font-black sm:text-lg', toneClasses.title].join(' ')}>
-          <span>{title}</span>
+      <div className="min-w-0 flex-1 text-right">
+        <div className={['flex w-full items-center justify-start gap-2 text-right text-base font-black sm:text-lg', toneClasses.title].join(' ')}>
+          <span className="w-full text-right">{title}</span>
         </div>
       </div>
     </button>
@@ -501,7 +519,7 @@ function BalanceHero({
           onClick={onOpenWallet}
           className="dashboard-wallet-link inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 text-xs font-black text-emerald-700 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-emerald-50"
         >
-          جزئیات کیف پول
+          جزئیات محاسبه
           <ArrowLeft className="h-4 w-4" />
         </button>
       </div>
@@ -557,55 +575,116 @@ function BalanceHero({
   );
 }
 
-function SettlementRow({ item }: { item: SettlementSuggestion }) {
+function SettlementRow({
+  item,
+  busy,
+  onPrimary,
+  onReminder,
+  onReject,
+  onDispute,
+}: {
+  item: SettlementSuggestion;
+  busy: boolean;
+  onPrimary: () => void;
+  onReminder: () => void;
+  onReject: () => void;
+  onDispute: () => void;
+}) {
+  const [moreOpen, setMoreOpen] = useState(false);
   const isDebt = item.tone === 'negative';
+  const canConfirmReceipt = !isDebt && Boolean(item.itemId) && String(item.status || '').toUpperCase() === 'REPORTED';
   const amountClassName = isDebt ? 'text-orange-700' : 'text-emerald-700';
   const iconClassName = isDebt
     ? 'bg-orange-50 text-orange-600 ring-orange-100'
     : 'bg-emerald-50 text-emerald-600 ring-emerald-100';
   const ActionIcon = isDebt ? ArrowUp : ArrowDown;
-  const actionLabel = isDebt ? `پرداخت به ${item.name}` : `دریافت از ${item.name}`;
-  const amountTitle = isDebt ? 'مبلغ پرداختی' : 'مبلغ دریافتی';
+  const title = isDebt
+    ? `در گروه «${item.groupName}» باید پول بدهید`
+    : `در گروه «${item.groupName}» باید پول بگیرید`;
+  const primaryLabel = isDebt ? 'تسویه' : canConfirmReceipt ? 'پول را گرفتم' : 'مشاهده وضعیت';
+  const ageTimestamp = getDateTimestamp(item.referenceDate);
+  const ageInDays = ageTimestamp ? Math.floor((Date.now() - ageTimestamp) / (24 * 60 * 60 * 1000)) : 0;
+  const needsFollowUp = Boolean(ageTimestamp && ageInDays >= 7);
+  const taskAgeLabel = formatTaskAge(item.referenceDate);
 
   return (
-    <div className="dashboard-list-row dashboard-list-card dashboard-action-card flex w-full max-w-full min-w-0 flex-col gap-3 overflow-hidden rounded-[22px] border border-slate-200/85 bg-white/[0.92] px-4 py-4 text-right shadow-[0_12px_28px_rgba(15,23,42,0.065)] ring-1 ring-slate-100/70 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.09)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
-      <div className={`dashboard-event-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full ring-1 ${iconClassName}`}>
-        <ActionIcon className="h-5 w-5" strokeWidth={2.3} />
+    <div className="dashboard-list-row dashboard-list-card dashboard-action-card w-full max-w-full min-w-0 rounded-[18px] border border-slate-200/85 bg-white/[0.92] p-3 text-right shadow-[0_8px_22px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 sm:px-4 sm:py-3.5">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <div className={`dashboard-event-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-1 ${iconClassName}`}>
+          <ActionIcon className="h-[18px] w-[18px]" strokeWidth={2.3} />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-black leading-5 text-slate-700">{title}</div>
+              <div className="mt-0.5 line-clamp-1 text-[11px] font-semibold leading-5 text-slate-500">{item.description}</div>
+            </div>
+            <MoneyWithWords amount={item.amount} valueClassName={`whitespace-nowrap text-sm font-black ${amountClassName}`} showText={false} />
+          </div>
+
+          <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[10px] font-bold text-slate-400">
+            <span>تسویه‌نشده</span>
+            {taskAgeLabel ? <><span aria-hidden="true">•</span><span className="truncate">{taskAgeLabel}</span></> : null}
+            {needsFollowUp ? <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">نیازمند پیگیری</span> : null}
+          </div>
+        </div>
       </div>
 
-      <div className="min-w-0 flex-1 text-right">
-        <div className="truncate text-sm font-black leading-6 text-slate-700">{actionLabel}</div>
-        <p className="mt-0.5 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{item.description}</p>
-      </div>
-
-      <div className="max-w-full shrink-0 text-right sm:w-[148px] sm:text-left">
-        <div className="mb-1 text-[11px] font-black text-slate-400">{amountTitle}</div>
-        <MoneyWithWords
-          amount={item.amount}
-          valueClassName={`text-base font-black ${amountClassName}`}
-          textClassName="mt-1 hidden text-[11px] font-semibold leading-5 text-slate-500 sm:block"
-          className="space-y-1"
-        />
+      <div className="mt-2.5 flex items-center gap-1.5 border-t border-slate-100 pt-2.5">
+        <button type="button" onClick={onPrimary} disabled={busy} className={`inline-flex h-9 min-w-[86px] items-center justify-center rounded-[12px] px-3 text-[11px] font-black text-white transition disabled:cursor-wait disabled:opacity-60 ${isDebt ? 'bg-orange-500 hover:bg-orange-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+          {busy ? <Loader2 className="ml-1.5 h-4 w-4 animate-spin" /> : null}{primaryLabel}
+        </button>
+        <div className="relative mr-auto">
+          <button type="button" onClick={() => setMoreOpen((current) => !current)} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100" aria-label="اقدام‌های بیشتر" aria-expanded={moreOpen}>
+            <MoreVertical className="h-[18px] w-[18px]" />
+          </button>
+          {moreOpen ? <div className="absolute bottom-10 left-0 z-20 w-36 overflow-hidden rounded-[14px] border border-slate-200 bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.16)]">
+            {!isDebt && canConfirmReceipt ? <button type="button" onClick={() => { setMoreOpen(false); onReject(); }} disabled={busy} className="flex h-9 w-full items-center rounded-[9px] px-2.5 text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-60">دریافت نکردم</button> : null}
+            {!isDebt && !canConfirmReceipt ? <button type="button" onClick={() => { setMoreOpen(false); onReminder(); }} disabled={busy} className="flex h-9 w-full items-center rounded-[9px] px-2.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">ارسال یادآوری</button> : null}
+            <button type="button" onClick={() => { setMoreOpen(false); onDispute(); }} className="flex h-9 w-full items-center rounded-[9px] px-2.5 text-[11px] font-bold text-rose-600 hover:bg-rose-50">این مبلغ اشتباه است</button>
+          </div> : null}
+        </div>
       </div>
     </div>
   );
 }
 
-function EventRow({ event }: { event: DashboardEvent }) {
+function EventRow({
+  event,
+  menuOpen,
+  onToggleMenu,
+  onView,
+  onReport,
+}: {
+  event: DashboardEvent;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onView: () => void;
+  onReport: () => void;
+}) {
   const Icon = event.icon;
 
   return (
-    <div className="dashboard-list-row dashboard-list-card flex w-full max-w-full min-w-0 flex-col gap-3 overflow-hidden rounded-[22px] border border-slate-200/85 bg-white/[0.92] px-4 py-4 text-right shadow-[0_12px_28px_rgba(15,23,42,0.065)] ring-1 ring-slate-100/70 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.09)] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <div className="dashboard-list-row dashboard-list-card relative flex w-full max-w-full min-w-0 items-center gap-3 rounded-[20px] border border-slate-200/85 bg-white/[0.92] px-3 py-3 text-right shadow-[0_10px_26px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 sm:px-4">
       <div className={`dashboard-event-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${event.toneClassName}`}>
         <Icon className="h-5 w-5" />
       </div>
-      <p className="min-w-0 flex-1 whitespace-normal break-words text-right text-sm font-semibold leading-6 text-slate-600">
-        {event.title}
-      </p>
-      <div className="max-w-full shrink-0 text-right text-xs font-semibold text-slate-500 sm:w-[112px] sm:text-left">
-        <span>{event.time}</span>
-        <span className="mx-2 text-slate-300 sm:hidden">•</span>
-        <span className="mt-1 block break-words leading-5 text-slate-400">{event.timeText}</span>
+
+      <div className="min-w-0 flex-1">
+        <p className="line-clamp-2 text-sm font-semibold leading-6 text-slate-600">{event.title}</p>
+        <div className="mt-1 text-[11px] font-semibold text-slate-400">{event.time} · {event.timeText}</div>
+      </div>
+
+      <div className="relative shrink-0">
+        <button type="button" onClick={onToggleMenu} className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100" aria-label={`اقدام‌های رویداد: ${event.title}`} title="اقدام‌های رویداد" aria-expanded={menuOpen}>
+          <MoreVertical className="h-5 w-5" />
+        </button>
+
+        {menuOpen ? <div className="absolute left-0 top-11 z-20 w-40 overflow-hidden rounded-[15px] border border-slate-200 bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.16)]">
+          <button type="button" onClick={onView} className="flex h-10 w-full items-center rounded-[10px] px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">مشاهده</button>
+          <button type="button" onClick={onReport} className="flex h-10 w-full items-center rounded-[10px] px-3 text-xs font-bold text-rose-600 hover:bg-rose-50">گزارش خطا</button>
+        </div> : null}
       </div>
     </div>
   );
@@ -667,7 +746,7 @@ function DashboardGroupCard({
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-lg font-black text-text">{title}</h3>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[11px] font-extrabold text-slate-500">
+            <span className="dashboard-group-members inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[11px] font-extrabold text-slate-500">
               <Users className="h-3.5 w-3.5" />
               {membersLabel}
             </span>
@@ -679,7 +758,7 @@ function DashboardGroupCard({
         <GroupArtwork type={illustration} />
       </div>
 
-      <div className="mt-5 rounded-[20px] border border-white/70 bg-white/72 px-3.5 py-3 shadow-[inset_3px_0_0_rgba(16,185,129,0.22)]">
+      <div className={`dashboard-group-amount dashboard-group-amount--${isSettled ? 'neutral' : isDebt ? 'debt' : 'credit'} mt-5 rounded-[20px] border border-white/70 bg-white/72 px-3.5 py-3 shadow-[inset_3px_0_0_rgba(16,185,129,0.22)]`}>
         <div className="mb-1 text-[11px] font-extrabold text-slate-400">
           {isSettled ? 'مانده گروه' : isDebt ? 'مبلغ قابل پرداخت' : 'مبلغ قابل دریافت'}
         </div>
@@ -784,6 +863,10 @@ export function DashboardPage({
   const [dashboardEvents, setDashboardEvents] = useState<DashboardEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [taskNotice, setTaskNotice] = useState<ActionNotice | null>(null);
+  const [eventNotice, setEventNotice] = useState<ActionNotice | null>(null);
+  const [openEventMenuId, setOpenEventMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -840,7 +923,7 @@ export function DashboardPage({
           activeGroups.map(async (group) => {
             const plan = await getSettlementPlan(getGroupId(group));
             return (plan.items || [])
-              .map((item) => planItemToSuggestion(item, group, currentUserId))
+              .map((item) => planItemToSuggestion(item, group, currentUserId, plan.updated_at || plan.created_at))
               .filter((item): item is SettlementSuggestion => Boolean(item));
           }),
         );
@@ -959,6 +1042,99 @@ export function DashboardPage({
     onOpenGroups();
   };
 
+  function openTaskDetails(item: SettlementSuggestion) {
+    if (item.groupId) onOpenGroup(item.groupId);
+    else onOpenWallet();
+  }
+
+  async function handleTaskPrimary(item: SettlementSuggestion) {
+    if (item.tone === 'negative') {
+      openTaskDetails(item);
+      return;
+    }
+
+    if (!item.itemId || String(item.status || '').toUpperCase() !== 'REPORTED') {
+      openTaskDetails(item);
+      return;
+    }
+
+    const confirmed = window.confirm(`آیا دریافت مبلغ ${formatMoney(item.amount)} از گروه «${item.groupName}» را ثبت می‌کنید؟`);
+    if (!confirmed) return;
+
+    try {
+      setBusyTaskId(item.id);
+      setTaskNotice(null);
+      await confirmPlanItem(item.itemId);
+      setSettlementSuggestions((previous) => previous.filter((suggestion) => suggestion.id !== item.id));
+      setTaskNotice({ tone: 'success', message: 'دریافت پول ثبت شد.' });
+    } catch (error) {
+      console.error(error);
+      setTaskNotice({ tone: 'error', message: 'دریافت پول ثبت نشد. وضعیت آن را در جزئیات گروه بررسی کنید.' });
+    } finally {
+      setBusyTaskId(null);
+    }
+  }
+
+  async function handleTaskReject(item: SettlementSuggestion) {
+    if (!item.itemId || String(item.status || '').toUpperCase() !== 'REPORTED') {
+      openTaskDetails(item);
+      return;
+    }
+
+    const confirmed = window.confirm(`آیا مطمئنید مبلغ ${formatMoney(item.amount)} از گروه «${item.groupName}» را دریافت نکرده‌اید؟`);
+    if (!confirmed) return;
+
+    try {
+      setBusyTaskId(item.id);
+      setTaskNotice(null);
+      await rejectPlanItem(item.itemId);
+      setSettlementSuggestions((previous) => previous.filter((suggestion) => suggestion.id !== item.id));
+      setTaskNotice({ tone: 'success', message: 'پرداخت رد شد و برای پرداخت‌کننده تسویه ثبت نشد.' });
+    } catch (error) {
+      console.error(error);
+      setTaskNotice({ tone: 'error', message: 'رد پرداخت ثبت نشد. وضعیت آن را در جزئیات گروه بررسی کنید.' });
+    } finally {
+      setBusyTaskId(null);
+    }
+  }
+
+  async function handleTaskReminder(item: SettlementSuggestion) {
+    if (!item.itemId) {
+      // TODO: Balance-only suggestions need a settlement-plan item id before reminders can be sent.
+      setTaskNotice({ tone: 'info', message: 'فعلاً نمی‌توان برای این مورد یادآوری فرستاد.' });
+      return;
+    }
+
+    try {
+      setBusyTaskId(item.id);
+      setTaskNotice(null);
+      await sendPlanItemReminder(item.itemId);
+      setTaskNotice({ tone: 'success', message: 'یادآوری پرداخت ارسال شد.' });
+    } catch (error) {
+      console.error(error);
+      setTaskNotice({ tone: 'error', message: 'ارسال یادآوری انجام نشد؛ ممکن است اخیراً یادآوری دیگری ارسال شده باشد.' });
+    } finally {
+      setBusyTaskId(null);
+    }
+  }
+
+  function handleTaskDispute() {
+    // TODO: Connect this affordance when a dispute/report endpoint is available.
+    setTaskNotice({ tone: 'info', message: 'امکان گزارش مبلغ اشتباه هنوز فعال نشده است.' });
+  }
+
+  function handleEventReport() {
+    // TODO: Connect this affordance when an event error-report endpoint is available.
+    setOpenEventMenuId(null);
+    setEventNotice({ tone: 'info', message: 'گزارش خطای رویداد هنوز به سرویس پشتیبانی متصل نشده است.' });
+  }
+
+  function handleEventView(event: DashboardEvent) {
+    setOpenEventMenuId(null);
+    if (event.groupId) onOpenGroup(event.groupId);
+    else onOpenActivities();
+  }
+
   return (
     <main dir="rtl" className="px-6 py-5 text-right sm:px-8 sm:py-7 lg:px-10 xl:px-14 2xl:px-16">
       <div className="mx-auto max-w-[1160px] space-y-4 sm:space-y-5">
@@ -1001,6 +1177,7 @@ export function DashboardPage({
               icon={<ReceiptText className="h-5 w-5 text-slate-500" />}
               onAction={onOpenWallet}
             />
+            {taskNotice ? <div role="status" className={`mb-3 rounded-[14px] border px-3 py-2.5 text-xs font-bold leading-6 ${taskNotice.tone === 'success' ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : taskNotice.tone === 'error' ? 'border-rose-100 bg-rose-50 text-rose-600' : 'border-sky-100 bg-sky-50 text-sky-700'}`}>{taskNotice.message}</div> : null}
             {settlementsLoading ? (
               <DashboardSectionState
                 icon={ReceiptText}
@@ -1026,7 +1203,15 @@ export function DashboardPage({
             {!settlementsLoading && !settlementsError && settlementSuggestions.length > 0 ? (
               <div className="grid min-w-0 gap-3">
                 {settlementSuggestions.map((item) => (
-                  <SettlementRow key={item.id} item={item} />
+                  <SettlementRow
+                    key={item.id}
+                    item={item}
+                    busy={busyTaskId === item.id}
+                    onPrimary={() => void handleTaskPrimary(item)}
+                    onReminder={() => void handleTaskReminder(item)}
+                    onReject={() => void handleTaskReject(item)}
+                    onDispute={handleTaskDispute}
+                  />
                 ))}
               </div>
             ) : null}
@@ -1039,6 +1224,7 @@ export function DashboardPage({
               icon={<Bell className="h-5 w-5 text-slate-500" />}
               onAction={onOpenActivities}
             />
+            {eventNotice ? <div role="status" className="mb-3 rounded-[14px] border border-sky-100 bg-sky-50 px-3 py-2.5 text-xs font-bold leading-6 text-sky-700">{eventNotice.message}</div> : null}
             {eventsLoading ? (
               <DashboardSectionState
                 icon={Bell}
@@ -1062,9 +1248,16 @@ export function DashboardPage({
               />
             ) : null}
             {!eventsLoading && !eventsError && dashboardEvents.length > 0 ? (
-              <div className="grid min-w-0 gap-3 overflow-hidden">
+              <div className="grid min-w-0 gap-3">
                 {dashboardEvents.map((event) => (
-                  <EventRow key={event.id} event={event} />
+                  <EventRow
+                    key={event.id}
+                    event={event}
+                    menuOpen={openEventMenuId === event.id}
+                    onToggleMenu={() => setOpenEventMenuId((current) => current === event.id ? null : event.id)}
+                    onView={() => handleEventView(event)}
+                    onReport={handleEventReport}
+                  />
                 ))}
               </div>
             ) : null}

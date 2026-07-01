@@ -27,6 +27,18 @@ export interface ArtNameAvailabilityResult {
   message?: string;
 }
 
+export interface UserSearchResult {
+  user_id: string;
+  art_name: string;
+  avatar_url?: string | null;
+}
+
+interface UserSearchResponse {
+  items: UserSearchResult[];
+  count: number;
+  query: string;
+}
+
 function buildArtNameAvailabilityPaths(artName: string) {
   const encodedValue = encodeURIComponent(artName);
   const configuredPath = import.meta.env.VITE_ART_NAME_AVAILABILITY_PATH?.trim();
@@ -95,6 +107,18 @@ function parseArtNameAvailabilityResponse(payload: unknown): ArtNameAvailability
 
 export function getCurrentUser() {
   return identityApiRequest<CurrentUser>('/users/me/');
+}
+
+export async function searchUsersByArtName(artName: string, limit = 10) {
+  const query = artName.trim();
+
+  if (query.length < 2) return [];
+
+  const response = await identityApiRequest<UserSearchResponse>(
+    `/users/search/?art_name=${encodeURIComponent(query)}&limit=${Math.min(Math.max(limit, 1), 20)}&exclude_me=true`,
+  );
+
+  return Array.isArray(response.items) ? response.items : [];
 }
 
 export async function updateCurrentUserProfile(payload: {

@@ -89,6 +89,41 @@ export interface CreateInviteInput {
   max_uses?: number;
 }
 
+export interface CreateDirectInviteInput {
+  recipient_user_id?: string;
+  recipient_email?: string;
+  expires_in_hours?: number;
+}
+
+export interface CreatedDirectInvite {
+  id: string;
+  status: string;
+  expires_at?: string;
+  created_at?: string;
+}
+
+export interface DirectGroupInvitation {
+  id: string;
+  group: {
+    id: string;
+    title: string;
+  };
+  invited_by?: {
+    user_id?: string;
+    art_name?: string;
+  };
+  status: string;
+  expires_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface DirectGroupInvitationListResponse {
+  results?: DirectGroupInvitation[];
+  data?: DirectGroupInvitation[];
+  next_cursor?: string | null;
+}
+
 export interface CreatedInvite {
   id?: string;
   invite_id?: string;
@@ -374,44 +409,6 @@ function buildCreateGroupBasePayload(input: CreateGroupInput) {
   };
 }
 
-function buildCreateGroupMemberPayload(input: CreateGroupInput) {
-  const memberUserIds = uniqueStrings(input.member_user_ids ?? []);
-  const memberPhones = uniqueStrings(input.member_phones ?? []);
-  const memberEmails = uniqueStrings(input.member_emails ?? []);
-
-  if (!memberUserIds.length && !memberPhones.length && !memberEmails.length) {
-    return null;
-  }
-
-  const members = [
-    ...memberUserIds.map((userId) => ({ user_id: userId })),
-    ...memberPhones.map((phoneNumber) => ({ phone_number: phoneNumber })),
-    ...memberEmails.map((email) => ({ email })),
-  ];
-
-  return {
-    member_user_ids: memberUserIds,
-    member_ids: memberUserIds,
-    user_ids: memberUserIds,
-    members,
-  };
-}
-
-function shouldRetryCreateGroupWithoutMembers(error: unknown) {
-  if (!isApiError(error) || ![400, 422].includes(error.status)) {
-    return false;
-  }
-
-  const normalizedBody = JSON.stringify(error.body || '').toLowerCase();
-  return (
-    normalizedBody.includes('member') ||
-    normalizedBody.includes('members') ||
-    normalizedBody.includes('user_ids') ||
-    normalizedBody.includes('extra fields not permitted') ||
-    normalizedBody.includes('unknown field')
-  );
-}
-
 async function requestCreateGroup(path: string, payload: Record<string, unknown>) {
   return apiRequest<BackendGroup>(path, {
     method: 'POST',
@@ -421,7 +418,6 @@ async function requestCreateGroup(path: string, payload: Record<string, unknown>
 
 export async function createGroup(input: CreateGroupInput) {
   const basePayload = buildCreateGroupBasePayload(input);
-  const memberPayload = buildCreateGroupMemberPayload(input);
   const preferredPath = '/groups/mine/';
   const fallbackPath = '/groups/';
 
@@ -438,22 +434,46 @@ export async function createGroup(input: CreateGroupInput) {
     }
   }
 
-  if (!memberPayload) {
-    return createOnAvailableEndpoint(basePayload);
-  }
+  return createOnAvailableEndpoint(basePayload);
+}
 
-  try {
-    return await createOnAvailableEndpoint({
-      ...basePayload,
-      ...memberPayload,
-    });
-  } catch (error) {
-    if (!shouldRetryCreateGroupWithoutMembers(error)) {
-      throw error;
-    }
+export async function createDirectGroupInvite(groupId: string, input: CreateDirectInviteInput) {
+  return apiRequest<CreatedDirectInvite>(`/groups/${groupId}/invites/direct/`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
 
-    return createOnAvailableEndpoint(basePayload);
-  }
+export async function listMyDirectGroupInvitations(options: {
+  status?: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'REVOKED' | 'EXPIRED';
+  page_size?: number;
+  cursor?: string;
+} = {}) {
+  const params = new URLSearchParams();
+  if (options.status) params.set('status', options.status);
+  params.set('page_size', String(Math.min(Math.max(options.page_size ?? 100, 1), 100)));
+  if (options.cursor) params.set('cursor', options.cursor);
+
+  const data = await apiRequest<DirectGroupInvitationListResponse | DirectGroupInvitation[]>(
+    `/users/me/group-invitations/?${params.toString()}`,
+  );
+
+  return unwrapList(data);
+}
+
+export async function acceptDirectGroupInvitation(inviteId: string) {
+  return apiRequest<{ message?: string; group_id?: string } | BackendGroup>(
+    `/group-invitations/${inviteId}/accept/`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export async function rejectDirectGroupInvitation(inviteId: string) {
+  return apiRequest<{ message?: string }>(`/group-invitations/${inviteId}/reject/`, {
+    method: 'POST',
+  });
 }
 
 export async function getGroupDetail(groupId: string) {
