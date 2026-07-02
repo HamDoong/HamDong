@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.dateparse import parse_datetime
 
 from apps.settlements.application.balance_service import BalanceService
 from apps.settlements.application.settlement_service import SettlementService
@@ -462,6 +463,10 @@ class SettlementPlanService:
         clean_tracking_code = tracking_code.strip() if isinstance(tracking_code, str) and tracking_code.strip() else None
         if clean_tracking_code and len(clean_tracking_code) > 64:
             raise InvalidPlanItemActionError("Tracking code is too long.")
+        normalized_paid_at = paid_at
+        if isinstance(paid_at, str):
+            normalized_paid_at = parse_datetime(paid_at.replace("Z", "+00:00"))
+
         settlement = ManualSettlementRepository.create_pending(
             group_id=plan.group_id,
             payer_user_id=item.payer_user_id,
@@ -565,6 +570,15 @@ class SettlementPlanService:
 
     @transaction.atomic
     def apply_wallet_payment(self, item_id, wallet_transaction_id, paid_at=None):
+        """Apply a wallet transfer to a settlement plan item as a reported payment.
+
+        Wallet payment moves money inside wallet-service immediately, but the
+        settlement itself must behave like manual payment: the receiver still
+        needs to confirm that the money was received.  So this method creates a
+        pending manual settlement and marks the plan item as REPORTED instead of
+        CONFIRMED.  Confirmation/rejection then follows the existing manual
+        settlement endpoints.
+        """
         item = SettlementPlanItemRepository.get(item_id)
         if not item:
             raise InvalidPlanItemActionError()
@@ -575,53 +589,59 @@ class SettlementPlanService:
             raise SettlementNotPayableError()
         if item.status == SettlementPlanItemStatusChoices.CONFIRMED:
             return item, plan
+        if item.status == SettlementPlanItemStatusChoices.REPORTED and item.manual_settlement_id:
+            return item, plan
         if item.status not in {
             SettlementPlanItemStatusChoices.PENDING,
             SettlementPlanItemStatusChoices.REJECTED,
         }:
             raise SettlementNotPayableError()
-        SettlementPlanItemRepository.mark_confirmed(item)
-        self.balance_service.recalculate_group(plan.group_id, currency=plan.currency)
+
+        normalized_paid_at = paid_at
+        if isinstance(paid_at, str):
+            normalized_paid_at = parse_datetime(paid_at.replace("Z", "+00:00"))
+
+        settlement = ManualSettlementRepository.create_pending(
+            group_id=plan.group_id,
+            payer_user_id=item.payer_user_id,
+            receiver_user_id=item.receiver_user_id,
+            amount_minor=item.amount_minor,
+            currency=item.currency,
+            description="Wallet settlement payment",
+            payment_method="WALLET",
+            tracking_code=str(wallet_transaction_id)[:64] if wallet_transaction_id else None,
+            note="Paid from HamDong wallet; waiting for receiver confirmation.",
+            paid_at=normalized_paid_at,
+            created_by_user_id=item.payer_user_id,
+        )
+        SettlementPlanItemRepository.mark_reported(item, settlement.id)
         SettlementPlanEventLogRepository.create(
             settlement_plan_id=plan.id,
             settlement_plan_item_id=item.id,
             actor_user_id=item.payer_user_id,
-            event_type=SettlementPlanEventTypeChoices.ITEM_CONFIRMED,
-            metadata={"wallet_transaction_id": str(wallet_transaction_id)},
+            event_type=SettlementPlanEventTypeChoices.ITEM_REPORTED,
+            metadata={
+                "wallet_transaction_id": str(wallet_transaction_id),
+                "manual_settlement_id": str(settlement.id),
+                "payment_method": "WALLET",
+            },
         )
         self._publish(
-            SettlementPlanItemConfirmed(
+            SettlementPlanItemReported(
                 plan.id,
                 item.id,
                 plan.group_id,
                 item.payer_user_id,
                 item.receiver_user_id,
                 item.amount_minor,
+                settlement.id,
                 currency=item.currency,
-                status=SettlementPlanItemStatusChoices.CONFIRMED,
-                wallet_transaction_id=wallet_transaction_id,
+                status=SettlementPlanItemStatusChoices.REPORTED,
             ),
-            "settlement.plan_item.confirmed",
+            "settlement.plan_item.reported",
         )
-        items = list(SettlementPlanItemRepository.list_by_plan(plan.id))
-        if items and all(entry.status == SettlementPlanItemStatusChoices.CONFIRMED for entry in items):
-            SettlementPlanRepository.mark_completed(plan)
-            SettlementPlanEventLogRepository.create(
-                settlement_plan_id=plan.id,
-                actor_user_id=item.payer_user_id,
-                event_type=SettlementPlanEventTypeChoices.PLAN_COMPLETED,
-                metadata={"wallet_transaction_id": str(wallet_transaction_id)},
-            )
-            self._publish(
-                SettlementPlanCompleted(
-                    plan.id,
-                    plan.group_id,
-                    plan.completed_at,
-                    status=SettlementPlanStatusChoices.COMPLETED,
-                ),
-                "settlement.plan.completed",
-            )
-        return item, plan
+        return item, settlement
+
 
     @transaction.atomic
     def reject_plan_item(self, item_id, user_id, reason=None):

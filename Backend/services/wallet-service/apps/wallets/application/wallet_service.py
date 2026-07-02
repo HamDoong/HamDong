@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -58,6 +59,7 @@ from apps.wallets.domain.rules import (
 from apps.wallets.infrastructure.clients import IdentityBankCardClient
 from apps.wallets.infrastructure.event_envelope import build_event_envelope
 from apps.wallets.infrastructure.payment_providers import PaymentProviderRequestError, get_provider_adapter
+from apps.wallets.infrastructure.rabbitmq_publisher import RabbitMQPublisher
 from apps.wallets.infrastructure.repositories import (
     GatewayTransactionRepository,
     LedgerRepository,
@@ -87,6 +89,8 @@ TERMINAL_PAYMENT_STATUSES = {
     PaymentIntentStatusChoices.EXPIRED,
     PaymentIntentStatusChoices.CANCELLED,
 }
+
+logger = logging.getLogger(__name__)
 
 
 class WalletService:
@@ -248,6 +252,70 @@ class WalletService:
             raise WalletServiceError("Wallet transaction not found.", code="WALLET_TRANSACTION_NOT_FOUND", status_code=404)
         return self._transaction_payload(tx)
 
+    def _queue_wallet_settlement_paid_event(
+        self,
+        *,
+        wallet_transaction_id,
+        settlement_plan_item_id,
+        payer_user_id,
+        payee_user_id,
+        amount_minor: int,
+        currency: str,
+        paid_at,
+        correlation_id=None,
+        causation_id=None,
+    ):
+        """Queue and opportunistically publish the wallet settlement event.
+
+        The outbox row remains the durable source of truth.  The immediate
+        publish makes the local/demo flow update the settlement-service quickly
+        even when the wallet outbox loop is not running yet.  If RabbitMQ is not
+        available, the payment still succeeds and the pending outbox message can
+        be dispatched later.
+        """
+        payload = build_event_envelope(
+            "WalletSettlementPaid",
+            {
+                "wallet_transaction_id": str(wallet_transaction_id),
+                "settlement_plan_item_id": str(settlement_plan_item_id),
+                "payer_user_id": str(payer_user_id),
+                "payee_user_id": str(payee_user_id),
+                "amount_minor": int(amount_minor),
+                "currency": currency,
+                "paid_at": paid_at.isoformat() if hasattr(paid_at, "isoformat") else str(paid_at),
+            },
+            source_service="wallet-service",
+            routing_key="wallet.settlement.paid",
+            correlation_id=str(correlation_id) if correlation_id else None,
+            causation_id=str(causation_id or correlation_id) if (causation_id or correlation_id) else None,
+        )
+        OutboxRepository.create(
+            aggregate_type="WalletTransaction",
+            aggregate_id=wallet_transaction_id,
+            event_id=payload["event_id"],
+            event_type=payload["event_type"],
+            event_version=payload["event_version"],
+            routing_key=payload["routing_key"],
+            exchange=getattr(settings, "WALLET_RABBITMQ_EXCHANGE", "hamdong.wallet"),
+            correlation_id=payload["correlation_id"],
+            causation_id=payload["causation_id"],
+            payload=payload,
+            source_service="wallet-service",
+        )
+
+        def _publish_after_commit():
+            try:
+                RabbitMQPublisher().publish_message(
+                    payload,
+                    routing_key=payload["routing_key"],
+                    exchange=getattr(settings, "WALLET_RABBITMQ_EXCHANGE", "hamdong.wallet"),
+                )
+            except Exception:
+                logger.exception("Immediate WalletSettlementPaid publish failed; outbox will retry.")
+
+        transaction.on_commit(_publish_after_commit)
+        return payload
+
     def pay_settlement_item(self, requester_user_id, item_id, idempotency_key: str):
         if not idempotency_key:
             raise IdempotencyKeyRequiredError()
@@ -260,6 +328,21 @@ class WalletService:
             if existing:
                 if str(existing.reference_id) != str(item_id):
                     raise IdempotencyConflictError()
+
+                item = SettlementItemProjectionRepository.get_for_update(item_id)
+                if item and item.wallet_payment_transaction_id:
+                    self._queue_wallet_settlement_paid_event(
+                        wallet_transaction_id=existing.id,
+                        settlement_plan_item_id=item.item_id,
+                        payer_user_id=item.payer_user_id,
+                        payee_user_id=item.payee_user_id,
+                        amount_minor=item.amount_minor,
+                        currency=item.currency,
+                        paid_at=existing.completed_at or item.wallet_payment_completed_at or now,
+                        correlation_id=existing.operation_id or existing.id,
+                        causation_id=existing.operation_id or existing.id,
+                    )
+
                 return {
                     "transaction_id": existing.id,
                     "settlement_plan_item_id": item_id,
@@ -283,6 +366,17 @@ class WalletService:
             if item.wallet_payment_transaction_id:
                 prior = payer_wallet.transactions.filter(id=item.wallet_payment_transaction_id).first()
                 if prior:
+                    self._queue_wallet_settlement_paid_event(
+                        wallet_transaction_id=prior.id,
+                        settlement_plan_item_id=item.item_id,
+                        payer_user_id=item.payer_user_id,
+                        payee_user_id=item.payee_user_id,
+                        amount_minor=item.amount_minor,
+                        currency=item.currency,
+                        paid_at=prior.completed_at or item.wallet_payment_completed_at or now,
+                        correlation_id=prior.operation_id or prior.id,
+                        causation_id=prior.operation_id or prior.id,
+                    )
                     return {
                         "transaction_id": prior.id,
                         "settlement_plan_item_id": item.item_id,
@@ -359,34 +453,16 @@ class WalletService:
             WalletRepository.refresh_balances(payer_wallet)
             WalletRepository.refresh_balances(payee_wallet)
 
-            payload = build_event_envelope(
-                "WalletSettlementPaid",
-                {
-                    "wallet_transaction_id": str(payer_tx.id),
-                    "settlement_plan_item_id": str(item.item_id),
-                    "payer_user_id": str(item.payer_user_id),
-                    "payee_user_id": str(item.payee_user_id),
-                    "amount_minor": item.amount_minor,
-                    "currency": item.currency,
-                    "paid_at": now.isoformat(),
-                },
-                source_service="wallet-service",
-                routing_key="wallet.settlement.paid",
-                correlation_id=str(operation_id),
-                causation_id=str(operation_id),
-            )
-            OutboxRepository.create(
-                aggregate_type="WalletTransaction",
-                aggregate_id=payer_tx.id,
-                event_id=payload["event_id"],
-                event_type=payload["event_type"],
-                event_version=payload["event_version"],
-                routing_key=payload["routing_key"],
-                exchange=getattr(settings, "WALLET_RABBITMQ_EXCHANGE", "hamdong.wallet"),
-                correlation_id=payload["correlation_id"],
-                causation_id=payload["causation_id"],
-                payload=payload,
-                source_service="wallet-service",
+            self._queue_wallet_settlement_paid_event(
+                wallet_transaction_id=payer_tx.id,
+                settlement_plan_item_id=item.item_id,
+                payer_user_id=item.payer_user_id,
+                payee_user_id=item.payee_user_id,
+                amount_minor=item.amount_minor,
+                currency=item.currency,
+                paid_at=now,
+                correlation_id=operation_id,
+                causation_id=operation_id,
             )
             return {
                 "transaction_id": payer_tx.id,
@@ -396,6 +472,119 @@ class WalletService:
                 "currency": item.currency,
                 "paid_at": payer_tx.completed_at,
             }
+
+    def refund_rejected_settlement_item(self, item_id, *, reason: str | None = None):
+        """Reverse a wallet settlement transfer after receiver rejection.
+
+        The original wallet payment debits the payer and credits the payee while
+        the settlement waits for receiver confirmation.  If the receiver rejects
+        the reported payment, this method creates an idempotent reverse transfer:
+        payee wallet is debited and payer wallet is credited back.
+        """
+        now = timezone.now()
+        with transaction.atomic():
+            item = SettlementItemProjectionRepository.get_for_update(item_id)
+            if not item or not item.wallet_payment_transaction_id:
+                return None
+
+            payer_wallet, _ = WalletRepository.get_or_create_for_user(item.payer_user_id, currency=item.currency, for_update=True)
+            payee_wallet, _ = WalletRepository.get_or_create_for_user(item.payee_user_id, currency=item.currency, for_update=True)
+
+            payer_payment_tx = WalletTransaction.objects.select_for_update().filter(
+                id=item.wallet_payment_transaction_id,
+                wallet=payer_wallet,
+                reference_type="SETTLEMENT_PLAN_ITEM",
+                reference_id=item.item_id,
+            ).first()
+            if not payer_payment_tx:
+                item.wallet_payment_transaction_id = None
+                item.wallet_payment_completed_at = None
+                item.updated_at = now
+                item.save(update_fields=["wallet_payment_transaction_id", "wallet_payment_completed_at", "updated_at"])
+                return None
+
+            refund_key = f"refund:{item.item_id}:{payer_payment_tx.id}"
+            existing_refund = WalletTransactionRepository.get_by_wallet_and_idempotency(payer_wallet, refund_key)
+            if existing_refund:
+                item.wallet_payment_transaction_id = None
+                item.wallet_payment_completed_at = None
+                item.updated_at = now
+                item.save(update_fields=["wallet_payment_transaction_id", "wallet_payment_completed_at", "updated_at"])
+                WalletRepository.refresh_balances(payer_wallet)
+                WalletRepository.refresh_balances(payee_wallet)
+                return existing_refund
+
+            incoming_tx = WalletTransaction.objects.select_for_update().filter(
+                wallet=payee_wallet,
+                operation_id=payer_payment_tx.operation_id,
+                reference_type="SETTLEMENT_PLAN_ITEM",
+                reference_id=item.item_id,
+                type=WalletTransactionTypeChoices.SETTLEMENT_RECEIVED,
+            ).first()
+
+            payer_refund_tx = WalletTransactionRepository.create(
+                wallet=payer_wallet,
+                operation_id=payer_payment_tx.operation_id,
+                type=WalletTransactionTypeChoices.REFUND,
+                status=WalletTransactionStatusChoices.COMPLETED,
+                direction=WalletTransactionDirectionChoices.IN,
+                amount_minor=item.amount_minor,
+                currency=item.currency,
+                description="Wallet settlement refund after receiver rejection",
+                reference_type="SETTLEMENT_PLAN_ITEM",
+                reference_id=item.item_id,
+                idempotency_key=refund_key,
+                completed_at=now,
+                metadata={
+                    "reason": reason or "receiver_rejected",
+                    "original_wallet_transaction_id": str(payer_payment_tx.id),
+                    "counterparty_user_id": str(item.payee_user_id),
+                },
+            )
+            payee_reversal_tx = WalletTransactionRepository.create(
+                wallet=payee_wallet,
+                operation_id=payer_payment_tx.operation_id,
+                type=WalletTransactionTypeChoices.REFUND,
+                status=WalletTransactionStatusChoices.COMPLETED,
+                direction=WalletTransactionDirectionChoices.OUT,
+                amount_minor=item.amount_minor,
+                currency=item.currency,
+                description="Wallet settlement reversal after receiver rejection",
+                reference_type="SETTLEMENT_PLAN_ITEM",
+                reference_id=item.item_id,
+                idempotency_key=f"refund-out:{item.item_id}:{payer_payment_tx.id}",
+                completed_at=now,
+                metadata={
+                    "reason": reason or "receiver_rejected",
+                    "original_wallet_transaction_id": str(incoming_tx.id if incoming_tx else payer_payment_tx.id),
+                    "counterparty_user_id": str(item.payer_user_id),
+                },
+            )
+            LedgerRepository.create_many(
+                [
+                    {
+                        "wallet": payer_wallet,
+                        "transaction": payer_refund_tx,
+                        "entry_type": LedgerEntryTypeChoices.AVAILABLE_CREDIT,
+                        "amount_minor": item.amount_minor,
+                        "currency": item.currency,
+                    },
+                    {
+                        "wallet": payee_wallet,
+                        "transaction": payee_reversal_tx,
+                        "entry_type": LedgerEntryTypeChoices.AVAILABLE_DEBIT,
+                        "amount_minor": item.amount_minor,
+                        "currency": item.currency,
+                    },
+                ]
+            )
+            item.wallet_payment_transaction_id = None
+            item.wallet_payment_completed_at = None
+            item.updated_at = now
+            item.save(update_fields=["wallet_payment_transaction_id", "wallet_payment_completed_at", "updated_at"])
+            WalletRepository.refresh_balances(payer_wallet)
+            WalletRepository.refresh_balances(payee_wallet)
+            return payer_refund_tx
 
     def get_wallet_summary(self, requester_user_id):
         wallet = self.get_or_create_wallet(requester_user_id)

@@ -151,6 +151,10 @@ export interface PendingWalletPayment {
   provider: PaymentProvider;
   amountMinor: number;
   settlementPlanItemId?: string;
+  settlementPayerUserId?: string;
+  settlementReceiverUserId?: string;
+  settlementPayerName?: string;
+  settlementReceiverName?: string;
   groupId?: string;
   walletPayIdempotencyKey?: string;
   createdAt: string;
@@ -185,6 +189,83 @@ export function getPendingWalletPayment() {
 
 export function clearPendingWalletPayment() {
   localStorage.removeItem(PENDING_WALLET_PAYMENT_KEY);
+}
+
+
+const PAID_WALLET_SETTLEMENT_ITEMS_PREFIX = 'hamdong_paid_wallet_settlement_items';
+const PAID_WALLET_SETTLEMENT_FALLBACK_SCOPE = 'all';
+const PAID_WALLET_SETTLEMENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+type RememberedPaidSettlementItem = {
+  id: string;
+  paidAt: string;
+};
+
+function getPaidSettlementStorageKey(groupId?: string | null) {
+  return `${PAID_WALLET_SETTLEMENT_ITEMS_PREFIX}:${groupId || PAID_WALLET_SETTLEMENT_FALLBACK_SCOPE}`;
+}
+
+function readRememberedPaidSettlementItemsForScope(groupId?: string | null) {
+  const key = getPaidSettlementStorageKey(groupId);
+  const raw = localStorage.getItem(key);
+  if (!raw) return [] as RememberedPaidSettlementItem[];
+
+  try {
+    const parsed = JSON.parse(raw) as RememberedPaidSettlementItem[];
+    const now = Date.now();
+    const validItems = (Array.isArray(parsed) ? parsed : []).filter((item) => {
+      if (!item?.id) return false;
+      const paidAtMs = item.paidAt ? new Date(item.paidAt).getTime() : now;
+      return Number.isNaN(paidAtMs) || now - paidAtMs < PAID_WALLET_SETTLEMENT_TTL_MS;
+    });
+
+    if (validItems.length !== parsed.length) {
+      localStorage.setItem(key, JSON.stringify(validItems));
+    }
+
+    return validItems;
+  } catch {
+    localStorage.removeItem(key);
+    return [] as RememberedPaidSettlementItem[];
+  }
+}
+
+export function getRememberedPaidWalletSettlementItemIds(groupId?: string | null) {
+  const scopedItems = readRememberedPaidSettlementItemsForScope(groupId);
+
+  return new Set(scopedItems.map((item) => item.id));
+}
+
+export function rememberPaidWalletSettlementItems(itemIds: Array<string | null | undefined>, groupId?: string | null) {
+  const normalizedIds = itemIds.map((id) => String(id || '').trim()).filter(Boolean);
+  if (normalizedIds.length === 0) return getRememberedPaidWalletSettlementItemIds(groupId);
+
+  const key = getPaidSettlementStorageKey(groupId);
+  const currentItems = readRememberedPaidSettlementItemsForScope(groupId);
+  const paidAt = new Date().toISOString();
+  const byId = new Map(currentItems.map((item) => [item.id, item]));
+
+  normalizedIds.forEach((id) => {
+    byId.set(id, { id, paidAt });
+  });
+
+  const nextItems = Array.from(byId.values()).slice(-200);
+  localStorage.setItem(key, JSON.stringify(nextItems));
+  return getRememberedPaidWalletSettlementItemIds(groupId);
+}
+
+export function rememberPaidWalletSettlementItem(itemId: string | null | undefined, groupId?: string | null) {
+  return rememberPaidWalletSettlementItems([itemId], groupId);
+}
+
+export function syncRememberedPaidWalletSettlementItems(itemIds: Array<string | null | undefined>, groupId?: string | null) {
+  const normalizedIds = Array.from(new Set(itemIds.map((id) => String(id || '').trim()).filter(Boolean)));
+  const key = getPaidSettlementStorageKey(groupId);
+  const existingById = new Map(readRememberedPaidSettlementItemsForScope(groupId).map((item) => [item.id, item]));
+  const now = new Date().toISOString();
+  const nextItems = normalizedIds.map((id) => existingById.get(id) || { id, paidAt: now });
+  localStorage.setItem(key, JSON.stringify(nextItems));
+  return getRememberedPaidWalletSettlementItemIds(groupId);
 }
 
 export function getMyWallet() {

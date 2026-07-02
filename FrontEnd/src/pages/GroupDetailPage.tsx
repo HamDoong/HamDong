@@ -36,17 +36,24 @@ import {
 } from 'lucide-react';
 import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
+import { createNotification } from '../lib/notificationApi';
 import {
   createIdempotencyKey,
   createPaymentIntent,
   DEFAULT_WALLET_PAYMENT_PROVIDER,
   getPaymentRedirectUrl,
   getMyWallet,
+  getRememberedPaidWalletSettlementItemIds,
+  listWalletTransactions,
   paySettlementItemWithWallet,
   savePendingWalletPayment,
   normalizePaymentProvider,
+  rememberPaidWalletSettlementItem,
+  rememberPaidWalletSettlementItems,
+  syncRememberedPaidWalletSettlementItems,
   verifyPaymentIntent,
   type PaymentProvider,
+  type WalletTransactionItem,
 } from '../lib/walletApi';
 import type { DashboardActivityItem } from '../lib/dashboardApi';
 import { downloadMediaFile, listMyVisibleReceipts, uploadReceipt, type ReceiptListItem } from '../lib/mediaApi';
@@ -85,6 +92,7 @@ import {
   type MyBalanceResponse,
   type SettlementItem,
   type SettlementPlan,
+  type SettlementStatus,
   type SettlementPlanItem,
 } from '../lib/settlementApi';
 import {
@@ -368,7 +376,7 @@ function looksLikePdfReceipt(contentType?: string, value?: string) {
 function getSettlementStatusLabel(status?: string) {
   if (!status) return 'نامشخص';
   if (status === 'PENDING') return 'در انتظار';
-  if (status === 'REPORTED') return 'گزارش پرداخت';
+  if (status === 'REPORTED') return 'در انتظار تأیید دریافت‌کننده';
   if (status === 'CONFIRMED') return 'تأیید شده';
   if (status === 'REJECTED') return 'رد شده';
   if (status === 'CANCELLED') return 'لغو شده';
@@ -390,6 +398,125 @@ function canReportPlanItem(item: SettlementPlanItem, plan?: SettlementPlan | nul
 
 function canReviewPlanItem(item: SettlementPlanItem) {
   return item.status === 'REPORTED';
+}
+
+
+function isPaidSettlementStatusValue(status?: string) {
+  return ['CONFIRMED', 'COMPLETED', 'PAID'].includes(String(status || '').toUpperCase());
+}
+
+function getWalletPaidSettlementItemIdsFromTransactions(transactions: WalletTransactionItem[] = []) {
+  const refundedReferenceIds = new Set(
+    transactions
+      .filter((transaction) => {
+        const type = String(transaction.type || '').toUpperCase();
+        const status = String(transaction.status || '').toUpperCase();
+        const referenceType = String(transaction.reference_type || '').toUpperCase();
+
+        return (
+          status === 'COMPLETED' &&
+          referenceType === 'SETTLEMENT_PLAN_ITEM' &&
+          Boolean(transaction.reference_id) &&
+          type === 'REFUND'
+        );
+      })
+      .map((transaction) => String(transaction.reference_id)),
+  );
+
+  return transactions
+    .filter((transaction) => {
+      const type = String(transaction.type || '').toUpperCase();
+      const status = String(transaction.status || '').toUpperCase();
+      const referenceType = String(transaction.reference_type || '').toUpperCase();
+      const referenceId = String(transaction.reference_id || '');
+
+      return (
+        status === 'COMPLETED' &&
+        referenceType === 'SETTLEMENT_PLAN_ITEM' &&
+        Boolean(referenceId) &&
+        !refundedReferenceIds.has(referenceId) &&
+        ['SETTLEMENT_PAYMENT', 'SETTLEMENT_RECEIVED'].includes(type)
+      );
+    })
+    .map((transaction) => String(transaction.reference_id));
+}
+
+function reconcileSettlementPlanWithWalletPayments(plan: SettlementPlan | null, paidItemIds: Set<string>) {
+  if (!plan || paidItemIds.size === 0) return plan;
+
+  let changed = false;
+  const items = (plan.items || []).map((item) => {
+    const status = String(item.status || 'PENDING').toUpperCase();
+    if (
+      !paidItemIds.has(String(item.id)) ||
+      isPaidSettlementStatusValue(status) ||
+      ['REPORTED', 'REJECTED', 'CANCELLED'].includes(status)
+    ) {
+      return item;
+    }
+    changed = true;
+    return { ...item, status: 'REPORTED' as const };
+  });
+
+  if (!changed) return plan;
+  return { ...plan, items };
+}
+
+function getSettlementPairKey(payerUserId?: string, receiverUserId?: string) {
+  return `${payerUserId || ''}->${receiverUserId || ''}`;
+}
+
+function reconcileDetailedDebtsWithWalletPayments(
+  debts: DebtItem[],
+  paidPlanItems: SettlementPlanItem[],
+  currentUserId: string,
+) {
+  const paidAmountByPair = new Map<string, number>();
+
+  paidPlanItems.forEach((item) => {
+    const amount = item.amount_minor || 0;
+    if (amount <= 0) return;
+
+    const key = getSettlementPairKey(item.payer_user_id, item.receiver_user_id);
+    paidAmountByPair.set(key, (paidAmountByPair.get(key) || 0) + amount);
+  });
+
+  if (paidAmountByPair.size === 0) {
+    return { debts, currentUserNetAdjustmentMinor: 0 };
+  }
+
+  let currentUserNetAdjustmentMinor = 0;
+  const reconciledDebts: DebtItem[] = [];
+
+  debts.forEach((debt) => {
+    const debtAmount = debt.amount_minor || 0;
+    const key = getSettlementPairKey(debt.debtor_user_id, debt.creditor_user_id);
+    const paidAmount = paidAmountByPair.get(key) || 0;
+
+    if (debtAmount <= 0 || paidAmount <= 0) {
+      reconciledDebts.push(debt);
+      return;
+    }
+
+    const settledAmount = Math.min(debtAmount, paidAmount);
+    const remainingPaidAmount = paidAmount - settledAmount;
+    const remainingDebtAmount = debtAmount - settledAmount;
+    paidAmountByPair.set(key, remainingPaidAmount);
+
+    if (debt.debtor_user_id === currentUserId) {
+      currentUserNetAdjustmentMinor += settledAmount;
+    }
+
+    if (debt.creditor_user_id === currentUserId) {
+      currentUserNetAdjustmentMinor -= settledAmount;
+    }
+
+    if (remainingDebtAmount > 0) {
+      reconciledDebts.push({ ...debt, amount_minor: remainingDebtAmount });
+    }
+  });
+
+  return { debts: reconciledDebts, currentUserNetAdjustmentMinor };
 }
 
 const dashboardCard =
@@ -1381,6 +1508,7 @@ export function GroupDetailPage({
   const [expenseSaving, setExpenseSaving] = useState(false);
   const [settlementSaving, setSettlementSaving] = useState(false);
   const [walletAvailableMinor, setWalletAvailableMinor] = useState(0);
+  const [walletPaidSettlementItemIds, setWalletPaidSettlementItemIds] = useState<Set<string>>(() => getRememberedPaidWalletSettlementItemIds(groupId));
   const [walletPaymentItemId, setWalletPaymentItemId] = useState<string | null>(null);
   const [walletTopUpItem, setWalletTopUpItem] = useState<SettlementPlanItem | null>(null);
   const [walletTopUpProvider, setWalletTopUpProvider] = useState<PaymentProvider>(DEFAULT_WALLET_PAYMENT_PROVIDER);
@@ -1449,6 +1577,27 @@ export function GroupDetailPage({
   }
 
   const allPlanItems = settlementPlan?.items || [];
+  const walletPaidPlanItemIds = useMemo(() => new Set(walletPaidSettlementItemIds), [walletPaidSettlementItemIds]);
+  const walletPaidPlanItems = useMemo(
+    () => allPlanItems.filter((item) => {
+      const status = String(item.status || '').toUpperCase();
+      return walletPaidPlanItemIds.has(String(item.id)) && !['REJECTED', 'CANCELLED'].includes(status);
+    }),
+    [allPlanItems, walletPaidPlanItemIds],
+  );
+  const walletPaidPairAmountByKey = useMemo(() => {
+    const result = new Map<string, number>();
+    walletPaidPlanItems.forEach((item) => {
+      const key = getSettlementPairKey(item.payer_user_id, item.receiver_user_id);
+      result.set(key, (result.get(key) || 0) + (item.amount_minor || 0));
+    });
+    return result;
+  }, [walletPaidPlanItems]);
+  const debtReconciliation = useMemo(
+    () => reconcileDetailedDebtsWithWalletPayments(debts, walletPaidPlanItems, currentUserId),
+    [currentUserId, debts, walletPaidPlanItems],
+  );
+  const reconciledDebts = debtReconciliation.debts;
   const openPlanItems = allPlanItems.filter((item) => isOpenSettlementStatus(item.status));
   const myDebtItems = openPlanItems.filter((item) => item.payer_user_id === currentUserId);
   const myCreditItems = openPlanItems.filter((item) => item.receiver_user_id === currentUserId);
@@ -1495,6 +1644,7 @@ export function GroupDetailPage({
   const fallbackPaymentSuggestions = optimizedSettlements.filter(
     (suggestion) =>
       suggestion.payer_user_id === currentUserId &&
+      (walletPaidPairAmountByKey.get(getSettlementPairKey(suggestion.payer_user_id, suggestion.receiver_user_id)) || 0) < suggestion.amount_minor &&
       !openPlanItems.some(
         (item) =>
           item.payer_user_id === suggestion.payer_user_id &&
@@ -1510,6 +1660,7 @@ export function GroupDetailPage({
   const fallbackReceiptSuggestions = optimizedSettlements.filter(
     (suggestion) =>
       suggestion.receiver_user_id === currentUserId &&
+      (walletPaidPairAmountByKey.get(getSettlementPairKey(suggestion.payer_user_id, suggestion.receiver_user_id)) || 0) < suggestion.amount_minor &&
       !openPlanItems.some(
         (item) =>
           item.payer_user_id === suggestion.payer_user_id &&
@@ -1523,7 +1674,8 @@ export function GroupDetailPage({
       ),
   );
   const currentUserBalance = balances.find((balance) => balance.user_id === currentUserId);
-  const myNetMinor = currentUserBalance?.net_balance_minor ?? myBalance?.net_balance_minor ?? 0;
+  const backendMyNetMinor = currentUserBalance?.net_balance_minor ?? myBalance?.net_balance_minor ?? 0;
+  const myNetMinor = backendMyNetMinor + debtReconciliation.currentUserNetAdjustmentMinor;
   const myAccount = getMyAccountStatus(myNetMinor);
   const visibleMyDebtMinor = totalMyDebtMinor || fallbackPaymentSuggestions.reduce(
     (sum, item) => sum + item.amount_minor,
@@ -1534,10 +1686,10 @@ export function GroupDetailPage({
     0,
   );
   const myLedgerEntries = useMemo(
-    () => debts.filter(
+    () => reconciledDebts.filter(
       (item) => item.debtor_user_id === currentUserId || item.creditor_user_id === currentUserId,
     ),
-    [currentUserId, debts],
+    [currentUserId, reconciledDebts],
   );
   const pairNetByUserId = useMemo(() => {
     const result = new Map<string, number>();
@@ -1786,19 +1938,38 @@ export function GroupDetailPage({
       setSettlementLoading(true);
       setSettlementDataError(null);
 
-      const [balancesResult, myBalanceResult, debtsResult, planResult, settlementsResult, walletResult] = await Promise.allSettled([
+      const [
+        balancesResult,
+        myBalanceResult,
+        debtsResult,
+        planResult,
+        settlementsResult,
+        walletResult,
+        walletTransactionsResult,
+      ] = await Promise.allSettled([
         getGroupBalances(groupId),
         getMyGroupBalance(groupId),
         getGroupDebts(groupId),
         getSettlementPlan(groupId),
         listGroupSettlements(groupId),
         getMyWallet(),
+        listWalletTransactions({ pageSize: 100 }),
       ]);
 
+      const paidIdsFromWallet = walletTransactionsResult.status === 'fulfilled'
+        ? getWalletPaidSettlementItemIdsFromTransactions(walletTransactionsResult.value.results || [])
+        : [];
+      const rememberedPaidIds = walletTransactionsResult.status === 'fulfilled'
+        ? syncRememberedPaidWalletSettlementItems(paidIdsFromWallet, groupId)
+        : getRememberedPaidWalletSettlementItemIds(groupId);
+      const loadedPlan = planResult.status === 'fulfilled' ? planResult.value : null;
+      const reconciledPlan = reconcileSettlementPlanWithWalletPayments(loadedPlan, rememberedPaidIds);
+
+      setWalletPaidSettlementItemIds(rememberedPaidIds);
       setBalances(balancesResult.status === 'fulfilled' ? balancesResult.value.balances || [] : []);
       setMyBalance(myBalanceResult.status === 'fulfilled' ? myBalanceResult.value : null);
       setDebts(debtsResult.status === 'fulfilled' ? debtsResult.value.debts || [] : []);
-      setSettlementPlan(planResult.status === 'fulfilled' ? planResult.value : null);
+      setSettlementPlan(reconciledPlan);
       setSettlements(settlementsResult.status === 'fulfilled' ? settlementsResult.value || [] : []);
       setWalletAvailableMinor(walletResult.status === 'fulfilled' ? walletResult.value.available_balance_minor || 0 : 0);
 
@@ -1933,6 +2104,7 @@ export function GroupDetailPage({
     setAutoSettlementTried(false);
     setSettlementPlan(null);
     setSettlements([]);
+    setWalletPaidSettlementItemIds(getRememberedPaidWalletSettlementItemIds(groupId));
     setReminderSettings(null);
     setActivities([]);
     setExpenseReceiptsByExpenseId({});
@@ -2023,8 +2195,8 @@ export function GroupDetailPage({
             ...generatedPlan,
             status: 'ACTIVE',
           }));
-          resolvedPlan = latestPlan;
-          setSettlementPlan(latestPlan);
+          resolvedPlan = reconcileSettlementPlanWithWalletPayments(latestPlan, getRememberedPaidWalletSettlementItemIds(groupId)) || latestPlan;
+          setSettlementPlan(resolvedPlan);
         } catch (activationError) {
           // The API allows only one active plan. A newly registered expense
           // makes that plan stale, so replace it with the freshly generated
@@ -2044,11 +2216,12 @@ export function GroupDetailPage({
             ...generatedPlan,
             status: 'ACTIVE',
           }));
-          resolvedPlan = latestPlan;
-          setSettlementPlan(latestPlan);
+          resolvedPlan = reconcileSettlementPlanWithWalletPayments(latestPlan, getRememberedPaidWalletSettlementItemIds(groupId)) || latestPlan;
+          setSettlementPlan(resolvedPlan);
         }
       } else {
-        setSettlementPlan(generatedPlan);
+        resolvedPlan = reconcileSettlementPlanWithWalletPayments(generatedPlan, getRememberedPaidWalletSettlementItemIds(groupId)) || generatedPlan;
+        setSettlementPlan(resolvedPlan);
       }
 
       await loadSettlementData();
@@ -2915,6 +3088,88 @@ export function GroupDetailPage({
     return code.includes('INSUFFICIENT') || message.includes('insufficient') || message.includes('موجودی');
   }
 
+  function isSettlementItemPaidStatus(status?: SettlementStatus) {
+    return isPaidSettlementStatusValue(status);
+  }
+
+  function markSettlementItemReportedLocally(itemOrId: SettlementPlanItem | string) {
+    const itemId = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
+    const rememberedPaidIds = rememberPaidWalletSettlementItem(itemId, groupId);
+
+    setWalletPaidSettlementItemIds(rememberedPaidIds);
+    setSettlementPlan((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        items: (current.items || []).map((planItem) =>
+          planItem.id === itemId && !['CONFIRMED', 'COMPLETED', 'REJECTED', 'CANCELLED'].includes(String(planItem.status || '').toUpperCase())
+            ? { ...planItem, status: 'REPORTED' as const }
+            : planItem,
+        ),
+      };
+    });
+  }
+
+  async function sendWalletSettlementConfirmationNotification(item: SettlementPlanItem) {
+    if (!item.receiver_user_id || item.receiver_user_id === currentUserId) return;
+
+    try {
+      await createNotification({
+        recipient_user_id: item.receiver_user_id,
+        channel: 'IN_APP',
+        notification_type: 'SETTLEMENT',
+        priority: 'HIGH',
+        title: 'تأیید دریافت پرداخت کیف پول',
+        body: `${getPlanPartyName(item, 'payer', members)} مبلغ ${formatMoney(item.amount_minor)} را از کیف پول پرداخت کرد. لطفاً دریافت پول را تأیید یا رد کن.`,
+        metadata: {
+          type: 'WALLET_SETTLEMENT_CONFIRMATION',
+          group_id: groupId,
+          settlement_plan_item_id: item.id,
+          payer_user_id: item.payer_user_id,
+          receiver_user_id: item.receiver_user_id,
+          amount_minor: item.amount_minor,
+          currency: 'IRR',
+          action: 'CONFIRM_SETTLEMENT_PLAN_ITEM',
+        },
+      });
+    } catch (error) {
+      console.warn('Wallet settlement notification could not be created.', error);
+    }
+  }
+
+  function markSettlementItemPaidLocally(itemOrId: SettlementPlanItem | string) {
+    const itemId = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
+    const rememberedPaidIds = rememberPaidWalletSettlementItem(itemId, groupId);
+
+    setWalletPaidSettlementItemIds(rememberedPaidIds);
+    setSettlementPlan((current) => reconcileSettlementPlanWithWalletPayments(current, rememberedPaidIds));
+  }
+
+  async function waitForWalletSettlementApplied(itemId: string) {
+    for (const delayMs of [600, 1200, 2200, 3600, 5200]) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+
+      try {
+        const latestPlan = await getSettlementPlan(groupId);
+        const latestItem = latestPlan.items?.find((planItem) => planItem.id === itemId);
+        setSettlementPlan(reconcileSettlementPlanWithWalletPayments(latestPlan, getRememberedPaidWalletSettlementItemIds(groupId)));
+
+        if (!latestItem || ['REPORTED', 'CONFIRMED', 'COMPLETED'].includes(String(latestItem.status || '').toUpperCase()) || String(latestPlan.status || '').toUpperCase() === 'COMPLETED') {
+          await loadSettlementData();
+          return true;
+        }
+      } catch (error) {
+        if (!(isApiError(error) && error.status === 404)) {
+          console.warn('Waiting for wallet settlement sync failed.', error);
+        }
+      }
+    }
+
+    await loadSettlementData();
+    markSettlementItemPaidLocally(itemId);
+    return false;
+  }
+
   async function handleWalletSettlementPayment(item: SettlementPlanItem) {
     if (!canReportPlanItem(item, settlementPlan)) return;
 
@@ -2935,14 +3190,17 @@ export function GroupDetailPage({
     try {
       setWalletPaymentItemId(item.id);
       await paySettlementItemWithWallet(item.id, createIdempotencyKey('wallet-settlement'));
-      await loadSettlementData();
+      markSettlementItemReportedLocally(item);
+      void sendWalletSettlementConfirmationNotification(item);
+      const synced = await waitForWalletSettlementApplied(item.id);
       refreshActivitiesAfterMutation();
-      void refreshSmartSettlement(false);
 
       notify({
         type: 'success',
-        title: 'پرداخت از کیف پول انجام شد',
-        description: 'مبلغ از کیف پول تو کم شد و به کیف پول دریافت‌کننده اضافه شد.',
+        title: synced ? 'پرداخت از کیف پول ثبت شد' : 'پرداخت ثبت شد و تسویه در حال همگام‌سازی است',
+        description: synced
+          ? 'مبلغ از کیف پول تو کم شد و برای دریافت‌کننده اعلان تأیید ارسال شد. بعد از تأیید او، بدهی تسویه می‌شود.'
+          : 'مبلغ از کیف پول کم شد. وضعیت پرداخت تا چند لحظه دیگر به حالت در انتظار تأیید دریافت‌کننده می‌رود.',
       });
     } catch (err) {
       console.error(err);
@@ -3018,6 +3276,10 @@ export function GroupDetailPage({
         provider: intentProvider,
         amountMinor: shortageMinor,
         settlementPlanItemId: walletTopUpItem.id,
+        settlementPayerUserId: walletTopUpItem.payer_user_id,
+        settlementReceiverUserId: walletTopUpItem.receiver_user_id,
+        settlementPayerName: getPlanPartyName(walletTopUpItem, 'payer', members),
+        settlementReceiverName: getPlanPartyName(walletTopUpItem, 'receiver', members),
         groupId,
         walletPayIdempotencyKey,
         createdAt: new Date().toISOString(),
@@ -3035,16 +3297,19 @@ export function GroupDetailPage({
         }
 
         await paySettlementItemWithWallet(walletTopUpItem.id, walletPayIdempotencyKey);
+        markSettlementItemReportedLocally(walletTopUpItem);
+        void sendWalletSettlementConfirmationNotification(walletTopUpItem);
+        const synced = await waitForWalletSettlementApplied(walletTopUpItem.id);
         setWalletTopUpItem(null);
-        await loadSettlementData();
         await loadWalletBalance();
         refreshActivitiesAfterMutation();
-        void refreshSmartSettlement(false);
 
         notify({
           type: 'success',
-          title: 'کیف پول شارژ شد و پرداخت انجام شد',
-          description: 'موجودی کیف پولت افزایش پیدا کرد و بدهی انتخاب‌شده پرداخت شد.',
+          title: synced ? 'کیف پول شارژ شد و پرداخت ثبت شد' : 'کیف پول شارژ شد و پرداخت در حال همگام‌سازی است',
+          description: synced
+            ? 'پرداخت با کیف پول ثبت شد و برای دریافت‌کننده اعلان تأیید ارسال شد.'
+            : 'پرداخت کیف پول ثبت شد. وضعیت تسویه تا چند لحظه دیگر به حالت در انتظار تأیید می‌رود.',
         });
         return;
       }
