@@ -352,6 +352,46 @@ class PublicUserSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
 
 
+class UserAvatarSummarySerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    art_name = serializers.CharField()
+    first_name = serializers.CharField(allow_null=True, required=False)
+    last_name = serializers.CharField(allow_null=True, required=False)
+    avatar_url = TrimmedOptionalURLField(allow_null=True, required=False)
+
+
+class AvatarResponseSerializer(serializers.Serializer):
+    avatar_url = TrimmedOptionalURLField(allow_null=True, required=False)
+    file_id = serializers.UUIDField(allow_null=True, required=False)
+    updated_at = serializers.DateTimeField(allow_null=True, required=False)
+
+
+class AvatarMutationResponseSerializer(AvatarResponseSerializer):
+    message = serializers.CharField(required=False)
+    user = UserAvatarSummarySerializer()
+
+
+class AvatarUploadSerializer(serializers.Serializer):
+    file = serializers.FileField(required=False, allow_empty_file=False)
+    avatar = serializers.FileField(required=False, allow_empty_file=False)
+
+    def validate(self, attrs):
+        uploaded_file = attrs.get("file") or attrs.get("avatar")
+        if uploaded_file is None:
+            raise serializers.ValidationError({"file": ["Avatar image file is required."]})
+        attrs["file"] = uploaded_file
+        attrs.pop("avatar", None)
+        return attrs
+
+
+class BankCardOwnerSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    first_name = serializers.CharField(allow_null=True, required=False)
+    last_name = serializers.CharField(allow_null=True, required=False)
+    art_name = serializers.CharField()
+    avatar_url = TrimmedOptionalURLField(allow_null=True, required=False)
+
+
 class UserBankCardSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     masked_card_number = serializers.CharField(read_only=True)
@@ -366,13 +406,13 @@ class UserBankCardSerializer(serializers.Serializer):
 
 class CreateUserBankCardSerializer(serializers.Serializer):
     card_number = serializers.CharField(required=True)
-    holder_name = serializers.CharField(required=True)
+    holder_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     bank_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     is_default = serializers.BooleanField(required=False, default=False)
 
 
 class UpdateUserBankCardSerializer(serializers.Serializer):
-    holder_name = serializers.CharField(required=False)
+    holder_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     bank_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     is_default = serializers.BooleanField(required=False)
     is_active = serializers.BooleanField(required=False)
@@ -396,6 +436,7 @@ class UpdateUserBankCardSerializer(serializers.Serializer):
 
 
 class UserBankCardListResponseSerializer(serializers.Serializer):
+    owner = BankCardOwnerSerializer()
     items = UserBankCardSerializer(many=True)
 
 
@@ -403,7 +444,7 @@ class BulkUserBankCardItemSerializer(serializers.Serializer):
     id = serializers.UUIDField(required=False)
     client_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     card_number = serializers.CharField(required=False)
-    holder_name = serializers.CharField(required=False)
+    holder_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     bank_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     is_default = serializers.BooleanField(required=False)
     is_active = serializers.BooleanField(required=False)

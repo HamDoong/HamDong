@@ -42,7 +42,7 @@ export const groups: Group[] = [
     name: 'کافه دوستان',
     membersLabel: '۶ عضو • فعال',
     statusLabel: 'شما طلبکار هستید',
-    amount: '34,250 تومان',
+    amount: 'تومان 34,250',
     tone: 'positive',
     illustration: 'cafe',
   },
@@ -51,7 +51,7 @@ export const groups: Group[] = [
     name: 'خانه ما',
     membersLabel: '۴ عضو • فعال',
     statusLabel: 'شما بدهکار هستید',
-    amount: '75,600 تومان',
+    amount: 'تومان 75,600',
     tone: 'negative',
     illustration: 'home',
   },
@@ -60,16 +60,16 @@ export const groups: Group[] = [
     name: 'سفر کیش',
     membersLabel: '۵ عضو • فعال',
     statusLabel: 'شما طلبکار هستید',
-    amount: '120,000 تومان',
+    amount: 'تومان 120,000',
     tone: 'positive',
     illustration: 'trip',
   },
 ];
 
 export const accountSummary: SummaryItem[] = [
-  { id: 1, label: 'موجودی کیف پول', amount: '120,000 تومان', tone: 'positive' },
-  { id: 2, label: 'شما طلبکار هستید', amount: '175,000 تومان', tone: 'positive' },
-  { id: 3, label: 'شما بدهکار هستید', amount: '50,000 تومان', tone: 'negative' },
+  { id: 1, label: 'موجودی کیف پول', amount: 'تومان 120,000', tone: 'positive' },
+  { id: 2, label: 'شما طلبکار هستید', amount: 'تومان 175,000', tone: 'positive' },
+  { id: 3, label: 'شما بدهکار هستید', amount: 'تومان 50,000', tone: 'negative' },
 ];
 
 export const recentMembers: Member[] = [
@@ -77,7 +77,7 @@ export const recentMembers: Member[] = [
     id: 1,
     name: 'علی احمدی (شما)',
     badge: 'مدیر',
-    amount: '۳۵,۰۰۰ تومان',
+    amount: 'تومان ۳۵,۰۰۰',
     tone: 'positive',
     avatarInitial: 'ع',
     avatarGradient: 'from-emerald-400 to-teal-600',
@@ -127,7 +127,7 @@ export const recentActivities: Activity[] = [
   },
   {
     id: 2,
-    title: 'رضا مبلغ ۶۰,۰۰۰ تومان پرداخت کرد',
+    title: 'رضا مبلغ تومان ۶۰,۰۰۰ پرداخت کرد',
     subtitle: 'جلسه ما دیروز',
     icon: CheckCircle2,
     iconBoxClassName: 'bg-emerald-100',

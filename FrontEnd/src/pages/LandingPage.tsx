@@ -39,21 +39,21 @@ const expenseCards = [
   {
     icon: ShoppingCart,
     title: 'سوپرمارکت',
-    amount: '1,250,000 تومان',
+    amount: 'تومان 1,250,000',
     meta: 'پرداخت توسط سارا',
     tone: 'orange',
   },
   {
     icon: Car,
     title: 'بنزین و عوارض',
-    amount: '850,000 تومان',
+    amount: 'تومان 850,000',
     meta: 'پرداخت توسط احمد',
     tone: 'green',
   },
   {
     icon: Utensils,
     title: 'رستوران دربند',
-    amount: '2,350,000 تومان',
+    amount: 'تومان 2,350,000',
     meta: 'پرداخت توسط مهدی',
     tone: 'orange',
   },
@@ -96,19 +96,19 @@ const balances = [
   {
     avatar: avatarImages[1],
     label: 'مهدی به شما بدهکار است',
-    amount: '1,250,000 تومان',
+    amount: 'تومان 1,250,000',
     tone: 'text-emerald-700',
   },
   {
     avatar: avatarImages[2],
     label: 'شما به سارا بدهکار هستید',
-    amount: '850,000 تومان',
+    amount: 'تومان 850,000',
     tone: 'text-red-500',
   },
   {
     avatar: avatarImages[0],
     label: 'احمد به شما بدهکار است',
-    amount: '650,000 تومان',
+    amount: 'تومان 650,000',
     tone: 'text-emerald-700',
   },
 ];
@@ -235,10 +235,10 @@ function HeroMockup() {
               <p className="text-center text-sm font-semibold text-slate-500">
                 مجموع هزینه‌ها
               </p>
-              <p className="mt-3 text-center text-3xl font-black text-slate-950">
-                24,580,000
+              <p dir="rtl" className="mt-3 text-center text-3xl font-black text-slate-950">
+                <span className="ml-1 text-sm font-bold text-slate-500">تومان</span>
+                <bdi dir="ltr">24,580,000</bdi>
               </p>
-              <p className="mt-1 text-center text-sm font-bold text-slate-500">تومان</p>
 
               <div className="mt-7 h-4 rounded-full bg-slate-100 p-1 shadow-inner">
                 <div className="h-full w-[68%] rounded-full bg-primary-gradient shadow-[0_6px_18px_rgba(0,168,107,0.28)]" />
@@ -377,7 +377,7 @@ function BalancePanel() {
         className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-[20px] bg-gradient-to-l from-red-500 to-orange-500 px-5 text-base font-extrabold text-white shadow-[0_18px_36px_rgba(239,68,68,0.28)] transition hover:-translate-y-0.5"
       >
         <CreditCard className="h-6 w-6" />
-        تسویه حساب‌ها (2,100,000 تومان)
+        تسویه حساب‌ها (تومان 2,100,000)
       </button>
     </div>
   );

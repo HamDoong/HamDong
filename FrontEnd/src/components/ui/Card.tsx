@@ -8,9 +8,9 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const variantClasses: Record<CardVariant, string> = {
-  default: 'rounded-3xl border border-border bg-white shadow-soft',
-  panel: 'rounded-[22px] border border-border bg-white shadow-panel',
-  tint: 'rounded-3xl border border-emerald-100 bg-panel-tint shadow-soft',
+  default: 'app-card rounded-3xl border border-border bg-surface shadow-soft',
+  panel: 'app-panel rounded-[22px] border border-border bg-surface shadow-panel',
+  tint: 'app-card app-card-tint rounded-3xl border border-primary/15 bg-panel-tint shadow-soft',
 };
 
 export function Card({

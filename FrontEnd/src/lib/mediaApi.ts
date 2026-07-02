@@ -31,6 +31,31 @@ export interface MediaListResponse {
   results: MediaListItem[];
 }
 
+export interface ReceiptListItem {
+  id: string;
+  expense_id?: string | null;
+  group_id?: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  uploaded_by_user_id: string;
+  created_at: string;
+  download_url: string;
+}
+
+export interface ReceiptCursorListResponse {
+  results: ReceiptListItem[];
+  next_cursor?: string | null;
+}
+
+export interface ListReceiptFilters {
+  group_id?: string;
+  expense_id?: string;
+  uploaded_by_me?: boolean;
+  cursor?: string;
+  page_size?: number;
+}
+
 export interface UploadReceiptInput {
   groupId: string;
   file: File;
@@ -55,6 +80,19 @@ function buildApiUrl(path: string) {
 }
 
 function buildQuery(filters: ListGroupMediaFilters = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value));
+    }
+  });
+
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+function buildReceiptQuery(filters: ListReceiptFilters = {}) {
   const params = new URLSearchParams();
 
   Object.entries(filters).forEach(([key, value]) => {
@@ -99,10 +137,31 @@ export async function uploadReceipt(input: UploadReceiptInput) {
     formData.append('related_expense_id', input.relatedExpenseId);
   }
 
-  return apiRequest<MediaMetadata>('/media/receipts/', {
-    method: 'POST',
-    body: formData,
-  });
+  const retryDelays = [0, 700, 1200, 2000, 3000, 4000];
+  let lastError: unknown;
+
+  for (const delayMs of retryDelays) {
+    if (delayMs > 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+    }
+
+    try {
+      return await apiRequest<MediaMetadata>('/media/receipts/', {
+        method: 'POST',
+        body: formData,
+      });
+    } catch (error) {
+      lastError = error;
+
+      // A newly-created group reaches media-service asynchronously through the
+      // group outbox. Retry only the temporary "group not found" response.
+      if (!(isApiError(error) && error.status === 404)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 export async function getMediaDetail(fileId: string) {
@@ -137,6 +196,23 @@ export async function listGroupMedia(
   }
 }
 
+export async function listExpenseReceipts(
+  expenseId: string,
+  filters: Pick<ListReceiptFilters, 'cursor' | 'page_size'> = {},
+) {
+  return apiRequest<ReceiptCursorListResponse>(
+    `/expenses/${expenseId}/receipts/${buildReceiptQuery(filters)}`,
+  );
+}
+
+export async function listMyVisibleReceipts(
+  filters: ListReceiptFilters = {},
+) {
+  return apiRequest<ReceiptCursorListResponse>(
+    `/users/me/receipts/${buildReceiptQuery(filters)}`,
+  );
+}
+
 export async function downloadMediaFile(
   fileId: string,
 ): Promise<DownloadedMediaFile> {
@@ -159,7 +235,7 @@ export async function downloadMediaFile(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text || 'دانلود فایل رسید ناموفق بود.');
+    throw new Error(text || 'رسید دانلود نشد. دوباره امتحان کن.');
   }
 
   const blob = await response.blob();

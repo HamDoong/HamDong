@@ -15,12 +15,16 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rest_framework import serializers, status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.identity.api.authentication import JWTAuthentication
 from apps.identity.api.serializers import (
+    AvatarMutationResponseSerializer,
+    AvatarResponseSerializer,
+    AvatarUploadSerializer,
     BulkUserBankCardSaveResponseSerializer,
     BulkUserBankCardSaveSerializer,
     CreateUserBankCardSerializer,
@@ -40,6 +44,7 @@ from apps.identity.api.serializers import (
     SessionListResponseSerializer,
     SessionSerializer,
     UpdateUserSerializer,
+    UserAvatarSummarySerializer,
     UpdateUserBankCardSerializer,
     UserBankCardListResponseSerializer,
     UserBankCardSerializer,
@@ -48,10 +53,12 @@ from apps.identity.api.serializers import (
     UserSerializer,
     VerifyOtpSerializer,
 )
+from apps.identity.application.avatar_service import AvatarError, AvatarService
 from apps.identity.application.bank_card_service import (
     BankCardError,
     BankCardService,
     serialize_bank_card,
+    serialize_bank_card_owner,
 )
 from apps.identity.application.token_service import TokenService
 from apps.identity.application.use_cases import (
@@ -125,6 +132,18 @@ ErrorResponseSerializer = inline_serializer(
     name="IdentityErrorResponseSerializer",
     fields={
         "error": ErrorDetailSerializer,
+    },
+)
+
+
+AvatarDeleteResponseSerializer = inline_serializer(
+    name="AvatarDeleteResponseSerializer",
+    fields={
+        "avatar_url": serializers.URLField(allow_null=True, required=False),
+        "file_id": serializers.UUIDField(allow_null=True, required=False),
+        "updated_at": serializers.DateTimeField(allow_null=True, required=False),
+        "message": serializers.CharField(),
+        "user": UserAvatarSummarySerializer(),
     },
 )
 
@@ -1147,6 +1166,133 @@ class PublicUserLookupView(APIView):
         return Response(PublicUserSerializer(user).data, status=status.HTTP_200_OK)
 
 
+class MeAvatarView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_user(self, request):
+        user = UserRepository.get_by_id(request.user.id)
+        if not user:
+            return None, _error_response(
+                "USER_NOT_FOUND", "User not found.", status.HTTP_404_NOT_FOUND
+            )
+        if not user.is_active or user.deleted_at is not None:
+            return None, _error_response(
+                "ACCOUNT_DEACTIVATED",
+                "This account has been deactivated.",
+                status.HTTP_403_FORBIDDEN,
+            )
+        return user, None
+
+    @extend_schema(
+        tags=["Users"],
+        summary="Get current user's profile avatar",
+        responses={
+            200: AvatarResponseSerializer,
+            401: OpenApiResponse(response=ErrorResponseSerializer, description="Authentication required."),
+            403: OpenApiResponse(response=ErrorResponseSerializer, description="Account is deactivated."),
+        },
+    )
+    def get(self, request):
+        user, error_response = self._get_user(request)
+        if error_response is not None:
+            return error_response
+        return Response(AvatarService.serialize_avatar(user), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["Users"],
+        summary="Upload current user's profile avatar",
+        request=AvatarUploadSerializer,
+        responses={
+            201: AvatarMutationResponseSerializer,
+            400: OpenApiResponse(response=ErrorResponseSerializer, description="Avatar validation failed."),
+            401: OpenApiResponse(response=ErrorResponseSerializer, description="Authentication required."),
+            403: OpenApiResponse(response=ErrorResponseSerializer, description="Account is deactivated."),
+            413: OpenApiResponse(response=ErrorResponseSerializer, description="Avatar image must be 5MB or smaller."),
+            500: OpenApiResponse(response=ErrorResponseSerializer, description="Avatar storage failed."),
+        },
+        examples=[
+            OpenApiExample(
+                "Avatar upload request",
+                value={"file": "<binary>"},
+                request_only=True,
+            ),
+        ],
+    )
+    def post(self, request):
+        return self._save_avatar(request, status_code=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        tags=["Users"],
+        summary="Replace current user's profile avatar",
+        request=AvatarUploadSerializer,
+        responses={
+            200: AvatarMutationResponseSerializer,
+            400: OpenApiResponse(response=ErrorResponseSerializer, description="Avatar validation failed."),
+            401: OpenApiResponse(response=ErrorResponseSerializer, description="Authentication required."),
+            403: OpenApiResponse(response=ErrorResponseSerializer, description="Account is deactivated."),
+            413: OpenApiResponse(response=ErrorResponseSerializer, description="Avatar image must be 5MB or smaller."),
+            500: OpenApiResponse(response=ErrorResponseSerializer, description="Avatar storage failed."),
+        },
+    )
+    def put(self, request):
+        return self._save_avatar(request, status_code=status.HTTP_200_OK)
+
+    def _save_avatar(self, request, *, status_code: int):
+        user, error_response = self._get_user(request)
+        if error_response is not None:
+            return error_response
+        serializer = AvatarUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return _error_response(
+                "AVATAR_FILE_REQUIRED",
+                "Avatar image file is required.",
+                status.HTTP_400_BAD_REQUEST,
+                serializer.errors,
+            )
+        try:
+            payload = AvatarService().upload(
+                user=user,
+                uploaded_file=serializer.validated_data["file"],
+                request=request,
+            )
+        except AvatarError as exc:
+            http_status = status.HTTP_400_BAD_REQUEST
+            if exc.code == "AVATAR_FILE_TOO_LARGE":
+                http_status = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            if exc.code == "AVATAR_STORAGE_FAILED":
+                http_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+            if exc.code == "ACCOUNT_DEACTIVATED":
+                http_status = status.HTTP_403_FORBIDDEN
+            return _error_response(exc.code, exc.message, http_status)
+        return Response(payload, status=status_code)
+
+    @extend_schema(
+        tags=["Users"],
+        summary="Delete current user's profile avatar",
+        responses={
+            200: AvatarDeleteResponseSerializer,
+            401: OpenApiResponse(response=ErrorResponseSerializer, description="Authentication required."),
+            403: OpenApiResponse(response=ErrorResponseSerializer, description="Account is deactivated."),
+        },
+    )
+    def delete(self, request):
+        user, error_response = self._get_user(request)
+        if error_response is not None:
+            return error_response
+        try:
+            payload = AvatarService().delete(user=user)
+        except AvatarError as exc:
+            http_status = (
+                status.HTTP_403_FORBIDDEN
+                if exc.code == "ACCOUNT_DEACTIVATED"
+                else status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            return _error_response(exc.code, exc.message, http_status)
+        return Response(payload, status=status.HTTP_200_OK)
+
+
 class MeView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -1290,7 +1436,12 @@ class MeBankCardsView(APIView):
             request.query_params.get("include_inactive", "false")
         ).lower() in {"1", "true", "yes"}
         cards = BankCardService().list_cards(user, include_inactive=include_inactive)
-        return Response({"items": [serialize_bank_card(card) for card in cards]})
+        return Response(
+            {
+                "owner": serialize_bank_card_owner(user),
+                "items": [serialize_bank_card(card) for card in cards],
+            }
+        )
 
     @extend_schema(
         tags=["Users"],

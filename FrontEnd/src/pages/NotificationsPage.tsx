@@ -7,6 +7,8 @@ import {
   RefreshCw,
   Search,
   Send,
+  Users,
+  X,
 } from 'lucide-react';
 import {
   getNotificationMessages,
@@ -16,7 +18,28 @@ import {
   sendNotificationEmailTest,
   type BackendNotificationMessage,
 } from '../lib/notificationApi';
+import {
+  acceptDirectGroupInvitation,
+  getMyGroups,
+  listMyDirectGroupInvitations,
+  rejectDirectGroupInvitation,
+  type BackendGroup,
+  type DirectGroupInvitation,
+} from '../lib/groupApi';
+import {
+  getDashboardActionItems,
+  type DashboardActionItem,
+} from '../lib/dashboardApi';
+import {
+  confirmPlanItem,
+  confirmSettlement,
+  getSettlementPlan,
+  rejectPlanItem,
+  rejectSettlement,
+  type SettlementPlanItem,
+} from '../lib/settlementApi';
 import { useFeedback } from '../components/feedback/FeedbackProvider';
+import { getCurrentUser } from '../lib/userApi';
 import {
   getFriendlyApiErrorMessage,
   getFriendlyNotificationBody,
@@ -71,6 +94,11 @@ function formatDate(value?: string | null) {
   } catch {
     return 'زمان نامشخص';
   }
+}
+
+function formatMoneyMinor(amount?: number | null) {
+  const value = Math.abs(Number(amount || 0));
+  return `تومان ⁦${value.toLocaleString('fa-IR')}⁩`;
 }
 
 function loadPersistedReadIds() {
@@ -269,7 +297,19 @@ function getAmountText(item: BackendNotificationMessage) {
     return '';
   }
 
-  return `${amount.toLocaleString('fa-IR')} تومان`;
+  const sign = amount < 0 ? '-' : '';
+  return `تومان \u2066${sign}${Math.abs(amount).toLocaleString('fa-IR')}\u2069`;
+}
+
+function getInvitationSearchText(invitation: DirectGroupInvitation) {
+  return [
+    invitation.group?.title,
+    invitation.invited_by?.art_name,
+    invitation.status,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 }
 
 function isPaymentReminder(item: BackendNotificationMessage) {
@@ -310,12 +350,12 @@ function getActionErrorMessage(error: unknown, fallback: string) {
   return getFriendlyApiErrorMessage(error, {
     defaultMessage: fallback,
     invalidMessage: 'اطلاعات واردشده کامل یا درست نیست.',
-    unavailableMessage: 'فعلاً ارتباط با بخش اعلان‌ها برقرار نمی‌شود. کمی بعد دوباره تلاش کن.',
+    unavailableMessage: 'فعلاً نمی‌توانیم اعلان‌هایت را نشان بدهیم. چند لحظه بعد دوباره امتحان کن.',
     notFoundMessage: 'اطلاعات اعلان پیدا نشد.',
     codeMap: {
       NOTIFICATION_NOT_FOUND: 'این اعلان پیدا نشد.',
       ALREADY_READ: 'این اعلان قبلاً خوانده شده است.',
-      EMAIL_SEND_FAILED: 'ارسال ایمیل انجام نشد. کمی بعد دوباره تلاش کن.',
+      EMAIL_SEND_FAILED: 'پیام تستی ارسال نشد. آدرس ایمیل را بررسی کن و دوباره امتحان کن.',
       INVALID_EMAIL: 'ایمیل واردشده درست نیست.',
     },
   });
@@ -400,11 +440,251 @@ function SectionCard({
   );
 }
 
+function isSettlementConfirmationAction(item: DashboardActionItem) {
+  return item.type === 'CONFIRM_RECEIVED_PAYMENT';
+}
+
+function getActionGroupName(item: DashboardActionItem) {
+  return item.group?.title || 'گروه';
+}
+
+function getActionSourceKind(item: DashboardActionItem) {
+  return String(item.source?.type || '').toUpperCase();
+}
+
+function isPlanItemAwaitingReceiverReview(item: SettlementPlanItem) {
+  return String(item.status || '').toUpperCase() === 'REPORTED';
+}
+
+function planItemToSettlementConfirmationAction(
+  item: SettlementPlanItem,
+  group: BackendGroup,
+  referenceDate?: string | null,
+): DashboardActionItem {
+  const payerName = item.payer_display_name || item.payer_art_name || 'یکی از اعضا';
+
+  return {
+    id: `plan-confirmation-${item.id}`,
+    type: 'CONFIRM_RECEIVED_PAYMENT',
+    priority: 'HIGH',
+    title: 'تأیید دریافت پول',
+    description: `${payerName} برای گروه «${group.title || 'گروه'}» پرداخت ثبت کرده است.`,
+    group: {
+      id: group.id,
+      title: group.title || 'گروه',
+    },
+    source: {
+      service: 'settlement',
+      type: 'SETTLEMENT_PLAN_ITEM',
+      id: item.id,
+    },
+    amount_minor: item.amount_minor,
+    currency: 'IRR',
+    created_at: referenceDate || null,
+    due_at: null,
+    allowed_actions: [
+      { key: 'confirm', method: 'POST', path: `/settlement-plan-items/${item.id}/confirm/` },
+      { key: 'reject', method: 'POST', path: `/settlement-plan-items/${item.id}/reject/` },
+    ],
+  };
+}
+
+async function loadSettlementPlanConfirmationActions() {
+  const [currentUser, groups] = await Promise.all([getCurrentUser(), getMyGroups()]);
+  const currentUserId = currentUser?.id ? String(currentUser.id) : '';
+
+  if (!currentUserId || groups.length === 0) {
+    return [] as DashboardActionItem[];
+  }
+
+  const results = await Promise.allSettled(
+    groups.map(async (group) => {
+      const plan = await getSettlementPlan(group.id);
+
+      return (plan.items || [])
+        .filter((item) => item.receiver_user_id === currentUserId && isPlanItemAwaitingReceiverReview(item))
+        .map((item) =>
+          planItemToSettlementConfirmationAction(
+            item,
+            group,
+            plan.updated_at || plan.created_at || null,
+          ),
+        );
+    }),
+  );
+
+  return results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+}
+
+function getSettlementActionDedupKey(item: DashboardActionItem) {
+  const sourceKind = getActionSourceKind(item);
+  const sourceId = item.source?.id || item.id;
+  return `${sourceKind}:${sourceId}`;
+}
+
+function getActionSearchText(item: DashboardActionItem) {
+  return [
+    item.title,
+    item.description,
+    item.group?.title,
+    item.amount_minor ? formatMoneyMinor(item.amount_minor) : '',
+    formatDate(item.created_at),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+interface SettlementConfirmationActionCardProps {
+  item: DashboardActionItem;
+  loading: boolean;
+  onConfirm: (item: DashboardActionItem) => void;
+  onReject: (item: DashboardActionItem) => void;
+}
+
+function SettlementConfirmationActionCard({
+  item,
+  loading,
+  onConfirm,
+  onReject,
+}: SettlementConfirmationActionCardProps) {
+  return (
+    <article className="overflow-hidden rounded-[28px] border border-amber-500/25 bg-[linear-gradient(180deg,rgba(245,158,11,0.12),rgba(255,255,255,0.96))] p-5 shadow-soft transition sm:p-6 dark:bg-[linear-gradient(180deg,rgba(245,158,11,0.12),rgba(15,23,42,0.96))]">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-4 text-right">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-700 dark:text-amber-300">
+            <CheckCheck className="h-6 w-6" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+              <h3 className="text-lg font-extrabold text-text">تأیید دریافت پول</h3>
+              <span className="rounded-full bg-amber-500/10 px-3 py-1 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                نیاز به پاسخ
+              </span>
+            </div>
+
+            <p className="mt-3 text-sm leading-8 text-slate-600 dark:text-slate-300">
+              یک پرداخت برای گروه «{getActionGroupName(item)}» ثبت شده است. اگر پول را دریافت کرده‌اید تأیید کنید؛ اگر دریافت نکرده‌اید رد کنید تا برای پرداخت‌کننده تسویه ثبت نشود.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+              <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-700 dark:text-sky-300">
+                گروه: {getActionGroupName(item)}
+              </span>
+              <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-700 dark:text-amber-300">
+                مبلغ: {formatMoneyMinor(item.amount_minor)}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-white/5 dark:text-slate-300">
+                {formatDate(item.created_at)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid shrink-0 grid-cols-2 gap-2 lg:min-w-[240px]">
+          <button
+            type="button"
+            onClick={() => onConfirm(item)}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            پول را گرفتم
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onReject(item)}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15"
+          >
+            <X className="h-4 w-4" />
+            دریافت نکردم
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 interface NotificationItemProps {
   item: BackendNotificationMessage;
   read: boolean;
   marking: boolean;
   onMarkAsRead: (item: BackendNotificationMessage) => void;
+}
+
+interface DirectInvitationCardProps {
+  invitation: DirectGroupInvitation;
+  loading: boolean;
+  onAccept: (invitation: DirectGroupInvitation) => void;
+  onReject: (invitation: DirectGroupInvitation) => void;
+}
+
+function DirectInvitationCard({
+  invitation,
+  loading,
+  onAccept,
+  onReject,
+}: DirectInvitationCardProps) {
+  const inviterName = invitation.invited_by?.art_name || 'مدیر گروه';
+
+  return (
+    <article className="overflow-hidden rounded-[28px] border border-emerald-500/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.10),rgba(255,255,255,0.96))] p-5 shadow-soft transition sm:p-6 dark:bg-[linear-gradient(180deg,rgba(16,185,129,0.12),rgba(15,23,42,0.96))]">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-4 text-right">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+            <Users className="h-6 w-6" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+              <h3 className="text-lg font-extrabold text-text">دعوت عضویت در گروه</h3>
+              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                نیاز به پاسخ
+              </span>
+            </div>
+
+            <p className="mt-3 text-sm leading-8 text-slate-600 dark:text-slate-300">
+              {inviterName} شما را به گروه «{invitation.group?.title || 'بدون نام'}» دعوت کرده است.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+              <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-bold text-sky-700 dark:text-sky-300">
+                گروه: {invitation.group?.title || 'نامشخص'}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-white/5 dark:text-slate-300">
+                {formatDate(invitation.created_at)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid shrink-0 grid-cols-2 gap-2 lg:min-w-[220px]">
+          <button
+            type="button"
+            onClick={() => onAccept(invitation)}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            قبول
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onReject(invitation)}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/15"
+          >
+            <X className="h-4 w-4" />
+            رد
+          </button>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function NotificationItem({
@@ -568,8 +848,13 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
   const { notify } = useFeedback();
   const [notifications, setNotifications] = useState<BackendNotificationMessage[]>([]);
   const [messages, setMessages] = useState<BackendNotificationMessage[]>([]);
+  const [groupInvitations, setGroupInvitations] = useState<DirectGroupInvitation[]>([]);
+  const [dashboardActionItems, setDashboardActionItems] = useState<DashboardActionItem[]>([]);
+  const [settlementPlanActionItems, setSettlementPlanActionItems] = useState<DashboardActionItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
+  const [settlementActionId, setSettlementActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<DataSource>('notifications');
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
@@ -588,7 +873,24 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     [dataSource, messages, notifications],
   );
 
-  const totalNotificationsCount = notifications.length;
+  const settlementConfirmationActions = useMemo(() => {
+    const actionsBySource = new Map<string, DashboardActionItem>();
+
+    for (const item of dashboardActionItems.filter(isSettlementConfirmationAction)) {
+      actionsBySource.set(getSettlementActionDedupKey(item), item);
+    }
+
+    for (const item of settlementPlanActionItems) {
+      const key = getSettlementActionDedupKey(item);
+      if (!actionsBySource.has(key)) {
+        actionsBySource.set(key, item);
+      }
+    }
+
+    return Array.from(actionsBySource.values());
+  }, [dashboardActionItems, settlementPlanActionItems]);
+
+  const totalNotificationsCount = notifications.length + groupInvitations.length + settlementConfirmationActions.length;
   const totalMessagesCount = messages.length;
 
   const unreadCount = useMemo(
@@ -607,6 +909,16 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     [activeItems, localReadIds],
   );
 
+  const visibleSettlementConfirmationActions = useMemo(() => {
+    if (dataSource !== 'notifications' || viewFilter === 'read') return [];
+    if (channelFilter && !['in_app', 'push'].includes(channelFilter.toLowerCase())) return [];
+
+    const query = search.trim().toLowerCase();
+    if (!query) return settlementConfirmationActions;
+
+    return settlementConfirmationActions.filter((item) => getActionSearchText(item).includes(query));
+  }, [channelFilter, dataSource, search, settlementConfirmationActions, viewFilter]);
+
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -623,32 +935,74 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     });
   }, [activeItems, channelFilter, localReadIds, search, viewFilter]);
 
+  const visibleGroupInvitations = useMemo(() => {
+    if (dataSource !== 'notifications' || viewFilter === 'read') return [];
+    if (channelFilter && !['in_app', 'push'].includes(channelFilter.toLowerCase())) return [];
+
+    const query = search.trim().toLowerCase();
+
+    return groupInvitations.filter((invitation) => {
+      if (String(invitation.status || '').toUpperCase() !== 'PENDING') return false;
+      if (!query) return true;
+      return getInvitationSearchText(invitation).includes(query);
+    });
+  }, [channelFilter, dataSource, groupInvitations, search, viewFilter]);
+
   useEffect(() => {
     persistReadIds(localReadIds);
-    onUnreadCountChange?.(getUnreadCount(notifications, localReadIds));
-  }, [localReadIds, notifications, onUnreadCountChange]);
+    onUnreadCountChange?.(
+      getUnreadCount(notifications, localReadIds) + groupInvitations.length + settlementConfirmationActions.length,
+    );
+  }, [groupInvitations.length, localReadIds, notifications, onUnreadCountChange, settlementConfirmationActions.length]);
 
   async function loadNotificationsPage() {
     try {
       setLoading(true);
       setError(null);
 
-      const [notificationResult, messagesResult] = await Promise.allSettled([
+      const [
+        notificationResult,
+        messagesResult,
+        invitationsResult,
+        actionItemsResult,
+        settlementPlanActionsResult,
+      ] = await Promise.allSettled([
         getNotifications({ limit: 100 }),
         getNotificationMessages({ limit: 100 }),
+        listMyDirectGroupInvitations({ status: 'PENDING', page_size: 100 }),
+        getDashboardActionItems({ pageSize: 100 }),
+        loadSettlementPlanConfirmationActions(),
       ]);
 
-      if (notificationResult.status === 'rejected' && messagesResult.status === 'rejected') {
-        throw notificationResult.reason || messagesResult.reason;
+      if (
+        notificationResult.status === 'rejected' &&
+        messagesResult.status === 'rejected' &&
+        invitationsResult.status === 'rejected' &&
+        actionItemsResult.status === 'rejected' &&
+        settlementPlanActionsResult.status === 'rejected'
+      ) {
+        throw notificationResult.reason || messagesResult.reason || settlementPlanActionsResult.reason;
       }
 
       const notificationList = notificationResult.status === 'fulfilled' ? notificationResult.value : [];
       const recentMessages = messagesResult.status === 'fulfilled' ? messagesResult.value : [];
+      const directInvitationList = invitationsResult.status === 'fulfilled' ? invitationsResult.value : [];
+      const dashboardActions = actionItemsResult.status === 'fulfilled' ? actionItemsResult.value : [];
+      const settlementPlanActions = settlementPlanActionsResult.status === 'fulfilled' ? settlementPlanActionsResult.value : [];
 
-      if (notificationResult.status === 'rejected' || messagesResult.status === 'rejected') {
+      if (
+        notificationResult.status === 'rejected' ||
+        messagesResult.status === 'rejected' ||
+        invitationsResult.status === 'rejected' ||
+        actionItemsResult.status === 'rejected' ||
+        settlementPlanActionsResult.status === 'rejected'
+      ) {
         console.warn('One notification source failed, rendering the available source.', {
           notificationError: notificationResult.status === 'rejected' ? notificationResult.reason : undefined,
           messagesError: messagesResult.status === 'rejected' ? messagesResult.reason : undefined,
+          invitationsError: invitationsResult.status === 'rejected' ? invitationsResult.reason : undefined,
+          actionItemsError: actionItemsResult.status === 'rejected' ? actionItemsResult.reason : undefined,
+          settlementPlanActionsError: settlementPlanActionsResult.status === 'rejected' ? settlementPlanActionsResult.reason : undefined,
         });
       }
 
@@ -675,19 +1029,26 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
             : item,
         ),
       );
+
+      setGroupInvitations(directInvitationList);
+      setDashboardActionItems(dashboardActions);
+      setSettlementPlanActionItems(settlementPlanActions);
     } catch (loadError) {
       const message = getActionErrorMessage(
         loadError,
-        'فعلاً اعلان‌ها در دسترس نیستند. کمی بعد دوباره تلاش کن.',
+        'فعلاً اعلان‌هایت در دسترس نیستند. چند لحظه بعد دوباره امتحان کن.',
       );
       setError(message);
       setNotifications([]);
       setMessages([]);
+      setGroupInvitations([]);
+      setDashboardActionItems([]);
+      setSettlementPlanActionItems([]);
       onUnreadCountChange?.(0);
 
       notify({
         type: 'error',
-        title: 'اعلان‌ها بارگذاری نشدند',
+        title: 'اعلان‌ها نمایش داده نشدند',
         description: message,
       });
     } finally {
@@ -742,7 +1103,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     } catch (markError) {
       notify({
         type: 'info',
-        title: 'اعلان برای این دستگاه خوانده شد',
+        title: 'این اعلان خوانده شد',
         description:
           'وضعیت خواندن روی این دستگاه ثبت شد. اگر کمی بعد دوباره همگام نشد، صفحه را بروزرسانی کن.',
       });
@@ -780,12 +1141,12 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
       notify({
         type: 'success',
         title: 'همه اعلان‌ها خوانده شدند',
-        description: 'دیگر اعلان خوانده‌نشده‌ای در این صفحه باقی نماند.',
+        description: 'در این صفحه اعلان خوانده‌نشده‌ای باقی نمانده است.',
       });
     } catch (markAllError) {
       notify({
         type: 'error',
-        title: 'ثبت وضعیت اعلان‌ها انجام نشد',
+        title: 'وضعیت اعلان‌ها ذخیره نشد',
         description: getActionErrorMessage(
           markAllError,
           'فعلاً امکان ثبت خوانده شدن همه اعلان‌ها وجود ندارد.',
@@ -796,12 +1157,116 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     }
   }
 
+  async function handleAcceptGroupInvitation(invitation: DirectGroupInvitation) {
+    try {
+      setInvitationActionId(invitation.id);
+      await acceptDirectGroupInvitation(invitation.id);
+      setGroupInvitations((current) => current.filter((item) => item.id !== invitation.id));
+
+      notify({
+        type: 'success',
+        title: 'دعوت را قبول کردی',
+        description: `شما به گروه «${invitation.group?.title || 'گروه'}» اضافه شدید.`,
+      });
+    } catch (acceptError) {
+      notify({
+        type: 'error',
+        title: 'دعوت قبول نشد',
+        description: getActionErrorMessage(
+          acceptError,
+          'فعلاً نمی‌توانیم این دعوت را قبول کنیم. صفحه را تازه کن و دوباره امتحان کن.',
+        ),
+      });
+    } finally {
+      setInvitationActionId(null);
+    }
+  }
+
+  async function handleRejectGroupInvitation(invitation: DirectGroupInvitation) {
+    try {
+      setInvitationActionId(invitation.id);
+      await rejectDirectGroupInvitation(invitation.id);
+      setGroupInvitations((current) => current.filter((item) => item.id !== invitation.id));
+
+      notify({
+        type: 'success',
+        title: 'دعوت را رد کردی',
+        description: `دعوت گروه «${invitation.group?.title || 'گروه'}» از لیست شما حذف شد.`,
+      });
+    } catch (rejectError) {
+      notify({
+        type: 'error',
+        title: 'دعوت رد نشد',
+        description: getActionErrorMessage(
+          rejectError,
+          'فعلاً نمی‌توانیم این دعوت را رد کنیم. صفحه را تازه کن و دوباره امتحان کن.',
+        ),
+      });
+    } finally {
+      setInvitationActionId(null);
+    }
+  }
+
+  async function handleSettlementConfirmationAction(
+    item: DashboardActionItem,
+    action: 'confirm' | 'reject',
+  ) {
+    const sourceKind = getActionSourceKind(item);
+
+    try {
+      setSettlementActionId(`${item.id}-${action}`);
+
+      if (sourceKind === 'SETTLEMENT_PLAN_ITEM') {
+        if (action === 'confirm') {
+          await confirmPlanItem(item.source.id);
+        } else {
+          await rejectPlanItem(item.source.id);
+        }
+      } else if (sourceKind === 'MANUAL_SETTLEMENT') {
+        if (action === 'confirm') {
+          await confirmSettlement(item.source.id);
+        } else {
+          await rejectSettlement(item.source.id);
+        }
+      } else {
+        throw new Error('Unsupported settlement action source');
+      }
+
+      const actedSourceKey = getSettlementActionDedupKey(item);
+      setDashboardActionItems((current) =>
+        current.filter((actionItem) => getSettlementActionDedupKey(actionItem) !== actedSourceKey),
+      );
+      setSettlementPlanActionItems((current) =>
+        current.filter((actionItem) => getSettlementActionDedupKey(actionItem) !== actedSourceKey),
+      );
+      notify({
+        type: 'success',
+        title: action === 'confirm' ? 'دریافت پول تأیید شد' : 'پرداخت رد شد',
+        description:
+          action === 'confirm'
+            ? 'پرداخت برای طرف مقابل ثبت شد و این مورد از لیست کارهایت برداشته شد.'
+            : 'این مورد از لیست کارهایت برداشته شد و بدهی طرف مقابل تسویه نشد.',
+      });
+    } catch (settlementActionError) {
+      notify({
+        type: 'error',
+        title: action === 'confirm' ? 'دریافت پول تأیید نشد' : 'پرداخت رد نشد',
+        description: getActionErrorMessage(
+          settlementActionError,
+          'فعلاً نمی‌توانیم وضعیت این پرداخت را ثبت کنیم. صفحه را تازه کن و دوباره امتحان کن.',
+        ),
+      });
+    } finally {
+      setSettlementActionId(null);
+    }
+  }
+
   async function handleSendEmailTest() {
     if (!emailTestForm.email.trim()) {
       notify({
         type: 'error',
-        title: 'ایمیل وارد نشده',
-        description: 'برای ارسال تست، ایمیل گیرنده را وارد کن.',
+        title: 'ایمیل گیرنده را وارد کن',
+        description: 'برای ارسال پیام تستی، ایمیل گیرنده را وارد کن.',
       });
       return;
     }
@@ -809,8 +1274,8 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     if (!emailTestForm.message.trim()) {
       notify({
         type: 'error',
-        title: 'متن ایمیل خالی است',
-        description: 'متن کوتاهی برای ایمیل تستی بنویس.',
+        title: 'متن پیام را بنویس',
+        description: 'یک متن کوتاه برای پیام تستی بنویس.',
       });
       return;
     }
@@ -835,16 +1300,16 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
 
       notify({
         type: 'success',
-        title: 'ایمیل تستی ارسال شد',
-        description: 'اگر سرویس ایمیل فعال باشد، پیام تست برای این آدرس ارسال می‌شود.',
+        title: 'پیام تستی ارسال شد',
+        description: 'اگر سرویس ایمیل فعال باشد، پیام تست به این آدرس می‌رسد.',
       });
     } catch (emailError) {
       notify({
         type: 'error',
-        title: 'ارسال ایمیل انجام نشد',
+        title: 'پیام تستی ارسال نشد',
         description: getActionErrorMessage(
           emailError,
-          'ارسال ایمیل تستی انجام نشد. کمی بعد دوباره تلاش کن.',
+          'پیام تستی ارسال نشد. ایمیل را بررسی کن و دوباره امتحان کن.',
         ),
       });
     } finally {
@@ -858,8 +1323,8 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
   }, []);
 
   return (
-    <main className="px-4 py-6 sm:px-6 xl:px-8">
-      <div className="mx-auto max-w-[1320px] space-y-6">
+    <main className="app-page">
+      <div className="app-container app-container-wide space-y-6">
         <section className="overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(135deg,rgba(15,23,42,0.02),rgba(16,185,129,0.08))] p-6 shadow-soft dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(16,185,129,0.08))]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div className="text-right">
@@ -876,7 +1341,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="app-stat-grid">
               <SummaryCard
                 title="همه اعلان‌ها"
                 value={totalNotificationsCount.toLocaleString('fa-IR')}
@@ -896,7 +1361,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.95fr)]">
+        <section className="app-grid app-notifications-grid">
           <div className="space-y-6">
             <div className="rounded-[28px] border border-border bg-white p-5 shadow-soft dark:bg-white/[0.03]">
               <div className="flex flex-col gap-4">
@@ -949,12 +1414,14 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     {viewTabs.map((tab) => {
+                      const actionableCount =
+                        dataSource === 'notifications' ? groupInvitations.length + settlementConfirmationActions.length : 0;
                       const count =
                         tab.value === 'all'
-                          ? activeItems.length
+                          ? activeItems.length + actionableCount
                           : tab.value === 'read'
                             ? readCount
-                            : unreadCount;
+                            : unreadCount + actionableCount;
 
                       return (
                         <button
@@ -987,7 +1454,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
                   <button
                     type="button"
                     onClick={handleMarkAllRead}
-                    disabled={actionLoading === 'read-all' || activeItems.length === 0}
+                    disabled={actionLoading === 'read-all' || (activeItems.length === 0 && visibleSettlementConfirmationActions.length === 0 && visibleGroupInvitations.length === 0)}
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <CheckCheck className="h-4 w-4" />
@@ -1009,11 +1476,31 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
               </div>
             ) : null}
 
-            {!loading && filteredItems.length === 0 ? (
+            {!loading && filteredItems.length === 0 && visibleGroupInvitations.length === 0 && visibleSettlementConfirmationActions.length === 0 ? (
               <EmptyState source={dataSource} filter={viewFilter} />
             ) : null}
 
             <div className="space-y-4">
+              {visibleSettlementConfirmationActions.map((item) => (
+                <SettlementConfirmationActionCard
+                  key={`settlement-confirmation-${item.id}`}
+                  item={item}
+                  loading={settlementActionId?.startsWith(item.id) || false}
+                  onConfirm={(actionItem) => void handleSettlementConfirmationAction(actionItem, 'confirm')}
+                  onReject={(actionItem) => void handleSettlementConfirmationAction(actionItem, 'reject')}
+                />
+              ))}
+
+              {visibleGroupInvitations.map((invitation) => (
+                <DirectInvitationCard
+                  key={`group-invitation-${invitation.id}`}
+                  invitation={invitation}
+                  loading={invitationActionId === invitation.id}
+                  onAccept={handleAcceptGroupInvitation}
+                  onReject={handleRejectGroupInvitation}
+                />
+              ))}
+
               {filteredItems.map((item) => (
                 <NotificationItem
                   key={`${dataSource}-${item.id}`}

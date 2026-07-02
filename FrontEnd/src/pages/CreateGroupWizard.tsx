@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
-  ArrowLeft,
+  ArrowRight,
   Check,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   CircleHelp,
+  FileText,
   Home,
+  ImageUp,
   Loader2,
   Plane,
   Search,
-  Trash2,
   Users,
   UtensilsCrossed,
   X,
@@ -22,7 +25,7 @@ import {
   getMyGroups,
   type BackendGroupMember,
 } from '../lib/groupApi';
-import { getCurrentUser, type CurrentUser } from '../lib/userApi';
+import { getCurrentUser, searchUsersByArtName, type CurrentUser } from '../lib/userApi';
 
 export type GroupTypeValue = '' | 'travel' | 'food' | 'home' | 'other';
 
@@ -34,11 +37,13 @@ export interface CreatedGroupPayload {
   selectedUserIds?: string[];
   selectedPhones?: string[];
   selectedEmails?: string[];
+  selectedRecipients?: Array<{ userId?: string; email?: string }>;
+  receiptFile?: File;
 }
 
 interface CreateGroupWizardProps {
   onBack: () => void;
-  onComplete: (payload: CreatedGroupPayload) => void;
+  onComplete: (payload: CreatedGroupPayload) => void | Promise<void>;
 }
 
 interface Contact {
@@ -47,6 +52,7 @@ interface Contact {
   phone: string;
   email?: string;
   userId?: string;
+  username?: string;
   avatar: string;
   avatarClass: string;
   sharedGroupCount: number;
@@ -70,31 +76,26 @@ type WizardStep = 1 | 2;
 const groupTypeOptions: Array<{
   value: Exclude<GroupTypeValue, ''>;
   label: string;
-  description: string;
   icon: typeof Plane;
 }> = [
   {
     value: 'travel',
     label: 'سفر',
-    description: 'خرج‌های سفر، ویلا، بنزین و غذا',
     icon: Plane,
   },
   {
     value: 'food',
     label: 'غذا',
-    description: 'رستوران، کافه و دورهمی',
     icon: UtensilsCrossed,
   },
   {
     value: 'home',
     label: 'خانه',
-    description: 'هم‌خانه، خرید خانه و قبض‌ها',
     icon: Home,
   },
   {
     value: 'other',
     label: 'سایر',
-    description: 'برای هر گروه دلخواه',
     icon: Users,
   },
 ];
@@ -118,11 +119,21 @@ function toPersianNumber(value: string | number) {
 }
 
 function normalizePhone(phone?: string | null) {
-  return (phone || '').replace(/\s+/g, '').trim();
+  return (phone || '')
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/[^\d+]/g, '')
+    .trim();
 }
 
 function normalizeText(value?: string | null) {
-  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return (value || '')
+    .trim()
+    .replace(/ي/g, 'ی')
+    .replace(/ك/g, 'ک')
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 function getMemberName(member: BackendGroupMember) {
@@ -140,6 +151,17 @@ function getMemberEmail(member: BackendGroupMember) {
 
 function getMemberUserId(member: BackendGroupMember) {
   return getBackendGroupMemberUserId(member);
+}
+
+function getMemberUsername(member: BackendGroupMember) {
+  return [
+    member.art_name,
+    member.username,
+    member.user?.art_name,
+    member.user?.username,
+    member.profile?.art_name,
+    member.profile?.username,
+  ].find((value) => typeof value === 'string' && value.trim())?.trim();
 }
 
 function isFallbackMemberName(name: string) {
@@ -200,26 +222,23 @@ function makeContactFromMember(
   member: BackendGroupMember,
   index: number,
   sharedGroupCount: number,
-  groupTitles: string[],
+  _groupTitles: string[],
 ): Contact {
   const name = getMemberName(member);
   const phone = getMemberPhone(member);
-  const visibleGroupTitles = groupTitles.filter(Boolean).slice(0, 2);
-  const extraGroupCount = Math.max(sharedGroupCount - visibleGroupTitles.length, 0);
 
   const sourceLabel =
     sharedGroupCount > 0
-      ? `عضو مشترک در ${toPersianNumber(sharedGroupCount)} گروه${
-          visibleGroupTitles.length ? `: ${visibleGroupTitles.join('، ')}` : ''
-        }${extraGroupCount ? ` و ${toPersianNumber(extraGroupCount)} گروه دیگر` : ''}`
+      ? `${toPersianNumber(sharedGroupCount)} گروه مشترک`
       : 'عضو گروه‌های قبلی';
 
   return {
     id: getMemberLookupKey(member) || String(index),
     name,
-    phone: phone || 'شماره ثبت نشده',
+    phone,
     email: getMemberEmail(member) || undefined,
     userId: getMemberUserId(member) || undefined,
+    username: getMemberUsername(member),
     avatar: name.slice(0, 1) || '؟',
     avatarClass: avatarGradients[index % avatarGradients.length],
     sharedGroupCount,
@@ -260,33 +279,21 @@ function Avatar({ label, className }: { label: string; className: string }) {
 
 function CompactStepper({ currentStep }: { currentStep: WizardStep }) {
   return (
-    <div className="rounded-[24px] border-2 border-slate-200 bg-white p-3 shadow-[0_14px_34px_rgba(15,23,42,0.06)]">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2" dir="rtl">
-        <div
-          className={cn(
-            'rounded-[18px] px-4 py-3 text-center text-sm font-extrabold transition',
-            currentStep === 1
-              ? 'bg-emerald-600 text-white shadow-[0_12px_26px_rgba(16,185,129,0.18)]'
-              : 'bg-emerald-50 text-emerald-700',
-          )}
-        >
-          ۱. اطلاعات گروه
-        </div>
-
-        <ChevronLeft className="h-5 w-5 text-slate-300" />
-
-        <div
-          className={cn(
-            'rounded-[18px] px-4 py-3 text-center text-sm font-extrabold transition',
-            currentStep === 2
-              ? 'bg-emerald-600 text-white shadow-[0_12px_26px_rgba(16,185,129,0.18)]'
-              : 'bg-slate-50 text-slate-500',
-          )}
-        >
-          ۲. اعضا
-        </div>
+    <nav className="create-group-stepper rounded-[20px] border border-slate-200 bg-white/80 px-4 py-3" aria-label="مراحل ساخت گروه">
+      <div className="text-xs font-extrabold">
+        <span className="text-emerald-700">مرحله {toPersianNumber(currentStep)} از ۲</span>
       </div>
-    </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+        <div
+          className="h-full rounded-full bg-emerald-600 transition-[width] duration-300"
+          style={{ width: currentStep === 1 ? '50%' : '100%' }}
+        />
+      </div>
+      <div className="mt-2 grid grid-cols-2 text-[11px] font-bold text-muted" aria-hidden="true">
+        <span className={currentStep >= 1 ? 'text-emerald-700' : undefined}>۱. اطلاعات گروه</span>
+        <span className={cn('text-left', currentStep === 2 && 'text-emerald-700')}>۲. اعضا</span>
+      </div>
+    </nav>
   );
 }
 
@@ -303,54 +310,67 @@ function FormError({ message }: { message?: string }) {
 function GroupInfoStep({
   values,
   errors,
+  descriptionOpen,
+  nameInputRef,
+  groupTypeRef,
+  receiptFile,
+  receiptError,
   onChange,
+  onDescriptionToggle,
+  onReceiptChange,
 }: {
   values: GroupValues;
   errors: GroupInfoErrors;
+  descriptionOpen: boolean;
+  nameInputRef: RefObject<HTMLInputElement>;
+  groupTypeRef: RefObject<HTMLDivElement>;
+  receiptFile: File | null;
+  receiptError?: string;
   onChange: <K extends keyof GroupValues>(field: K, value: GroupValues[K]) => void;
+  onDescriptionToggle: () => void;
+  onReceiptChange: (file: File | null) => void;
 }) {
+  const receiptInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <section className="space-y-5">
       <div className="text-right">
         <h2 className="text-[25px] font-extrabold tracking-[-0.03em] text-text">
-          اول گروهت رو بساز
+          اطلاعات گروه
         </h2>
-        <p className="mt-2 text-sm font-semibold leading-7 text-muted">
-          فقط اسم و نوع گروه لازمه. توضیحات اختیاریه.
-        </p>
       </div>
 
       <FormError message={errors.form} />
 
-      <div className="rounded-[28px] border-2 border-slate-200 bg-white p-4 shadow-[0_16px_38px_rgba(15,23,42,0.06)] sm:p-5">
-        <label className="block text-right">
+      <div className="space-y-6">
+        <label className="block text-right" htmlFor="group-name">
           <span className="mb-2 block text-sm font-extrabold text-text">نام گروه</span>
           <input
+            ref={nameInputRef}
+            id="group-name"
             dir="rtl"
+            autoFocus
             value={values.name}
             onChange={(event) => onChange('name', event.target.value)}
             placeholder="مثلاً سفر شمال، خانه، شام جمعه..."
             aria-invalid={Boolean(errors.name)}
+            aria-describedby={errors.name ? 'group-name-error' : undefined}
             className={cn(
-              'h-12 w-full rounded-[18px] border bg-slate-50/70 px-4 text-sm font-bold text-text outline-none transition placeholder:font-semibold placeholder:text-slate-400 focus:bg-white focus:ring-4',
+              'h-12 w-full rounded-[16px] border bg-slate-50/70 px-4 text-sm font-bold text-text outline-none transition placeholder:font-semibold placeholder:text-slate-400 focus:bg-white focus:ring-4',
               errors.name
                 ? 'border-rose-200 focus:border-rose-300 focus:ring-rose-500/10'
                 : 'border-slate-200 focus:border-emerald-300 focus:ring-emerald-500/10',
             )}
           />
           {errors.name ? (
-            <span className="mt-2 block text-xs font-bold text-rose-500">{errors.name}</span>
+            <span id="group-name-error" className="mt-2 block text-xs font-bold text-rose-500">{errors.name}</span>
           ) : null}
         </label>
-      </div>
 
-      <div className="rounded-[28px] border-2 border-slate-200 bg-white p-4 shadow-[0_16px_38px_rgba(15,23,42,0.06)] sm:p-5">
-        <div className="mb-3 flex items-center justify-between gap-3 text-right">
+        <div ref={groupTypeRef} tabIndex={-1} className="border-t border-slate-100 pt-5 outline-none">
+          <div className="mb-3 flex items-center justify-between gap-3 text-right">
           <div>
             <h3 className="text-base font-extrabold text-text">نوع گروه</h3>
-            <p className="mt-1 text-xs font-semibold text-muted">
-              فقط برای دسته‌بندی و ظاهر کارت استفاده می‌شه.
-            </p>
           </div>
 
           {errors.groupType ? (
@@ -360,7 +380,7 @@ function GroupInfoStep({
           ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" role="group" aria-label="انتخاب نوع گروه">
           {groupTypeOptions.map((option) => {
             const Icon = option.icon;
             const selected = values.groupType === option.value;
@@ -370,62 +390,110 @@ function GroupInfoStep({
                 key={option.value}
                 type="button"
                 onClick={() => onChange('groupType', option.value)}
+                aria-pressed={selected}
                 className={cn(
-                  'min-h-[108px] rounded-[22px] border-2 p-4 text-right transition hover:-translate-y-0.5',
+                    'flex min-h-[68px] items-center justify-between gap-2 rounded-[18px] border px-3 py-2 text-right transition',
                   selected
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 shadow-[0_14px_30px_rgba(16,185,129,0.14)]'
+                      ? 'border-emerald-400 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/10'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-200 hover:bg-emerald-50/40',
                 )}
               >
-                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
                   <span
                     className={cn(
-                      'flex h-10 w-10 items-center justify-center rounded-[16px]',
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px]',
                       selected ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-emerald-600',
                     )}
                   >
-                    <Icon className="h-5 w-5" />
+                      <Icon className="h-4.5 w-4.5" />
                   </span>
-
+                    <span className="truncate text-sm font-extrabold">{option.label}</span>
+                  </div>
                   <span
                     className={cn(
-                      'flex h-6 w-6 items-center justify-center rounded-full border',
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
                       selected
                         ? 'border-emerald-600 bg-emerald-600 text-white'
                         : 'border-slate-200 bg-white text-transparent',
                     )}
                   >
-                    <Check className="h-4 w-4" />
+                    <Check className="h-3.5 w-3.5" />
                   </span>
-                </div>
-
-                <div className="text-base font-extrabold">{option.label}</div>
-                <div className="mt-1 text-xs font-semibold leading-6 opacity-75">
-                  {option.description}
-                </div>
               </button>
             );
           })}
+          </div>
+          {errors.groupType ? (
+            <span className="mt-2 block text-xs font-bold text-rose-500">{errors.groupType}</span>
+          ) : null}
         </div>
-      </div>
 
-      <div className="rounded-[28px] border-2 border-slate-200 bg-white p-4 shadow-[0_16px_38px_rgba(15,23,42,0.06)] sm:p-5">
-        <label className="block text-right">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-sm font-extrabold text-text">توضیحات اختیاری</span>
+        <div className="grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-2">
+          <div className={cn('rounded-[18px] border p-3 transition', descriptionOpen ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50/60 hover:border-emerald-300')}>
+          <button
+            type="button"
+            onClick={onDescriptionToggle}
+              className="flex min-h-12 w-full items-center justify-between gap-3 text-right text-sm font-extrabold text-text transition hover:text-emerald-700"
+            aria-expanded={descriptionOpen}
+          >
+              <span className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-emerald-100 text-emerald-700"><FileText className="h-5 w-5" /></span>
+                <span><span className="block">افزودن توضیحات</span><span className="mt-0.5 block text-[11px] font-semibold text-muted">اختیاری</span></span>
+              </span>
+            {descriptionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          {descriptionOpen ? <label className="mt-2 block text-right" htmlFor="group-description">
+          <div className="mb-2 flex items-center justify-end gap-3">
             <span className="text-xs font-bold text-slate-400">
               {toPersianNumber(values.description.length)}/۳۰۰
             </span>
           </div>
 
           <textarea
+              id="group-description"
             dir="rtl"
             value={values.description}
             onChange={(event) => onChange('description', event.target.value.slice(0, 300))}
             placeholder="مثلاً هزینه‌های سفر ۴ روزه شمال"
-            className="min-h-[96px] w-full resize-none rounded-[18px] border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold leading-7 text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
+              className="min-h-[88px] w-full resize-none rounded-[16px] border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm font-semibold leading-7 text-text outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
           />
-        </label>
+          </label> : null}
+          </div>
+
+          <div className={cn('create-group-upload-card rounded-[18px] border p-3 transition', receiptError ? 'border-rose-300 bg-rose-50/50' : receiptFile ? 'border-emerald-300 bg-emerald-50/50' : 'border-dashed border-slate-300 bg-slate-50/60 hover:border-emerald-300')}>
+            <input
+              ref={receiptInputRef}
+              type="file"
+              className="sr-only"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={(event) => {
+                onReceiptChange(event.target.files?.[0] || null);
+                event.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => receiptInputRef.current?.click()}
+              className="flex min-h-12 w-full items-center justify-between gap-3 text-right"
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-sky-100 text-sky-700"><ImageUp className="h-5 w-5" /></span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-extrabold text-text">{receiptFile ? receiptFile.name : 'افزودن فاکتور یا رسید'}</span>
+                  <span className="mt-0.5 block text-[11px] font-semibold text-muted">اختیاری · تصویر یا PDF تا ۵ مگابایت</span>
+                </span>
+              </span>
+              <span className="shrink-0 text-xs font-extrabold text-emerald-700">{receiptFile ? 'تغییر' : 'انتخاب'}</span>
+            </button>
+            {receiptFile ? (
+              <button type="button" onClick={() => onReceiptChange(null)} className="mt-2 inline-flex h-9 items-center gap-1 rounded-full bg-white px-3 text-xs font-bold text-rose-600 shadow-sm">
+                <X className="h-3.5 w-3.5" /> حذف فایل
+              </button>
+            ) : null}
+            {receiptError ? <p className="mt-2 text-xs font-bold text-rose-600">{receiptError}</p> : null}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -444,11 +512,12 @@ function ContactCard({
     <button
       type="button"
       onClick={onToggle}
+      aria-pressed={selected}
       className={cn(
-        'flex items-center justify-between gap-3 rounded-[22px] border-2 px-4 py-3 text-right transition hover:-translate-y-0.5',
+        'flex min-h-[72px] w-full items-center justify-between gap-3 px-3 py-2.5 text-right transition sm:px-4',
         selected
-          ? 'border-emerald-300 bg-emerald-50 shadow-[0_12px_26px_rgba(16,185,129,0.12)]'
-          : 'border-slate-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/30',
+          ? 'bg-emerald-50/90'
+          : 'bg-white hover:bg-slate-50',
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -456,24 +525,22 @@ function ContactCard({
 
         <div className="min-w-0 text-right">
           <div className="truncate text-sm font-extrabold text-text">{contact.name}</div>
-          <div className="mt-1 truncate text-xs font-semibold text-muted">{contact.phone}</div>
-          {contact.sourceLabel ? (
-            <div className="mt-1 truncate text-[11px] font-bold text-emerald-600">
-              {contact.sourceLabel}
-            </div>
-          ) : null}
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-xs font-semibold text-muted">
+            <span className="truncate">{contact.username ? `@${contact.username}` : contact.phone || 'شماره ثبت نشده'}</span>
+            {contact.sourceLabel ? <><span aria-hidden="true">·</span><span className="shrink-0 text-emerald-600">{contact.sourceLabel}</span></> : null}
+          </div>
         </div>
       </div>
 
       <span
         className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border',
           selected
             ? 'border-emerald-600 bg-emerald-600 text-white'
             : 'border-slate-200 bg-slate-50 text-slate-300',
         )}
       >
-        {selected ? <Check className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+        {selected ? <Check className="h-4 w-4" /> : null}
       </span>
     </button>
   );
@@ -482,6 +549,8 @@ function ContactCard({
 function MembersStep({
   contacts,
   contactsLoading,
+  userSearchLoading,
+  userSearchError,
   selectedIds,
   searchValue,
   onSearchChange,
@@ -489,6 +558,8 @@ function MembersStep({
 }: {
   contacts: Contact[];
   contactsLoading: boolean;
+  userSearchLoading: boolean;
+  userSearchError: string;
   selectedIds: string[];
   searchValue: string;
   onSearchChange: (value: string) => void;
@@ -502,6 +573,7 @@ function MembersStep({
 
     return (
       normalizeText(contact.name).includes(normalizedSearch) ||
+      normalizeText(contact.username).includes(normalizedSearch.replace(/^@/, '')) ||
       normalizePhone(contact.phone).includes(normalizedSearch) ||
       normalizeText(contact.email).includes(normalizedSearch)
     );
@@ -512,28 +584,27 @@ function MembersStep({
       <div className="flex flex-col gap-3 text-right sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-[25px] font-extrabold tracking-[-0.03em] text-text">
-            اعضا رو انتخاب کن
+            اعضای گروه
           </h2>
-          <p className="mt-2 text-sm font-semibold leading-7 text-muted">
-            این مرحله اختیاریه. بعداً هم از داخل گروه می‌تونی عضو دعوت کنی.
-          </p>
         </div>
 
-        <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-right text-sm font-extrabold text-emerald-700">
+        <div className="w-fit rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-right text-xs font-extrabold text-emerald-700" aria-live="polite">
           {toPersianNumber(selectedContacts.length)} نفر انتخاب شده
         </div>
       </div>
 
-      <div className="rounded-[28px] border-2 border-slate-200 bg-white p-3 shadow-[0_16px_38px_rgba(15,23,42,0.06)]">
+      <div>
         <div className="relative">
           <Search className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-600" />
 
           <input
+            type="search"
             dir="rtl"
             value={searchValue}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="جستجو در اعضای قبلی..."
-            className="h-12 w-full rounded-[18px] border border-slate-200 bg-slate-50/70 pr-11 pl-11 text-sm font-bold text-text outline-none transition placeholder:font-semibold placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
+            placeholder="نام یا نام کاربری را جستجو کن..."
+            aria-label="جستجوی کاربر با نام یا نام کاربری"
+            className="h-12 w-full rounded-[16px] border border-slate-200 bg-slate-50/70 pr-11 pl-11 text-sm font-bold text-text outline-none transition placeholder:font-semibold placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-4 focus:ring-emerald-500/10"
           />
 
           {searchValue ? (
@@ -547,62 +618,39 @@ function MembersStep({
             </button>
           ) : null}
         </div>
+        <div className="mt-2 flex min-h-5 items-center gap-2 px-1 text-[11px] font-semibold text-muted" aria-live="polite">
+          {userSearchLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" /> در حال جستجوی نام کاربری...</> : userSearchError ? <span className="text-rose-600">{userSearchError}</span> : <span>برای جستجوی سراسری نام کاربری، حداقل ۲ حرف بنویس.</span>}
+        </div>
       </div>
 
       {selectedContacts.length > 0 ? (
-        <div className="rounded-[28px] border-2 border-emerald-100 bg-white p-4 shadow-[0_16px_38px_rgba(15,23,42,0.06)]">
-          <div className="mb-3 flex items-center justify-between gap-3 text-right">
-            <div>
-              <h3 className="text-base font-extrabold text-text">اعضای انتخاب‌شده</h3>
-              <p className="mt-1 text-xs font-semibold text-muted">
-                اگر اشتباهی انتخاب کردی، حذفش کن.
-              </p>
-            </div>
-            <span className="flex h-9 min-w-9 items-center justify-center rounded-[15px] bg-emerald-50 px-3 text-sm font-extrabold text-emerald-700">
-              {toPersianNumber(selectedContacts.length)}
-            </span>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
+        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="اعضای انتخاب‌شده">
             {selectedContacts.map((contact) => (
-              <div
+              <button
                 key={contact.id}
-                className="flex items-center justify-between gap-3 rounded-[20px] border border-slate-200 bg-slate-50/70 px-3 py-3"
+                type="button"
+                onClick={() => onToggleMember(contact.id)}
+                className="flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 py-1 pr-1 pl-3 text-xs font-extrabold text-emerald-800 transition hover:bg-rose-50 hover:text-rose-600"
+                aria-label={`حذف ${contact.name} از اعضای انتخاب‌شده`}
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <Avatar label={contact.avatar} className={contact.avatarClass} />
-                  <div className="min-w-0 text-right">
-                    <div className="truncate text-sm font-extrabold text-text">{contact.name}</div>
-                    <div className="mt-1 truncate text-xs font-semibold text-muted">
-                      {contact.phone}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onToggleMember(contact.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[15px] bg-white text-rose-500 shadow-sm transition hover:bg-rose-50"
-                  aria-label="حذف عضو"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
+                <span className={cn('flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br text-xs text-white', contact.avatarClass)}>{contact.avatar}</span>
+                <span>{contact.name}</span>
+                <X className="h-3.5 w-3.5" />
+              </button>
             ))}
-          </div>
         </div>
       ) : null}
 
-      <div className="rounded-[28px] border-2 border-slate-200 bg-white p-4 shadow-[0_16px_38px_rgba(15,23,42,0.06)] sm:p-5">
+      <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white">
         {contactsLoading ? (
-          <div className="flex items-center justify-center gap-2 rounded-[22px] border border-slate-100 bg-slate-50 p-8 text-center text-sm font-bold text-muted">
+          <div className="flex items-center justify-center gap-2 bg-slate-50 p-8 text-center text-sm font-bold text-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
             در حال دریافت اعضای قبلی...
           </div>
         ) : null}
 
-        {!contactsLoading && contacts.length === 0 ? (
-          <div className="rounded-[22px] border-2 border-dashed border-slate-200 bg-slate-50/70 p-8 text-center">
+        {!contactsLoading && !userSearchLoading && contacts.length === 0 ? (
+          <div className="bg-slate-50/70 p-8 text-center">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-[22px] bg-white text-emerald-600 shadow-sm">
               <CircleHelp className="h-6 w-6" />
             </div>
@@ -613,13 +661,13 @@ function MembersStep({
           </div>
         ) : null}
 
-        {!contactsLoading && contacts.length > 0 && visibleContacts.length === 0 ? (
-          <div className="rounded-[22px] border-2 border-dashed border-slate-200 bg-slate-50/70 p-8 text-center text-sm font-semibold text-muted">
+        {!contactsLoading && !userSearchLoading && contacts.length > 0 && visibleContacts.length === 0 ? (
+          <div className="bg-slate-50/70 p-8 text-center text-sm font-semibold text-muted">
             نتیجه‌ای پیدا نشد. جستجو رو ساده‌تر کن.
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="max-h-[420px] divide-y divide-slate-100 overflow-y-auto overscroll-auto">
           {visibleContacts.map((contact) => (
             <ContactCard
               key={contact.id}
@@ -646,6 +694,14 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
   const [contactsLoading, setContactsLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchValue, setSearchValue] = useState('');
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userSearchError, setUserSearchError] = useState('');
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptError, setReceiptError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const groupTypeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -718,7 +774,16 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
             return left.name.localeCompare(right.name, 'fa');
           });
 
-        if (!ignore) setContacts(nextContacts);
+        if (!ignore) {
+          setContacts((previous) => {
+            const searchedContacts = previous.filter((contact) => contact.sharedGroupCount === 0);
+            const knownUserIds = new Set(nextContacts.map((contact) => contact.userId).filter(Boolean));
+            return [
+              ...nextContacts,
+              ...searchedContacts.filter((contact) => !contact.userId || !knownUserIds.has(contact.userId)),
+            ];
+          });
+        }
       } catch {
         if (!ignore) setContacts([]);
       } finally {
@@ -732,6 +797,63 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
       ignore = true;
     };
   }, []);
+
+  useEffect(() => {
+    const query = searchValue.trim().replace(/^@/, '');
+
+    if (currentStep !== 2 || query.length < 2) {
+      setUserSearchLoading(false);
+      setUserSearchError('');
+      return;
+    }
+
+    let ignore = false;
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setUserSearchLoading(true);
+        setUserSearchError('');
+        const results = await searchUsersByArtName(query, 12);
+
+        if (ignore) return;
+
+        setContacts((previous) => {
+          const next = [...previous];
+
+          results.forEach((result, index) => {
+            const existingIndex = next.findIndex((contact) => contact.userId === result.user_id);
+
+            if (existingIndex >= 0) {
+              next[existingIndex] = { ...next[existingIndex], username: result.art_name };
+              return;
+            }
+
+            next.push({
+              id: result.user_id,
+              name: result.art_name,
+              username: result.art_name,
+              phone: '',
+              userId: result.user_id,
+              avatar: result.art_name.slice(0, 1) || '؟',
+              avatarClass: avatarGradients[(previous.length + index) % avatarGradients.length],
+              sharedGroupCount: 0,
+              sourceLabel: 'نتیجه جستجوی نام کاربری',
+            });
+          });
+
+          return next;
+        });
+      } catch {
+        if (!ignore) setUserSearchError('فعلاً جستجوی نام کاربری انجام نشد؛ نام را بررسی کن و دوباره امتحان کن.');
+      } finally {
+        if (!ignore) setUserSearchLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentStep, searchValue]);
 
   const selectedContacts = useMemo(
     () => contacts.filter((contact) => selectedIds.includes(contact.id)),
@@ -761,6 +883,10 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
 
     if (validation.name || validation.groupType) {
       setErrors(validation);
+      requestAnimationFrame(() => {
+        if (validation.name) nameInputRef.current?.focus();
+        else groupTypeRef.current?.focus();
+      });
       return;
     }
 
@@ -774,68 +900,115 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
     );
   }
 
-  function handleFinish() {
+  function handleReceiptChange(file: File | null) {
+    setReceiptError('');
+
+    if (!file) {
+      setReceiptFile(null);
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    const allowedExtension = /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
+
+    if (file.size > 5 * 1024 * 1024) {
+      setReceiptFile(null);
+      setReceiptError('حجم فایل باید کمتر از ۵ مگابایت باشد.');
+      return;
+    }
+
+    if (!allowedTypes.includes(file.type) && !allowedExtension) {
+      setReceiptFile(null);
+      setReceiptError('فقط فایل JPG، PNG، WEBP یا PDF مجاز است.');
+      return;
+    }
+
+    setReceiptFile(file);
+  }
+
+  async function handleFinish() {
+    if (submitting) return;
+
     const validation = validateGroupInfo(values);
 
     if (validation.name || validation.groupType) {
       setErrors(validation);
       setCurrentStep(1);
+      requestAnimationFrame(() => nameInputRef.current?.focus());
       return;
     }
 
-    onComplete({
-      name: values.name.trim(),
-      description: values.description.trim(),
-      groupType: values.groupType,
-      memberCount: selectedIds.length,
-      selectedUserIds: selectedContacts.map((member) => member.userId || '').filter(Boolean),
-      selectedPhones: selectedContacts
-        .map((member) => normalizePhone(member.phone))
-        .filter(Boolean),
-      selectedEmails: selectedContacts
-        .map((member) => normalizeText(member.email))
-        .filter(Boolean),
-    });
+    try {
+      setSubmitting(true);
+      await onComplete({
+        name: values.name.trim(),
+        description: values.description.trim(),
+        groupType: values.groupType,
+        memberCount: selectedIds.length,
+        selectedUserIds: selectedContacts.map((member) => member.userId || '').filter(Boolean),
+        selectedPhones: selectedContacts
+          .map((member) => normalizePhone(member.phone))
+          .filter(Boolean),
+        selectedEmails: selectedContacts
+          .map((member) => normalizeText(member.email))
+          .filter(Boolean),
+        selectedRecipients: selectedContacts
+          .map((member) => ({
+            userId: member.userId || undefined,
+            email: normalizeText(member.email) || undefined,
+          }))
+          .filter((recipient) => Boolean(recipient.userId || recipient.email)),
+        receiptFile: receiptFile || undefined,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <main className="create-group-wizard-page px-4 py-4 sm:px-6 sm:py-5 xl:px-8" dir="rtl">
-      <div className="mx-auto max-w-[980px] space-y-4">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="text-right">
+    <main className="app-page create-group-wizard-page" dir="rtl">
+      <div className="app-container app-container-narrow space-y-4">
+        <header className="flex items-center gap-3 text-right">
             <button
               type="button"
               onClick={onBack}
-              className="mb-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-extrabold text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-text"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-text"
+              aria-label="بازگشت به گروه‌ها"
             >
-              <ArrowLeft className="h-4 w-4" />
-              بازگشت به گروه‌ها
+              <ArrowRight className="h-5 w-5" />
             </button>
 
-            <h1 className="text-[30px] font-extrabold leading-tight tracking-[-0.03em] text-text sm:text-[34px]">
-              تشکیل گروه جدید
+          <div className="min-w-0">
+            <h1 className="text-base font-extrabold text-text sm:text-lg">
+              ساخت گروه
             </h1>
 
-            <p className="mt-1.5 text-sm font-semibold leading-7 text-muted">
-              دو قدم ساده: اطلاعات گروه، بعد اعضا.
-            </p>
-          </div>
-
-          <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-right text-sm font-extrabold text-emerald-700">
-            {currentStep === 1 ? 'اول اسم و نوع گروه' : 'اعضا اختیاری‌اند'}
           </div>
         </header>
 
         <CompactStepper currentStep={currentStep} />
 
-        <section className="rounded-[32px] border-2 border-slate-200 bg-white/60 p-3 shadow-[0_18px_46px_rgba(15,23,42,0.055)] sm:p-4">
-          <div className="rounded-[26px] bg-white p-4 sm:p-5">
+        <section className="panel-surface rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_14px_36px_rgba(15,23,42,0.05)] sm:p-6">
+          <div>
             {currentStep === 1 ? (
-              <GroupInfoStep values={values} errors={errors} onChange={updateField} />
+              <GroupInfoStep
+                values={values}
+                errors={errors}
+                descriptionOpen={descriptionOpen}
+                nameInputRef={nameInputRef}
+                groupTypeRef={groupTypeRef}
+                receiptFile={receiptFile}
+                receiptError={receiptError}
+                onChange={updateField}
+                onDescriptionToggle={() => setDescriptionOpen((prev) => !prev)}
+                onReceiptChange={handleReceiptChange}
+              />
             ) : (
               <MembersStep
                 contacts={contacts}
                 contactsLoading={contactsLoading}
+                userSearchLoading={userSearchLoading}
+                userSearchError={userSearchError}
                 selectedIds={selectedIds}
                 searchValue={searchValue}
                 onSearchChange={setSearchValue}
@@ -844,29 +1017,31 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
             )}
           </div>
 
-          <div className="mt-3 flex flex-col-reverse gap-3 px-1 pb-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="create-group-actions sticky bottom-2 z-20 mt-6 grid grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)] gap-2 rounded-[18px] border border-slate-200 bg-white/95 p-2 shadow-[0_12px_34px_rgba(15,23,42,0.14)] backdrop-blur sm:static sm:flex sm:items-center sm:justify-between sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
             <button
               type="button"
               onClick={currentStep === 1 ? onBack : () => setCurrentStep(1)}
-              className="inline-flex h-12 items-center justify-center rounded-[18px] border border-slate-200 bg-white px-6 text-sm font-extrabold text-slate-600 transition hover:bg-slate-50"
+              disabled={submitting}
+              className="inline-flex h-12 items-center justify-center rounded-[14px] border border-slate-200 bg-white px-4 text-sm font-extrabold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:rounded-[16px] sm:px-6"
             >
               {currentStep === 1 ? 'انصراف' : 'مرحله قبل'}
             </button>
 
             <button
               type="button"
-              onClick={currentStep === 1 ? goNext : handleFinish}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-gradient-to-l from-[#00915F] to-[#00A86B] px-6 text-sm font-extrabold text-white shadow-[0_14px_30px_rgba(0,168,107,0.22)] transition hover:-translate-y-0.5"
+              onClick={currentStep === 1 ? goNext : () => void handleFinish()}
+              disabled={submitting}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-[14px] bg-gradient-to-l from-[#00915F] to-[#00A86B] px-4 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(0,168,107,0.2)] transition hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-70 sm:rounded-[16px] sm:px-6"
             >
               {currentStep === 1 ? (
                 <>
-                  مرحله بعدی
+                  ادامه؛ انتخاب اعضا
                   <ChevronLeft className="h-4 w-4" />
                 </>
               ) : (
                 <>
-                  ساخت گروه
-                  <Check className="h-4 w-4" />
+                  {submitting ? 'در حال ساخت...' : selectedIds.length > 0 ? `ساخت با ${toPersianNumber(selectedIds.length)} عضو` : 'ساخت گروه'}
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 </>
               )}
             </button>

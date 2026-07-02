@@ -14,24 +14,24 @@ import { ThemeProvider } from './components/theme/ThemeProvider';
 import { TopBar } from './components/TopBar';
 import { groups as mockGroups } from './data/mockData';
 import { logoutCurrentUser } from './lib/authApi';
-import { getAccessToken, getRefreshToken } from './lib/api';
+import { getAccessToken, getRefreshToken, isApiError } from './lib/api';
 import { listGroupExpenses, type BackendExpense } from './lib/expenseApi';
 import { formatMoneyNumber } from './lib/money';
 import {
   archiveGroup,
+  createDirectGroupInvite,
   createGroup,
   extractInviteToken,
-  getBackendGroupMemberEmail,
-  getBackendGroupMemberPhone,
-  getBackendGroupMemberUserId,
   getGroupDetail,
   getGroupMembers,
   getMyGroups,
   type BackendGroup,
   type BackendGroupType,
 } from './lib/groupApi';
+import { getDashboardActionItems } from './lib/dashboardApi';
 import { getPendingNotificationCount } from './lib/notificationApi';
-import { getMyGroupBalance } from './lib/settlementApi';
+import { uploadReceipt } from './lib/mediaApi';
+import { getMyGroupBalance, getSettlementPlan } from './lib/settlementApi';
 import { getCurrentUser, type CurrentUser } from './lib/userApi';
 import { ActivitiesPage } from './pages/ActivitiesPage';
 import {
@@ -48,6 +48,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SignUpPage } from './pages/SignUpPage';
 import { WalletPage } from './pages/WalletPage';
+import { PaymentResultPage } from './pages/PaymentResultPage';
 import type { Group } from './types';
 
 type AppPage = 'dashboard' | 'groups' | 'create-group' | 'group-detail' | 'invite-join' | 'activities' | 'wallet' | 'notifications' | 'profile';
@@ -62,6 +63,34 @@ function getExpenseTotal(expense: BackendExpense) {
   );
 }
 
+async function countPendingSettlementConfirmations() {
+  try {
+    const [currentUser, groups] = await Promise.all([getCurrentUser(), getMyGroups()]);
+    const currentUserId = currentUser?.id ? String(currentUser.id) : '';
+
+    if (!currentUserId || groups.length === 0) return 0;
+
+    const results = await Promise.allSettled(
+      groups.map(async (group) => {
+        const plan = await getSettlementPlan(group.id);
+        return (plan.items || []).filter(
+          (item) =>
+            item.receiver_user_id === currentUserId &&
+            String(item.status || '').toUpperCase() === 'REPORTED',
+        ).length;
+      }),
+    );
+
+    return results.reduce(
+      (total, result) => total + (result.status === 'fulfilled' ? result.value : 0),
+      0,
+    );
+  } catch (error) {
+    console.warn('Settlement confirmation fallback count unavailable.', error);
+    return 0;
+  }
+}
+
 function getParticipantShare(participant: NonNullable<BackendExpense['participants']>[number]) {
   return (
     participant.total_share_minor ??
@@ -73,6 +102,27 @@ function getParticipantShare(participant: NonNullable<BackendExpense['participan
 
 function formatCardMoney(minor = 0) {
   return formatMoneyNumber(minor);
+}
+
+async function waitForCreatedGroupServices(groupId: string) {
+  const retryDelays = [0, 600, 900, 1400, 2000, 2800];
+
+  for (const delayMs of retryDelays) {
+    if (delayMs > 0) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delayMs));
+    }
+
+    try {
+      await getMyGroupBalance(groupId);
+      return true;
+    } catch (error) {
+      if (!(isApiError(error) && error.status === 404)) {
+        return false;
+      }
+    }
+  }
+
+  return false;
 }
 
 function getIllustrationFromBackendGroup(group: BackendGroup): DashboardGroup['illustration'] {
@@ -123,41 +173,6 @@ function mapBackendGroupToDashboardGroup(
     role: group.my_role,
     description: group.description,
   };
-}
-
-function normalizeLookupValue(value?: string | null) {
-  return (value || '').trim().replace(/\s+/g, '').toLowerCase();
-}
-
-function countPersistedSelectedMembers(
-  selectedMembers: CreatedGroupPayload,
-  persistedMembers: Awaited<ReturnType<typeof getGroupMembers>>,
-) {
-  const selectedUserIds = new Set(
-    (selectedMembers.selectedUserIds || []).map((value) => normalizeLookupValue(value)).filter(Boolean),
-  );
-  const selectedPhones = new Set(
-    (selectedMembers.selectedPhones || []).map((value) => normalizeLookupValue(value)).filter(Boolean),
-  );
-  const selectedEmails = new Set(
-    (selectedMembers.selectedEmails || []).map((value) => normalizeLookupValue(value)).filter(Boolean),
-  );
-
-  if (!selectedUserIds.size && !selectedPhones.size && !selectedEmails.size) {
-    return 0;
-  }
-
-  return persistedMembers.filter((member) => {
-    const memberUserId = normalizeLookupValue(getBackendGroupMemberUserId(member));
-    const memberPhone = normalizeLookupValue(getBackendGroupMemberPhone(member));
-    const memberEmail = normalizeLookupValue(getBackendGroupMemberEmail(member));
-
-    return (
-      (memberUserId && selectedUserIds.has(memberUserId)) ||
-      (memberPhone && selectedPhones.has(memberPhone)) ||
-      (memberEmail && selectedEmails.has(memberEmail))
-    );
-  }).length;
 }
 
 
@@ -290,7 +305,7 @@ function AppContent() {
       setGroupItems(backendGroups.map((group) => mapBackendGroupToDashboardGroup(group)));
     } catch (error) {
       console.error(error);
-      setGroupsError('فعلاً گروه‌ها بارگذاری نشدند. دوباره تلاش کن.');
+      setGroupsError('فعلاً نمی‌توانیم گروه‌هایت را نشان بدهیم. چند لحظه بعد دوباره امتحان کن.');
     } finally {
       setLoadingGroups(false);
     }
@@ -330,8 +345,21 @@ function AppContent() {
   }
 
   async function loadNotificationBadge() {
-    const count = await getPendingNotificationCount();
-    setNotificationBadgeCount(count);
+    const notificationCount = await getPendingNotificationCount();
+    const dashboardSettlementConfirmationCount = await getDashboardActionItems({
+      type: 'CONFIRM_RECEIVED_PAYMENT',
+      pageSize: 100,
+    })
+      .then((items) => items.length)
+      .catch((error) => {
+        console.warn('Settlement confirmation action count unavailable.', error);
+        return 0;
+      });
+    const settlementPlanConfirmationCount = await countPendingSettlementConfirmations();
+
+    setNotificationBadgeCount(
+      notificationCount + Math.max(dashboardSettlementConfirmationCount, settlementPlanConfirmationCount),
+    );
   }
 
   useEffect(() => {
@@ -455,8 +483,8 @@ function AppContent() {
 
     notify({
       type: 'info',
-      title: 'این بخش هنوز آماده نشده',
-      description: 'این بخش هنوز در حال تکمیل است و به‌زودی اضافه می‌شود.',
+      title: 'این بخش هنوز فعال نشده',
+      description: 'این قسمت هنوز برای استفاده آماده نیست. به‌محض تکمیل، از همین منو در دسترس خواهد بود.',
     });
   };
 
@@ -478,6 +506,36 @@ function AppContent() {
         member_phones: payload.selectedPhones,
       });
 
+      const inviteResults = await Promise.allSettled(
+        (payload.selectedRecipients || []).map((recipient) =>
+          createDirectGroupInvite(
+            backendGroup.id,
+            recipient.userId
+              ? { recipient_user_id: recipient.userId, expires_in_hours: 168 }
+              : { recipient_email: recipient.email, expires_in_hours: 168 },
+          ),
+        ),
+      );
+      const sentInviteCount = inviteResults.filter((result) => result.status === 'fulfilled').length;
+      const failedInviteCount = inviteResults.length - sentInviteCount;
+
+      let receiptUploadFailed = false;
+
+      if (payload.receiptFile) {
+        receiptUploadFailed = true;
+
+        try {
+          await uploadReceipt({ groupId: backendGroup.id, file: payload.receiptFile });
+          receiptUploadFailed = false;
+        } catch (error) {
+          console.warn('Could not upload the selected group receipt.', error);
+        }
+      }
+
+      // Do not open the detail page while expense/settlement projections still
+      // return GROUP_NOT_FOUND for a group that was just created.
+      await waitForCreatedGroupServices(backendGroup.id);
+
       const mappedGroup = mapBackendGroupToDashboardGroup(backendGroup);
 
       setGroupItems((prev) => [mappedGroup, ...prev]);
@@ -497,21 +555,6 @@ function AppContent() {
       setPage('group-detail');
       setBrowserPath('/Dashboard#groups');
 
-      let persistedSelectedMembers = 0;
-
-      if (
-        (payload.selectedUserIds?.length || 0) > 0 ||
-        (payload.selectedPhones?.length || 0) > 0 ||
-        (payload.selectedEmails?.length || 0) > 0
-      ) {
-        try {
-          const persistedMembers = await getGroupMembers(backendGroup.id);
-          persistedSelectedMembers = countPersistedSelectedMembers(payload, persistedMembers);
-        } catch (error) {
-          console.warn('Could not verify created group members.', error);
-        }
-      }
-
       try {
         const refreshedGroup = await getGroupDetail(backendGroup.id);
         handleGroupUpdated(refreshedGroup);
@@ -520,19 +563,23 @@ function AppContent() {
       }
 
       notify({
-        type: persistedSelectedMembers < payload.memberCount ? 'info' : 'success',
-        title: persistedSelectedMembers < payload.memberCount ? 'گروه ساخته شد' : 'گروه ساخته شد',
+        type: receiptUploadFailed || failedInviteCount > 0 ? 'info' : 'success',
+        title: 'گروه با موفقیت ساخته شد',
         description:
-          persistedSelectedMembers < payload.memberCount && payload.memberCount > 0
-            ? 'گروه ساخته شد، اما سرویس گروه هنوز همه اعضای انتخاب‌شده را مستقیم برنگرداند. اگر لازم بود از لینک دعوت داخل جزئیات گروه استفاده کن.'
-            : 'حالا می‌تونی اعضا، دعوت‌ها و تنظیمات گروه را مدیریت کنی.',
+          receiptUploadFailed
+            ? 'گروه با موفقیت ساخته شد، اما آپلود فاکتور کامل نشد. می‌توانی بعداً از داخل گروه دوباره آن را اضافه کنی.'
+            : failedInviteCount > 0
+              ? `برای ${sentInviteCount.toLocaleString('fa-IR')} نفر دعوت فرستاده شد؛ دعوت ${failedInviteCount.toLocaleString('fa-IR')} نفر ارسال نشد.`
+              : payload.memberCount > 0
+                ? `برای ${sentInviteCount.toLocaleString('fa-IR')} نفر دعوت فرستاده شد. بعد از قبول دعوت، به اعضای گروه اضافه می‌شوند.`
+                : 'گروه با موفقیت ساخته شد.',
       });
     } catch (error) {
       console.error(error);
       notify({
         type: 'error',
-        title: 'ایجاد گروه ناموفق بود',
-        description: 'گروه ساخته نشد. دوباره تلاش کن.',
+        title: 'گروه ساخته نشد',
+        description: 'گروه ساخته نشد. اتصال اینترنت را بررسی کن و دوباره امتحان کن.',
       });
     }
   };
@@ -549,8 +596,8 @@ function AppContent() {
     if (!token) {
       notify({
         type: 'error',
-        title: 'لینک دعوت نامعتبر است',
-        description: 'لینک یا توکن دعوت را دوباره بررسی کن.',
+        title: 'لینک دعوت قابل استفاده نیست',
+        description: 'لینک دعوت را دوباره بررسی کن یا از فرستنده بخواه لینک جدید بفرستد.',
       });
       return;
     }
@@ -565,15 +612,15 @@ function AppContent() {
     if (group.status === 'ARCHIVED') {
       notify({
         type: 'info',
-        title: 'این گروه قبلاً آرشیو شده',
-        description: 'گروه‌های آرشیو شده از لیست فعال‌ها جدا شده‌اند.',
+        title: 'این گروه از قبل آرشیو شده است',
+        description: 'برای دیدن آن، به بخش گروه‌های آرشیوشده برو.',
       });
       return;
     }
 
     const confirmed = await confirm({
-      title: 'حذف گروه از لیست فعال‌ها؟',
-      description: 'این عملیات گروه را از لیست گروه‌های فعال حذف می‌کند و به بخش گروه‌های آرشیو شده منتقل می‌کند.',
+      title: 'این گروه از لیست فعال‌ها حذف شود؟',
+      description: 'بعداً می‌توانی گروه را از بخش آرشیو دوباره فعال کنی.',
       confirmText: 'حذف از لیست',
       cancelText: 'انصراف',
       tone: 'danger',
@@ -608,15 +655,15 @@ function AppContent() {
 
       notify({
         type: 'success',
-        title: 'گروه حذف شد',
-        description: 'گروه از لیست فعال‌ها حذف شد و در آرشیو قرار گرفت.',
+        title: 'گروه آرشیو شد',
+        description: 'گروه از لیست فعال‌ها خارج شد و در آرشیو قرار گرفت.',
       });
     } catch (error) {
       console.error(error);
       notify({
         type: 'error',
-        title: 'حذف گروه ناموفق بود',
-        description: 'گروه ساخته نشد. دوباره تلاش کن.',
+        title: 'گروه آرشیو نشد',
+        description: 'گروه ساخته نشد. اتصال اینترنت را بررسی کن و دوباره امتحان کن.',
       });
     }
   };
@@ -844,6 +891,22 @@ function AppRoutes() {
               onLanding={() => navigate('/')}
             />
           </AuthPageFrame>
+        }
+      />
+      <Route
+        path="/Dashboard/payment-result"
+        element={
+          <ProtectedRoute>
+            <PaymentResultPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/payment-result"
+        element={
+          <ProtectedRoute>
+            <PaymentResultPage />
+          </ProtectedRoute>
         }
       />
       <Route

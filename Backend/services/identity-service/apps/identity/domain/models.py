@@ -29,6 +29,7 @@ class User(models.Model):
     first_name = models.CharField(max_length=150, null=True, blank=True)
     last_name = models.CharField(max_length=150, null=True, blank=True)
     avatar_url = models.URLField(null=True, blank=True)
+    avatar_file_id = models.UUIDField(null=True, blank=True)
     password_hash = models.CharField(max_length=128, null=True, blank=True)
     password_changed_at = models.DateTimeField(null=True, blank=True)
     is_email_verified = models.BooleanField(default=False)
