@@ -53,6 +53,7 @@ import {
   deleteExpense,
   listGroupExpenses,
   type BackendExpense,
+  type ExpenseParticipant,
   type ExpenseSplitMethod,
 } from '../lib/expenseApi';
 import {
@@ -222,6 +223,73 @@ function getExpenseTotal(expense: BackendExpense) {
       (expense.tax_amount_minor || 0) +
       (expense.service_fee_amount_minor || 0)
   );
+}
+
+
+function getExpenseParticipantShareMinor(participant?: ExpenseParticipant) {
+  if (!participant) return 0;
+
+  if (typeof participant.total_share_minor === 'number' && Number.isFinite(participant.total_share_minor)) {
+    return Math.max(0, Math.round(participant.total_share_minor));
+  }
+
+  return Math.max(0, Math.round(
+    (participant.base_share_minor || 0) +
+    (participant.tax_share_minor || 0) +
+    (participant.service_fee_share_minor || 0),
+  ));
+}
+
+function getIncludedExpenseParticipants(expense: BackendExpense) {
+  return (expense.participants || []).filter((participant) => participant.is_included !== false);
+}
+
+function getExpenseUserImpact(expense: BackendExpense, currentUserId?: string | null, memberCount = 1) {
+  const totalMinor = getExpenseTotal(expense);
+  const fallbackMemberCount = Math.max(1, Number(memberCount) || 1);
+  const fallbackUserShareMinor = Math.round(totalMinor / fallbackMemberCount);
+
+  if (!currentUserId) {
+    return { type: 'neutral' as const, amountMinor: totalMinor, signedAmountMinor: 0, label: 'اثر نامشخص' };
+  }
+
+  const normalizedCurrentUserId = String(currentUserId);
+  const payerUserId = String(expense.payer_user_id || '');
+  const includedParticipants = getIncludedExpenseParticipants(expense);
+  const currentParticipant = includedParticipants.find(
+    (participant) => String(participant.user_id || '') === normalizedCurrentUserId,
+  );
+  const currentShareMinor = getExpenseParticipantShareMinor(currentParticipant);
+  const participantTotalMinor = includedParticipants.reduce(
+    (sum, participant) => sum + getExpenseParticipantShareMinor(participant),
+    0,
+  );
+
+  if (payerUserId === normalizedCurrentUserId) {
+    const receivableMinor = includedParticipants.length > 0
+      ? Math.max(0, participantTotalMinor - currentShareMinor)
+      : Math.max(0, totalMinor - fallbackUserShareMinor);
+
+    return {
+      type: 'credit' as const,
+      amountMinor: receivableMinor,
+      signedAmountMinor: receivableMinor,
+      label: 'طلب شما از بقیه',
+    };
+  }
+
+  if (currentParticipant || includedParticipants.length === 0) {
+    const payableMinor = currentParticipant ? currentShareMinor : fallbackUserShareMinor;
+
+    return {
+      type: 'debt' as const,
+      amountMinor: payableMinor,
+      signedAmountMinor: -payableMinor,
+      label: 'پرداخت شما به پرداخت‌کننده',
+    };
+  }
+
+  return { type: 'neutral' as const, amountMinor: 0, signedAmountMinor: 0, label: 'بدون اثر روی حساب شما' };
 }
 
 type ExpenseReceiptSource =
@@ -441,9 +509,20 @@ function getActivityDetails(activity: DashboardActivityItem, members: BackendGro
   const title = typeof activity.summary.title === 'string' ? activity.summary.title : '';
   const description = typeof activity.summary.description === 'string' ? activity.summary.description : '';
   const role = typeof activity.summary.role === 'string' ? activity.summary.role : '';
+  const currentUserEffectLabel = typeof activity.summary.current_user_effect_label === 'string'
+    ? activity.summary.current_user_effect_label
+    : '';
+  const currentUserEffectMinor = Number(activity.summary.current_user_effect_minor || 0);
+  const currentUserEffectSignedMinor = Number(activity.summary.current_user_effect_signed_minor || 0);
 
   if (title) details.push({ label: 'عنوان', value: title });
-  if (Number.isFinite(amount) && amount > 0) details.push({ label: 'مبلغ', value: formatMoney(amount) });
+  if (Number.isFinite(amount) && amount > 0) details.push({ label: 'مبلغ کل', value: formatMoney(amount) });
+  if (currentUserEffectLabel && Number.isFinite(currentUserEffectMinor) && currentUserEffectMinor > 0) {
+    details.push({
+      label: 'اثر روی حساب شما',
+      value: `${currentUserEffectLabel}: ${formatSignedMoney(currentUserEffectSignedMinor)}`,
+    });
+  }
   if (payerId) details.push({ label: 'پرداخت‌کننده', value: getUserDisplayFromId(payerId, members) });
   if (receiverId) details.push({ label: 'دریافت‌کننده', value: getUserDisplayFromId(receiverId, members) });
   if (status) details.push({ label: 'وضعیت', value: getSettlementStatusLabel(status) });
@@ -459,6 +538,7 @@ function buildGroupActivityFallback(
   members: BackendGroupMember[],
   expenses: BackendExpense[],
   settlements: SettlementItem[],
+  currentUserId?: string | null,
 ) {
   const items: DashboardActivityItem[] = [];
   const groupInfo = { id: groupId, title: group?.title || '' };
@@ -501,6 +581,8 @@ function buildGroupActivityFallback(
   expenses
     .filter((expense) => String(expense.group_id || groupId) === String(groupId))
     .forEach((expense) => {
+      const currentUserImpact = getExpenseUserImpact(expense, currentUserId, members.length || 1);
+
       if (expense.created_at) {
         items.push({
           id: `expense-created-${expense.id}`,
@@ -514,6 +596,10 @@ function buildGroupActivityFallback(
             payer_user_id: expense.payer_user_id,
             amount_minor: getExpenseTotal(expense),
             status: expense.status || 'ACTIVE',
+            current_user_effect_label: currentUserImpact.label,
+            current_user_effect_minor: currentUserImpact.amountMinor,
+            current_user_effect_signed_minor: currentUserImpact.signedAmountMinor,
+            current_user_effect_type: currentUserImpact.type,
           },
         });
       }
@@ -530,6 +616,10 @@ function buildGroupActivityFallback(
             payer_user_id: expense.payer_user_id,
             amount_minor: getExpenseTotal(expense),
             status: expense.status || 'ACTIVE',
+            current_user_effect_label: currentUserImpact.label,
+            current_user_effect_minor: currentUserImpact.amountMinor,
+            current_user_effect_signed_minor: currentUserImpact.signedAmountMinor,
+            current_user_effect_type: currentUserImpact.type,
           },
         });
       }
@@ -720,17 +810,17 @@ type QuickSection = 'expenses' | 'settlement' | 'settings' | 'members' | 'activi
 function getMyAccountStatus(amount: number) {
   if (amount > 0) {
     return {
-      label: 'بدهکار',
+      label: 'طلبکار',
       amount: formatSignedMoney(amount),
-      tone: 'negative' as VisualTone,
+      tone: 'positive' as VisualTone,
     };
   }
 
   if (amount < 0) {
     return {
-      label: 'طلبکار',
+      label: 'بدهکار',
       amount: formatSignedMoney(amount),
-      tone: 'positive' as VisualTone,
+      tone: 'negative' as VisualTone,
     };
   }
 
@@ -1652,6 +1742,7 @@ export function GroupDetailPage({
         membersResult.status === 'fulfilled' ? membersResult.value : [],
         expensesResult.status === 'fulfilled' ? expensesResult.value : [],
         settlementsResult.status === 'fulfilled' ? settlementsResult.value : [],
+        currentUserId,
       );
 
       setActivities((current) => {

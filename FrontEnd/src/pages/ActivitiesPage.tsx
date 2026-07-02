@@ -42,6 +42,7 @@ import { humanizeMachineLabel } from '../lib/userMessages';
 type ActivityFilter = 'all' | 'received' | 'paid' | 'settled';
 type UiExpense = BackendExpense & {
   groupTitle?: string;
+  groupMemberCount?: number;
 };
 
 type ReceiptPreviewState = {
@@ -271,17 +272,78 @@ function getSelectedGroupValue(group: BackendGroup) {
   return String(group.id);
 }
 
-function getExpenseKind(expense: BackendExpense, currentUserId?: string | null) {
-  if (!currentUserId) return 'paid';
+function getParticipantShareMinor(participant?: ExpenseParticipant) {
+  if (!participant) return 0;
 
-  if (expense.payer_user_id === currentUserId) return 'paid';
+  const explicitTotal = participant.total_share_minor;
+  if (typeof explicitTotal === 'number' && Number.isFinite(explicitTotal)) {
+    return Math.max(0, Math.round(explicitTotal));
+  }
 
-  const isParticipant = expense.participants?.some(
-    (participant) =>
-      participant.user_id === currentUserId && participant.is_included !== false,
+  const baseShare = participant.base_share_minor || 0;
+  const taxShare = participant.tax_share_minor || 0;
+  const serviceFeeShare = participant.service_fee_share_minor || 0;
+
+  return Math.max(0, Math.round(baseShare + taxShare + serviceFeeShare));
+}
+
+function getIncludedParticipants(expense: BackendExpense) {
+  return (expense.participants || []).filter((participant) => participant.is_included !== false);
+}
+
+function getExpenseUserImpact(expense: BackendExpense, currentUserId?: string | null) {
+  const total = getExpenseTotal(expense);
+  const fallbackMemberCount = Math.max(
+    1,
+    Number((expense as UiExpense).groupMemberCount || 0) || 1,
+  );
+  const fallbackUserShareMinor = Math.round(total / fallbackMemberCount);
+
+  if (!currentUserId) {
+    return { kind: 'paid' as const, amountMinor: total, signedAmountMinor: -total, label: 'پرداختی' };
+  }
+
+  const normalizedCurrentUserId = String(currentUserId);
+  const payerUserId = String(expense.payer_user_id || '');
+  const includedParticipants = getIncludedParticipants(expense);
+  const currentParticipant = includedParticipants.find(
+    (participant) => String(participant.user_id || '') === normalizedCurrentUserId,
+  );
+  const currentShareMinor = getParticipantShareMinor(currentParticipant);
+  const participantTotalMinor = includedParticipants.reduce(
+    (sum, participant) => sum + getParticipantShareMinor(participant),
+    0,
   );
 
-  return isParticipant ? 'received' : 'paid';
+  if (payerUserId === normalizedCurrentUserId) {
+    const receivableMinor = includedParticipants.length > 0
+      ? Math.max(0, participantTotalMinor - currentShareMinor)
+      : Math.max(0, total - fallbackUserShareMinor);
+
+    return {
+      kind: 'received' as const,
+      amountMinor: receivableMinor,
+      signedAmountMinor: receivableMinor,
+      label: 'طلب',
+    };
+  }
+
+  if (currentParticipant || includedParticipants.length === 0) {
+    const payableMinor = currentParticipant ? currentShareMinor : fallbackUserShareMinor;
+
+    return {
+      kind: 'paid' as const,
+      amountMinor: payableMinor,
+      signedAmountMinor: -payableMinor,
+      label: 'پرداخت',
+    };
+  }
+
+  return { kind: 'paid' as const, amountMinor: 0, signedAmountMinor: 0, label: 'نامرتبط' };
+}
+
+function getExpenseKind(expense: BackendExpense, currentUserId?: string | null) {
+  return getExpenseUserImpact(expense, currentUserId).kind;
 }
 
 function getActivityFilterLabel(value: ActivityFilter) {
@@ -481,6 +543,7 @@ export function ActivitiesPage() {
           return groupExpenses.map<UiExpense>((expense) => ({
             ...expense,
             groupTitle: group.title,
+            groupMemberCount: group.member_count ?? group.members_count ?? group.members?.length ?? 1,
           }));
         }),
       );
@@ -1189,9 +1252,9 @@ export function ActivitiesPage() {
 
                   <div className="rounded-[20px] border border-border bg-white shadow-soft">
                     {dateExpenses.map((expense, index) => {
-                      const kind = getExpenseKind(expense, currentUserId);
-                      const total = getExpenseTotal(expense);
-                      const amount = kind === 'paid' ? -total : total;
+                      const impact = getExpenseUserImpact(expense, currentUserId);
+                      const kind = impact.kind;
+                      const amount = impact.signedAmountMinor;
 
                       const payerParticipant = expense.participants?.find(
                         (participant) => participant.user_id === expense.payer_user_id,
@@ -1241,7 +1304,7 @@ export function ActivitiesPage() {
 
                             <div className="shrink-0 text-left">
                               <div className={`text-sm font-extrabold sm:text-base ${amount >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatSignedMoney(amount)}</div>
-                              <div className="mt-1 text-[10px] font-bold text-muted">{kind === 'paid' ? 'پرداختی' : 'طلب'}</div>
+                              <div className="mt-1 text-[10px] font-bold text-muted">{impact.label}</div>
                             </div>
                           </button>
 
@@ -1720,6 +1783,13 @@ export function ActivitiesPage() {
                     <span className="text-xs text-muted">مبلغ کل</span>
                     <div className="mt-2 font-extrabold text-emerald-600">
                       <MoneyWithWords amount={getExpenseTotal(detailExpense)} valueClassName="font-extrabold text-emerald-600" textClassName="mt-1 text-[10px] font-semibold text-slate-500" showText={true} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border p-4">
+                    <span className="text-xs text-muted">اثر روی حساب شما</span>
+                    <div className={`mt-2 font-extrabold ${getExpenseUserImpact(detailExpense, currentUserId).signedAmountMinor >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {getExpenseUserImpact(detailExpense, currentUserId).label} · {formatSignedMoney(getExpenseUserImpact(detailExpense, currentUserId).signedAmountMinor)}
                     </div>
                   </div>
 
