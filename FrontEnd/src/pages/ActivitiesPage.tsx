@@ -442,7 +442,7 @@ export function ActivitiesPage() {
       setCurrentUserId(currentUser?.id ? String(currentUser.id) : null);
     } catch (loadError) {
       console.error(loadError);
-      setError('فعلاً گروه‌ها نمایش داده نمی‌شوند. دوباره تلاش کن.');
+      setError('فعلاً نمی‌توانیم گروه‌هایت را نشان بدهیم. چند لحظه بعد دوباره امتحان کن.');
     } finally {
       setLoadingGroups(false);
     }
@@ -503,7 +503,7 @@ export function ActivitiesPage() {
       );
     } catch (loadError) {
       console.error(loadError);
-      setError('فعلاً فعالیت‌ها نمایش داده نمی‌شوند. دوباره تلاش کن.');
+      setError('فعلاً نمی‌توانیم فعالیت‌ها را نشان بدهیم. چند لحظه بعد دوباره امتحان کن.');
     } finally {
       setLoadingExpenses(false);
     }
@@ -544,7 +544,7 @@ export function ActivitiesPage() {
       console.error(loadError);
       showToast({
         tone: 'error',
-        title: 'دریافت اعضا ناموفق بود',
+        title: 'اعضای گروه نمایش داده نشدند',
         message: 'برای ثبت هزینه باید اعضای گروه دریافت شوند.',
       });
     } finally {
@@ -718,7 +718,7 @@ export function ActivitiesPage() {
     } catch (loadError) {
       console.error(loadError);
       if (detailRequestId.current === requestId) {
-        showToast({ tone: 'error', title: 'دریافت جزئیات ناموفق بود' });
+        showToast({ tone: 'error', title: 'جزئیات این مورد نمایش داده نشد' });
       }
     } finally {
       if (detailRequestId.current === requestId) setDetailLoading(false);
@@ -789,7 +789,7 @@ export function ActivitiesPage() {
   async function handlePreviewReceipt(expense: BackendExpense) {
     const receiptKey = getExpenseReceiptKey(expense);
     if (!receiptKey || !canCurrentUserSeeExpenseReceipt(expense, currentUserId)) {
-      showToast({ tone: 'info', title: 'رسیدی برای این هزینه ثبت نشده' });
+      showToast({ tone: 'info', title: 'برای این هزینه هنوز رسیدی ثبت نشده است' });
       return;
     }
 
@@ -822,7 +822,7 @@ export function ActivitiesPage() {
       console.error(receiptError);
       showToast({
         tone: 'error',
-        title: 'نمایش رسید ناموفق بود',
+        title: 'رسید باز نشد',
         message: 'دسترسی به فایل رسید ممکن نیست یا فایل پیدا نشد.',
       });
     } finally {
@@ -833,7 +833,7 @@ export function ActivitiesPage() {
   async function handleDownloadReceipt(expense: BackendExpense) {
     const receiptKey = getExpenseReceiptKey(expense);
     if (!receiptKey || !canCurrentUserSeeExpenseReceipt(expense, currentUserId)) {
-      showToast({ tone: 'info', title: 'رسیدی برای این هزینه ثبت نشده' });
+      showToast({ tone: 'info', title: 'برای این هزینه هنوز رسیدی ثبت نشده است' });
       return;
     }
 
@@ -867,7 +867,7 @@ export function ActivitiesPage() {
       console.error(receiptError);
       showToast({
         tone: 'error',
-        title: 'دانلود رسید ناموفق بود',
+        title: 'رسید دانلود نشد',
         message: 'دسترسی به فایل رسید ممکن نیست یا فایل پیدا نشد.',
       });
     } finally {
@@ -879,12 +879,12 @@ export function ActivitiesPage() {
     event.preventDefault();
 
     if (!form.groupId) {
-      showToast({ tone: 'error', title: 'گروه را انتخاب کن' });
+      showToast({ tone: 'error', title: 'اول گروه را انتخاب کن' });
       return;
     }
 
     if (!form.title.trim()) {
-      showToast({ tone: 'error', title: 'عنوان هزینه را وارد کن' });
+      showToast({ tone: 'error', title: 'برای هزینه یک عنوان بنویس' });
       return;
     }
 
@@ -894,12 +894,12 @@ export function ActivitiesPage() {
     }
 
     if (!form.payerUserId) {
-      showToast({ tone: 'error', title: 'پرداخت‌کننده را انتخاب کن' });
+      showToast({ tone: 'error', title: 'مشخص کن چه کسی این هزینه را پرداخت کرده است' });
       return;
     }
 
     if (form.participantUserIds.length === 0) {
-      showToast({ tone: 'error', title: 'حداقل یک شرکت‌کننده انتخاب کن' });
+      showToast({ tone: 'error', title: 'حداقل یک نفر را به‌عنوان شریک هزینه انتخاب کن' });
       return;
     }
 
@@ -910,7 +910,7 @@ export function ActivitiesPage() {
       const payload = buildExpensePayload(receiptFileId);
 
       await createGroupExpense(form.groupId, payload);
-      showToast({ tone: 'success', title: 'هزینه جدید ثبت شد' });
+      showToast({ tone: 'success', title: 'هزینه ثبت شد' });
 
       setModalOpen(false);
       await loadExpenses();
@@ -918,8 +918,8 @@ export function ActivitiesPage() {
       console.error(submitError);
       showToast({
         tone: 'error',
-        title: 'ثبت هزینه ناموفق بود',
-        message: form.receiptFile ? 'اگر رسید انتخاب کرده‌ای، مطمئن شو فایل jpg، png، webp یا pdf و کمتر از ۵ مگابایت است.' : 'لطفاً دوباره تلاش کن. اگر مشکل ادامه داشت، چند لحظه بعد امتحان کن.',
+        title: 'هزینه ثبت نشد',
+        message: form.receiptFile ? 'اگر رسید انتخاب کرده‌ای، مطمئن شو فایل jpg، png، webp یا pdf و کمتر از ۵ مگابایت است.' : 'چند لحظه بعد دوباره امتحان کن. اگر رسید انتخاب کرده‌ای، نوع و حجم فایل را هم بررسی کن.',
       });
     } finally {
       setSubmitting(false);
@@ -936,15 +936,15 @@ export function ActivitiesPage() {
       showToast({ tone: 'success', title: 'هزینه حذف شد' });
     } catch (deleteError) {
       console.error(deleteError);
-      showToast({ tone: 'error', title: 'حذف هزینه ناموفق بود' });
+      showToast({ tone: 'error', title: 'هزینه حذف نشد' });
     }
   }
 
   return (
-    <main className="px-3 pt-4 pb-24 sm:px-6 sm:py-7 xl:px-8">
+    <main className="app-page pb-24">
       {toast ? <Toast toast={toast} onClose={() => setToast(null)} /> : null}
 
-      <div className="mx-auto max-w-[1180px] space-y-6">
+      <div className="app-container app-container-dashboard space-y-6">
         <div className="flex items-center justify-between gap-3 text-right">
           <h1 className="text-lg font-extrabold text-text sm:text-xl">فعالیت‌ها</h1>
 

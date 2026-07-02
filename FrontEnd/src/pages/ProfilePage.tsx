@@ -294,7 +294,7 @@ function getArtNameFeedback(status: ArtNameStatus, fallback = '') {
   if (status === 'taken') {
     return {
       tone: 'error' as const,
-      message: fallback || 'این نام کاربری قبلاً ثبت شده است.',
+      message: fallback || 'این نام کاربری قبلاً انتخاب شده است. یک نام دیگر امتحان کن.',
     };
   }
 
@@ -786,7 +786,7 @@ function PersonalInfoPanel({
         }
 
         setArtNameStatus('taken');
-        setArtNameMessage(result.message || 'این نام کاربری قبلاً ثبت شده است.');
+        setArtNameMessage(result.message || 'این نام کاربری قبلاً انتخاب شده است. یک نام دیگر امتحان کن.');
       } catch (error) {
         if (controller.signal.aborted) return;
 
@@ -794,7 +794,7 @@ function PersonalInfoPanel({
 
         if (code === 'ART_NAME_ALREADY_EXISTS') {
           setArtNameStatus('taken');
-          setArtNameMessage('این نام کاربری قبلاً ثبت شده است.');
+          setArtNameMessage('این نام کاربری قبلاً انتخاب شده است. یک نام دیگر امتحان کن.');
           return;
         }
 
@@ -829,20 +829,20 @@ function PersonalInfoPanel({
     }
 
     if (artNameStatus === 'checking') {
-      setMessage('چند لحظه صبر کنید تا تکراری بودن نام کاربری بررسی شود.');
+      setMessage('چند لحظه صبر کن تا آزاد بودن نام کاربری بررسی شود.');
       setMessageTone('error');
       return;
     }
 
     if (artNameStatus === 'taken') {
-      setMessage(artNameMessage || 'این نام کاربری قبلاً ثبت شده است.');
+      setMessage(artNameMessage || 'این نام کاربری قبلاً انتخاب شده است. یک نام دیگر امتحان کن.');
       setMessageTone('error');
       return;
     }
 
     try {
       setSaving(true);
-      setMessage('در حال ذخیره اطلاعات پروفایل...');
+      setMessage('در حال ذخیره تغییرات پروفایل...');
       setMessageTone('neutral');
 
       const updatedUser = await updateCurrentUserProfile({
@@ -857,7 +857,7 @@ function PersonalInfoPanel({
       });
 
       onUserUpdated(updatedUser);
-      setMessage('اطلاعات پروفایل ذخیره شد.');
+      setMessage('تغییرات پروفایلت ذخیره شد.');
       setMessageTone('success');
       onAvatarMessage('پروفایل به‌روزرسانی شد.', 'success');
     } catch (error) {
@@ -873,7 +873,7 @@ function PersonalInfoPanel({
         INVALID_BIO: 'متن درباره من معتبر نیست.',
       };
 
-      setMessage(messageMap[code] || 'ذخیره تغییرات ناموفق بود.');
+      setMessage(messageMap[code] || 'تغییرات پروفایل ذخیره نشد. دوباره امتحان کن.');
       setMessageTone('error');
     } finally {
       setSaving(false);
@@ -1062,13 +1062,13 @@ function PasswordPanel() {
 
   async function handleSubmit() {
     if (!newPassword || !confirmPassword) {
-      setMessage('رمز جدید و تکرار آن را وارد کنید.');
+      setMessage('رمز جدید و تکرارش را وارد کن.');
       setMessageTone('error');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setMessage('تکرار رمز عبور با رمز جدید یکسان نیست.');
+      setMessage('رمز جدید و تکرارش یکی نیستند.');
       setMessageTone('error');
       return;
     }
@@ -1094,19 +1094,19 @@ function PasswordPanel() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setMessage(currentPassword ? 'رمز عبور با موفقیت تغییر کرد.' : 'رمز عبور با موفقیت تنظیم شد.');
+      setMessage(currentPassword ? 'رمز عبورت تغییر کرد.' : 'رمز عبورت تنظیم شد.');
       setMessageTone('success');
     } catch (error) {
       const code = getApiErrorCode(error);
       const map: Record<string, string> = {
         PASSWORD_ALREADY_SET: 'برای تغییر رمز، رمز فعلی را هم وارد کنید.',
-        PASSWORD_CONFIRMATION_MISMATCH: 'تکرار رمز عبور با رمز جدید یکسان نیست.',
+        PASSWORD_CONFIRMATION_MISMATCH: 'رمز جدید و تکرارش یکی نیستند.',
         INVALID_CURRENT_PASSWORD: 'رمز عبور فعلی اشتباه است.',
         PASSWORD_REUSE_NOT_ALLOWED: 'رمز جدید باید با رمز فعلی متفاوت باشد.',
         WEAK_PASSWORD: 'رمز عبور جدید به اندازه کافی قوی نیست.',
       };
 
-      setMessage(map[code] || 'عملیات رمز عبور ناموفق بود.');
+      setMessage(map[code] || 'رمز عبور تغییر نکرد. اطلاعات واردشده را بررسی کن.');
       setMessageTone('error');
     } finally {
       setSaving(false);
@@ -1409,7 +1409,7 @@ function PrivacyPanel({
     link.download = 'hamdong-profile-data.json';
     link.click();
     URL.revokeObjectURL(url);
-    setMessage('خروجی اطلاعات پروفایل آماده شد.');
+    setMessage('فایل خروجی اطلاعات پروفایلت آماده شد.');
   }
 
   return (
@@ -1454,7 +1454,7 @@ function PrivacyPanel({
 
         <Panel title="مدیریت داده‌ها" icon={Database} className="min-h-[236px] xl:col-span-3">
           <p className="mb-5 text-right text-sm font-semibold leading-7 text-muted">
-            خروجی گرفتن از داده‌های قابل نمایش همین صفحه در مرورگر انجام می‌شود. حذف حساب در این نسخه فعال نیست.
+            خروجی گرفتن از داده‌های قابل نمایش همین صفحه در مرورگر انجام می‌شود. حذف حساب کاربری در این نسخه فعال نیست.
           </p>
           <div className="grid gap-4 lg:grid-cols-3">
             <button
@@ -1467,7 +1467,7 @@ function PrivacyPanel({
             </button>
             <button
               type="button"
-              onClick={() => setMessage('سیاست حریم خصوصی در این نسخه به صورت جداگانه ارائه نشده است.')}
+              onClick={() => setMessage('متن سیاست حریم خصوصی هنوز داخل این نسخه قرار نگرفته است.')}
               className="flex min-h-[76px] w-full items-center justify-between gap-4 rounded-2xl border border-border bg-white px-5 py-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"
             >
               <Shield className="h-5 w-5" />
@@ -1475,7 +1475,7 @@ function PrivacyPanel({
             </button>
             <button
               type="button"
-              onClick={() => setMessage('حذف حساب در این نسخه فعال نیست.')}
+              onClick={() => setMessage('حذف حساب کاربری در این نسخه فعال نیست.')}
               className="flex min-h-[76px] w-full items-center justify-between gap-4 rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-black text-rose-700 transition hover:bg-rose-100"
             >
               <Trash2 className="h-5 w-5" />
@@ -1487,7 +1487,7 @@ function PrivacyPanel({
 
       <button
         type="button"
-        onClick={() => setMessage('تنظیمات حریم خصوصی در مرورگر ذخیره شد.')}
+        onClick={() => setMessage('تنظیمات حریم خصوصی روی همین مرورگر ذخیره شد.')}
         className="inline-flex h-[52px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-l from-[#00915F] to-[#00A86B] px-8 text-base font-black text-white shadow-[0_14px_30px_rgba(0,145,95,0.22)] transition hover:-translate-y-0.5"
       >
         <Lock className="h-5 w-5" />
@@ -1520,7 +1520,7 @@ export function ProfilePage() {
       setUser(currentUser);
     } catch (error) {
       console.warn('Could not load current user for profile page.', error);
-      setLoadError('اطلاعات پروفایل دریافت نشد.');
+      setLoadError('فعلاً نمی‌توانیم اطلاعات پروفایلت را نشان بدهیم. دوباره امتحان کن.');
     } finally {
       setLoading(false);
     }
@@ -1567,8 +1567,8 @@ export function ProfilePage() {
   }, [activeTab, bankCards, notificationSettings, user]);
 
   return (
-    <main className="px-6 py-6 sm:px-8 sm:py-8 lg:px-10 xl:px-14 2xl:px-16">
-      <div className="mx-auto max-w-[1240px] space-y-7">
+    <main className="app-page">
+      <div className="app-container app-container-wide space-y-6 sm:space-y-7">
         <ProfileHero
           user={user}
           loading={loading}

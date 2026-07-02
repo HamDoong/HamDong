@@ -235,7 +235,7 @@ export async function downloadMediaFile(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text || 'دانلود فایل رسید ناموفق بود.');
+    throw new Error(text || 'رسید دانلود نشد. دوباره امتحان کن.');
   }
 
   const blob = await response.blob();

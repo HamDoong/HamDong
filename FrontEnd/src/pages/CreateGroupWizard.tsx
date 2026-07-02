@@ -843,7 +843,7 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
           return next;
         });
       } catch {
-        if (!ignore) setUserSearchError('جستجوی نام کاربری انجام نشد؛ دوباره تلاش کن.');
+        if (!ignore) setUserSearchError('فعلاً جستجوی نام کاربری انجام نشد؛ نام را بررسی کن و دوباره امتحان کن.');
       } finally {
         if (!ignore) setUserSearchLoading(false);
       }
@@ -966,8 +966,8 @@ export function CreateGroupWizard({ onBack, onComplete }: CreateGroupWizardProps
   }
 
   return (
-    <main className="create-group-wizard-page px-3 py-3 sm:px-6 sm:py-5 xl:px-8" dir="rtl">
-      <div className="mx-auto max-w-[860px] space-y-4">
+    <main className="app-page create-group-wizard-page" dir="rtl">
+      <div className="app-container app-container-narrow space-y-4">
         <header className="flex items-center gap-3 text-right">
             <button
               type="button"

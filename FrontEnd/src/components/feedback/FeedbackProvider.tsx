@@ -198,7 +198,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
                   confirmState.tone,
                 )}`}
               >
-                {confirmState.confirmText || 'تایید'}
+                {confirmState.confirmText || 'تأیید'}
               </button>
             </div>
           </div>

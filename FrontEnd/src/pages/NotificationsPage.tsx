@@ -350,12 +350,12 @@ function getActionErrorMessage(error: unknown, fallback: string) {
   return getFriendlyApiErrorMessage(error, {
     defaultMessage: fallback,
     invalidMessage: 'اطلاعات واردشده کامل یا درست نیست.',
-    unavailableMessage: 'فعلاً ارتباط با بخش اعلان‌ها برقرار نمی‌شود. کمی بعد دوباره تلاش کن.',
+    unavailableMessage: 'فعلاً نمی‌توانیم اعلان‌هایت را نشان بدهیم. چند لحظه بعد دوباره امتحان کن.',
     notFoundMessage: 'اطلاعات اعلان پیدا نشد.',
     codeMap: {
       NOTIFICATION_NOT_FOUND: 'این اعلان پیدا نشد.',
       ALREADY_READ: 'این اعلان قبلاً خوانده شده است.',
-      EMAIL_SEND_FAILED: 'ارسال ایمیل انجام نشد. کمی بعد دوباره تلاش کن.',
+      EMAIL_SEND_FAILED: 'پیام تستی ارسال نشد. آدرس ایمیل را بررسی کن و دوباره امتحان کن.',
       INVALID_EMAIL: 'ایمیل واردشده درست نیست.',
     },
   });
@@ -1036,7 +1036,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     } catch (loadError) {
       const message = getActionErrorMessage(
         loadError,
-        'فعلاً اعلان‌ها در دسترس نیستند. کمی بعد دوباره تلاش کن.',
+        'فعلاً اعلان‌هایت در دسترس نیستند. چند لحظه بعد دوباره امتحان کن.',
       );
       setError(message);
       setNotifications([]);
@@ -1048,7 +1048,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
 
       notify({
         type: 'error',
-        title: 'اعلان‌ها بارگذاری نشدند',
+        title: 'اعلان‌ها نمایش داده نشدند',
         description: message,
       });
     } finally {
@@ -1103,7 +1103,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     } catch (markError) {
       notify({
         type: 'info',
-        title: 'اعلان برای این دستگاه خوانده شد',
+        title: 'این اعلان خوانده شد',
         description:
           'وضعیت خواندن روی این دستگاه ثبت شد. اگر کمی بعد دوباره همگام نشد، صفحه را بروزرسانی کن.',
       });
@@ -1141,12 +1141,12 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
       notify({
         type: 'success',
         title: 'همه اعلان‌ها خوانده شدند',
-        description: 'دیگر اعلان خوانده‌نشده‌ای در این صفحه باقی نماند.',
+        description: 'در این صفحه اعلان خوانده‌نشده‌ای باقی نمانده است.',
       });
     } catch (markAllError) {
       notify({
         type: 'error',
-        title: 'ثبت وضعیت اعلان‌ها انجام نشد',
+        title: 'وضعیت اعلان‌ها ذخیره نشد',
         description: getActionErrorMessage(
           markAllError,
           'فعلاً امکان ثبت خوانده شدن همه اعلان‌ها وجود ندارد.',
@@ -1165,16 +1165,16 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
 
       notify({
         type: 'success',
-        title: 'دعوت قبول شد',
+        title: 'دعوت را قبول کردی',
         description: `شما به گروه «${invitation.group?.title || 'گروه'}» اضافه شدید.`,
       });
     } catch (acceptError) {
       notify({
         type: 'error',
-        title: 'قبول دعوت انجام نشد',
+        title: 'دعوت قبول نشد',
         description: getActionErrorMessage(
           acceptError,
-          'فعلاً امکان قبول این دعوت وجود ندارد. صفحه را بروزرسانی کن و دوباره تلاش کن.',
+          'فعلاً نمی‌توانیم این دعوت را قبول کنیم. صفحه را تازه کن و دوباره امتحان کن.',
         ),
       });
     } finally {
@@ -1190,16 +1190,16 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
 
       notify({
         type: 'success',
-        title: 'دعوت رد شد',
+        title: 'دعوت را رد کردی',
         description: `دعوت گروه «${invitation.group?.title || 'گروه'}» از لیست شما حذف شد.`,
       });
     } catch (rejectError) {
       notify({
         type: 'error',
-        title: 'رد دعوت انجام نشد',
+        title: 'دعوت رد نشد',
         description: getActionErrorMessage(
           rejectError,
-          'فعلاً امکان رد این دعوت وجود ندارد. صفحه را بروزرسانی کن و دوباره تلاش کن.',
+          'فعلاً نمی‌توانیم این دعوت را رد کنیم. صفحه را تازه کن و دوباره امتحان کن.',
         ),
       });
     } finally {
@@ -1244,16 +1244,16 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
         title: action === 'confirm' ? 'دریافت پول تأیید شد' : 'پرداخت رد شد',
         description:
           action === 'confirm'
-            ? 'تسویه برای پرداخت‌کننده ثبت شد.'
-            : 'این مورد از لیست تأیید شما خارج شد و برای پرداخت‌کننده تسویه ثبت نشد.',
+            ? 'پرداخت برای طرف مقابل ثبت شد و این مورد از لیست کارهایت برداشته شد.'
+            : 'این مورد از لیست کارهایت برداشته شد و بدهی طرف مقابل تسویه نشد.',
       });
     } catch (settlementActionError) {
       notify({
         type: 'error',
-        title: action === 'confirm' ? 'تأیید دریافت انجام نشد' : 'رد پرداخت انجام نشد',
+        title: action === 'confirm' ? 'دریافت پول تأیید نشد' : 'پرداخت رد نشد',
         description: getActionErrorMessage(
           settlementActionError,
-          'فعلاً امکان ثبت این وضعیت وجود ندارد. صفحه را بروزرسانی کن و دوباره تلاش کن.',
+          'فعلاً نمی‌توانیم وضعیت این پرداخت را ثبت کنیم. صفحه را تازه کن و دوباره امتحان کن.',
         ),
       });
     } finally {
@@ -1265,8 +1265,8 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     if (!emailTestForm.email.trim()) {
       notify({
         type: 'error',
-        title: 'ایمیل وارد نشده',
-        description: 'برای ارسال تست، ایمیل گیرنده را وارد کن.',
+        title: 'ایمیل گیرنده را وارد کن',
+        description: 'برای ارسال پیام تستی، ایمیل گیرنده را وارد کن.',
       });
       return;
     }
@@ -1274,8 +1274,8 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
     if (!emailTestForm.message.trim()) {
       notify({
         type: 'error',
-        title: 'متن ایمیل خالی است',
-        description: 'متن کوتاهی برای ایمیل تستی بنویس.',
+        title: 'متن پیام را بنویس',
+        description: 'یک متن کوتاه برای پیام تستی بنویس.',
       });
       return;
     }
@@ -1300,16 +1300,16 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
 
       notify({
         type: 'success',
-        title: 'ایمیل تستی ارسال شد',
-        description: 'اگر سرویس ایمیل فعال باشد، پیام تست برای این آدرس ارسال می‌شود.',
+        title: 'پیام تستی ارسال شد',
+        description: 'اگر سرویس ایمیل فعال باشد، پیام تست به این آدرس می‌رسد.',
       });
     } catch (emailError) {
       notify({
         type: 'error',
-        title: 'ارسال ایمیل انجام نشد',
+        title: 'پیام تستی ارسال نشد',
         description: getActionErrorMessage(
           emailError,
-          'ارسال ایمیل تستی انجام نشد. کمی بعد دوباره تلاش کن.',
+          'پیام تستی ارسال نشد. ایمیل را بررسی کن و دوباره امتحان کن.',
         ),
       });
     } finally {
@@ -1323,8 +1323,8 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
   }, []);
 
   return (
-    <main className="px-4 py-6 sm:px-6 xl:px-8">
-      <div className="mx-auto max-w-[1320px] space-y-6">
+    <main className="app-page">
+      <div className="app-container app-container-wide space-y-6">
         <section className="overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(135deg,rgba(15,23,42,0.02),rgba(16,185,129,0.08))] p-6 shadow-soft dark:bg-[linear-gradient(135deg,rgba(255,255,255,0.03),rgba(16,185,129,0.08))]">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div className="text-right">
@@ -1341,7 +1341,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="app-stat-grid">
               <SummaryCard
                 title="همه اعلان‌ها"
                 value={totalNotificationsCount.toLocaleString('fa-IR')}
@@ -1361,7 +1361,7 @@ export function NotificationsPage({ onUnreadCountChange }: NotificationsPageProp
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.95fr)]">
+        <section className="app-grid app-notifications-grid">
           <div className="space-y-6">
             <div className="rounded-[28px] border border-border bg-white p-5 shadow-soft dark:bg-white/[0.03]">
               <div className="flex flex-col gap-4">

@@ -243,12 +243,12 @@ export function humanizeMachineLabel(value?: string | null, fallback = 'نامش
 export function getFriendlyApiErrorMessage(
   error: unknown,
   {
-    defaultMessage = 'عملیات انجام نشد. لطفاً دوباره تلاش کنید.',
-    invalidMessage = 'اطلاعات واردشده کامل یا درست نیست.',
-    authMessage = 'برای ادامه دوباره وارد حساب خود شوید.',
-    forbiddenMessage = 'اجازه انجام این کار را ندارید.',
-    notFoundMessage = 'اطلاعات موردنظر پیدا نشد.',
-    unavailableMessage = 'فعلاً انجام این کار ممکن نیست. کمی بعد دوباره تلاش کنید.',
+    defaultMessage = 'فعلاً این کار انجام نشد. چند لحظه بعد دوباره امتحان کن.',
+    invalidMessage = 'اطلاعاتی که وارد کردی کامل یا درست نیست. بخش‌های مشخص‌شده را بررسی کن.',
+    authMessage = 'نشستت تمام شده؛ برای ادامه دوباره وارد حساب شو.',
+    forbiddenMessage = 'برای انجام این کار دسترسی لازم را نداری.',
+    notFoundMessage = 'این مورد پیدا نشد یا دیگر در دسترس نیست.',
+    unavailableMessage = 'فعلاً ارتباط با سرویس برقرار نیست. چند لحظه بعد دوباره امتحان کن.',
     codeMap = {},
   }: FriendlyErrorOptions = {},
 ) {
@@ -523,10 +523,10 @@ function inferFriendlyBody(item: NotificationLike, context: Record<string, unkno
   }
 
   if ((item.status || '').toUpperCase() === 'FAILED') {
-    return 'این پیام هنوز به مقصد نرسیده است. کمی بعد دوباره بررسی کن.';
+    return 'این پیام هنوز به گیرنده نرسیده است. کمی بعد دوباره وضعیتش را بررسی کن.';
   }
 
-  return 'جزئیات پیام در دسترس نیست.';
+  return 'جزئیات این پیام فعلاً در دسترس نیست.';
 }
 
 export function getFriendlyNotificationTitle(item: NotificationLike) {

@@ -1058,7 +1058,7 @@ export function DashboardPage({
       return;
     }
 
-    const confirmed = window.confirm(`آیا دریافت مبلغ ${formatMoney(item.amount)} از گروه «${item.groupName}» را ثبت می‌کنید؟`);
+    const confirmed = window.confirm(`مبلغ ${formatMoney(item.amount)} از گروه «${item.groupName}» را دریافت کرده‌ای؟ با تأیید تو، پرداخت برای طرف مقابل ثبت می‌شود.`);
     if (!confirmed) return;
 
     try {
@@ -1066,10 +1066,10 @@ export function DashboardPage({
       setTaskNotice(null);
       await confirmPlanItem(item.itemId);
       setSettlementSuggestions((previous) => previous.filter((suggestion) => suggestion.id !== item.id));
-      setTaskNotice({ tone: 'success', message: 'دریافت پول ثبت شد.' });
+      setTaskNotice({ tone: 'success', message: 'دریافت پول تأیید شد. این پرداخت برای طرف مقابل هم ثبت شد.' });
     } catch (error) {
       console.error(error);
-      setTaskNotice({ tone: 'error', message: 'دریافت پول ثبت نشد. وضعیت آن را در جزئیات گروه بررسی کنید.' });
+      setTaskNotice({ tone: 'error', message: 'تأیید دریافت پول ثبت نشد. از صفحه جزئیات گروه دوباره امتحان کن.' });
     } finally {
       setBusyTaskId(null);
     }
@@ -1081,7 +1081,7 @@ export function DashboardPage({
       return;
     }
 
-    const confirmed = window.confirm(`آیا مطمئنید مبلغ ${formatMoney(item.amount)} از گروه «${item.groupName}» را دریافت نکرده‌اید؟`);
+    const confirmed = window.confirm(`مبلغ ${formatMoney(item.amount)} از گروه «${item.groupName}» را دریافت نکرده‌ای؟ با رد کردن، پرداخت برای طرف مقابل ثبت نمی‌شود.`);
     if (!confirmed) return;
 
     try {
@@ -1089,10 +1089,10 @@ export function DashboardPage({
       setTaskNotice(null);
       await rejectPlanItem(item.itemId);
       setSettlementSuggestions((previous) => previous.filter((suggestion) => suggestion.id !== item.id));
-      setTaskNotice({ tone: 'success', message: 'پرداخت رد شد و برای پرداخت‌کننده تسویه ثبت نشد.' });
+      setTaskNotice({ tone: 'success', message: 'پرداخت رد شد. تا وقتی دوباره ثبت نشود، بدهی طرف مقابل تسویه نمی‌شود.' });
     } catch (error) {
       console.error(error);
-      setTaskNotice({ tone: 'error', message: 'رد پرداخت ثبت نشد. وضعیت آن را در جزئیات گروه بررسی کنید.' });
+      setTaskNotice({ tone: 'error', message: 'رد پرداخت ثبت نشد. از صفحه جزئیات گروه دوباره امتحان کن.' });
     } finally {
       setBusyTaskId(null);
     }
@@ -1136,9 +1136,9 @@ export function DashboardPage({
   }
 
   return (
-    <main dir="rtl" className="px-6 py-5 text-right sm:px-8 sm:py-7 lg:px-10 xl:px-14 2xl:px-16">
-      <div className="mx-auto max-w-[1160px] space-y-4 sm:space-y-5">
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-stretch">
+    <main dir="rtl" className="app-page text-right">
+      <div className="app-container app-container-dashboard space-y-5 sm:space-y-6">
+        <section className="app-grid app-dashboard-top-grid">
           <BalanceHero
             creditMinor={totals.creditMinor}
             debtMinor={totals.debtMinor}
@@ -1147,7 +1147,7 @@ export function DashboardPage({
             onOpenWallet={onOpenWallet}
           />
 
-          <section className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <section className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
             <QuickActionCard
               icon={WalletCards}
               title="ثبت هزینه جدید"
@@ -1169,7 +1169,7 @@ export function DashboardPage({
           </section>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]">
+        <section className="app-grid app-dashboard-content-grid">
           <SectionCard variant="quiet" className="p-4 sm:p-5">
             <SectionHeader
               title="کارهایی که باید انجام دهید"

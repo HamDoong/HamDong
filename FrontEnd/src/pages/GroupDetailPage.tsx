@@ -36,6 +36,15 @@ import {
 } from 'lucide-react';
 import { InlineLoader, useFeedback } from '../components/feedback/FeedbackProvider';
 import { isApiError } from '../lib/api';
+import {
+  createIdempotencyKey,
+  createPaymentIntent,
+  getMyWallet,
+  paySettlementItemWithWallet,
+  savePendingWalletPayment,
+  verifyPaymentIntent,
+  type PaymentProvider,
+} from '../lib/walletApi';
 import type { DashboardActivityItem } from '../lib/dashboardApi';
 import { downloadMediaFile, listMyVisibleReceipts, uploadReceipt, type ReceiptListItem } from '../lib/mediaApi';
 import { getFriendlyApiErrorMessage, humanizeMachineLabel } from '../lib/userMessages';
@@ -174,7 +183,7 @@ function toPersianDate(value?: string) {
 
 function getBackendMessage(error: unknown) {
   return getFriendlyApiErrorMessage(error, {
-    defaultMessage: 'عملیات انجام نشد. لطفاً دوباره تلاش کن.',
+    defaultMessage: 'فعلاً این کار انجام نشد. چند لحظه بعد دوباره امتحان کن.',
     invalidMessage: 'اطلاعات واردشده کامل یا درست نیست.',
   });
 }
@@ -691,7 +700,7 @@ function getSettlementErrorDescription(error: unknown) {
   }
 
   if (normalized.includes('404') || normalized.includes('not found')) {
-    return 'این پرداخت یا گروه پیدا نشد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
+    return 'این پرداخت یا گروه پیدا نشد. صفحه را تازه کن و دوباره امتحان کن.';
   }
 
   if (normalized.includes('amount') || normalized.includes('مبلغ')) {
@@ -702,7 +711,7 @@ function getSettlementErrorDescription(error: unknown) {
     return 'دریافت‌کننده معتبر نیست. یکی از اعضای گروه را انتخاب کن.';
   }
 
-  return message || 'اتصال یا اطلاعات پرداخت مشکل دارد. صفحه را بروزرسانی کن و دوباره تلاش کن.';
+  return message || 'اطلاعات پرداخت کامل نیست یا ارتباط قطع شده است. صفحه را تازه کن و دوباره امتحان کن.';
 }
 
 type VisualTone = 'positive' | 'negative' | 'warning' | 'sky' | 'slate' | 'neutral';
@@ -1278,6 +1287,11 @@ export function GroupDetailPage({
   const [saving, setSaving] = useState(false);
   const [expenseSaving, setExpenseSaving] = useState(false);
   const [settlementSaving, setSettlementSaving] = useState(false);
+  const [walletAvailableMinor, setWalletAvailableMinor] = useState(0);
+  const [walletPaymentItemId, setWalletPaymentItemId] = useState<string | null>(null);
+  const [walletTopUpItem, setWalletTopUpItem] = useState<SettlementPlanItem | null>(null);
+  const [walletTopUpProvider, setWalletTopUpProvider] = useState<PaymentProvider>('FAKE');
+  const [walletTopUpLoading, setWalletTopUpLoading] = useState(false);
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [reminderRunning, setReminderRunning] = useState(false);
@@ -1518,7 +1532,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'دریافت گروه ناموفق بود',
+        title: 'اطلاعات گروه نمایش داده نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -1562,7 +1576,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'دریافت اعضا ناموفق بود',
+        title: 'اعضای گروه نمایش داده نشدند',
         description: getBackendMessage(err),
       });
     } finally {
@@ -1600,7 +1614,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'دریافت هزینه‌ها ناموفق بود',
+        title: 'هزینه‌های گروه نمایش داده نشدند',
         description: getBackendMessage(err),
       });
     } finally {
@@ -1663,17 +1677,28 @@ export function GroupDetailPage({
     }
   }
 
+  async function loadWalletBalance() {
+    try {
+      const wallet = await getMyWallet();
+      setWalletAvailableMinor(wallet.available_balance_minor || 0);
+    } catch (err) {
+      console.warn('Wallet balance unavailable.', err);
+      setWalletAvailableMinor(0);
+    }
+  }
+
   async function loadSettlementData() {
     try {
       setSettlementLoading(true);
       setSettlementDataError(null);
 
-      const [balancesResult, myBalanceResult, debtsResult, planResult, settlementsResult] = await Promise.allSettled([
+      const [balancesResult, myBalanceResult, debtsResult, planResult, settlementsResult, walletResult] = await Promise.allSettled([
         getGroupBalances(groupId),
         getMyGroupBalance(groupId),
         getGroupDebts(groupId),
         getSettlementPlan(groupId),
         listGroupSettlements(groupId),
+        getMyWallet(),
       ]);
 
       setBalances(balancesResult.status === 'fulfilled' ? balancesResult.value.balances || [] : []);
@@ -1681,6 +1706,7 @@ export function GroupDetailPage({
       setDebts(debtsResult.status === 'fulfilled' ? debtsResult.value.debts || [] : []);
       setSettlementPlan(planResult.status === 'fulfilled' ? planResult.value : null);
       setSettlements(settlementsResult.status === 'fulfilled' ? settlementsResult.value || [] : []);
+      setWalletAvailableMinor(walletResult.status === 'fulfilled' ? walletResult.value.available_balance_minor || 0 : 0);
 
       const failedRequiredRequests = [balancesResult, myBalanceResult, debtsResult, settlementsResult]
         .filter((result) => result.status === 'rejected');
@@ -1689,18 +1715,18 @@ export function GroupDetailPage({
         failedRequiredRequests.forEach((result) => {
           if (result.status === 'rejected') console.warn('Group settlement request failed.', result.reason);
         });
-        setSettlementDataError('بخشی از اطلاعات تسویه دریافت نشد. دوباره تلاش کنید.');
+        setSettlementDataError('فعلاً بخشی از اطلاعات تسویه نمایش داده نمی‌شود. چند لحظه بعد دوباره امتحان کن.');
       }
 
       if (planResult.status === 'rejected' && !(isApiError(planResult.reason) && planResult.reason.status === 404)) {
         console.warn('Settlement plan request failed.', planResult.reason);
-        setSettlementDataError('برنامه تسویه دریافت نشد. دوباره محاسبه کنید.');
+        setSettlementDataError('پیشنهاد تسویه آماده نیست. برای ساخت پیشنهاد جدید، دوباره محاسبه کن.');
       }
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'دریافت تسویه‌ها ناموفق بود',
+        title: 'اطلاعات تسویه نمایش داده نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -1718,7 +1744,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'تنظیمات یادآوری دریافت نشد',
+        title: 'تنظیمات یادآوری نمایش داده نشد',
         description: getBackendMessage(err),
       });
       return null;
@@ -1736,8 +1762,8 @@ export function GroupDetailPage({
     if (nextSettings.is_enabled && !nextSettings.send_email && !nextSettings.send_in_app) {
       notify({
         type: 'error',
-        title: 'روش ارسال مشخص نیست',
-        description: 'حداقل ایمیل یا اعلان داخل برنامه را فعال کنید.',
+        title: 'روش ارسال یادآوری را انتخاب کن',
+        description: 'برای ارسال یادآوری، حداقل ایمیل یا اعلان داخل برنامه را فعال کن.',
       });
       return false;
     }
@@ -1756,8 +1782,8 @@ export function GroupDetailPage({
       if (showNotification) {
         notify({
           type: 'success',
-          title: 'تنظیمات یادآوری ذخیره شد',
-          description: 'یادآوری‌ها طبق برنامه برای بدهی‌های باز همین گروه بررسی می‌شوند.',
+          title: 'تنظیمات یادآوری تغییرات ذخیره شد',
+          description: 'از این به بعد یادآوری‌های همین گروه طبق برنامه‌ای که انتخاب کردی ارسال می‌شوند.',
         });
       }
       return true;
@@ -1790,13 +1816,13 @@ export function GroupDetailPage({
         title: 'یادآوری ایمیلی فعال شد',
         description: result.eligible_count > 0
           ? `${toPersianNumber(result.eligible_count)} بدهی همین حالا آماده یادآوری است؛ بقیه نیز طبق زمان انتخاب‌شده بررسی می‌شوند.`
-          : 'بک‌اند از این پس بدهی‌های باز را طبق زمان انتخاب‌شده بررسی می‌کند.',
+          : 'از این پس بدهی‌های باز طبق زمان انتخاب‌شده بررسی می‌شوند.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'ارسال یادآوری انجام نشد',
+        title: 'یادآوری ارسال نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -1846,7 +1872,7 @@ export function GroupDetailPage({
       } catch (error) {
         if (!ignore) {
           setDirectInviteResults([]);
-          setDirectInviteError('جستجوی کاربر انجام نشد. دوباره تلاش کن.');
+          setDirectInviteError('فعلاً نمی‌توانیم این کاربر را پیدا کنیم. نام کاربری را بررسی کن و دوباره امتحان کن.');
         }
         console.warn('Could not search users for direct group invite.', error);
       } finally {
@@ -1937,8 +1963,8 @@ export function GroupDetailPage({
       if (showNotification) {
         notify({
           type: 'success',
-          title: 'تسویه هوشمند بروزرسانی شد',
-          description: 'کمترین پرداخت‌های لازم دوباره حساب شد و پیشنهادهای جدید نمایش داده شد.',
+          title: 'پیشنهاد تسویه به‌روز شد',
+          description: 'همدنگ دوباره حساب کرد چه کسی باید به چه کسی پرداخت کند.',
         });
       }
       return resolvedPlan;
@@ -1991,15 +2017,15 @@ export function GroupDetailPage({
         title: sentCount > 0 ? 'ایمیل فوری یادآوری ارسال شد' : 'ایمیل فوری ارسال نشد',
         description: sentCount > 0
           ? `برای ${toPersianNumber(sentCount)} نفر از بدهکاران این هزینه، ایمیل یادآوری در صف ارسال قرار گرفت.`
-          : 'ارسال ایمیل برای بدهی‌های ایجادشده ناموفق بود. می‌توانید از جزئیات بدهی دوباره یادآوری بفرستید.',
+          : 'هزینه ثبت شد، اما ایمیل یادآوری ارسال نشد. بعداً می‌توانی از جزئیات بدهی دوباره یادآوری بفرستی.',
       });
       return;
     }
 
     notify({
       type: 'info',
-      title: 'بدهی قابل یادآوری ایجاد نشد',
-      description: 'برای افراد انتخاب‌شده بدهی بازی ساخته نشد؛ بنابراین ایمیلی ارسال نشد.',
+      title: 'بدهی قابل یادآوری پیدا نشد',
+      description: 'برای افراد انتخاب‌شده بدهی بازی وجود ندارد، پس یادآوری ارسال نشد.',
     });
   }
 
@@ -2012,8 +2038,8 @@ export function GroupDetailPage({
     await loadSettlementData();
     notify({
       type: 'success',
-      title: 'پیشنهاد تسویه محاسبه شد',
-      description: 'کمترین پرداخت لازم از روی خالص حساب اعضای همین گروه محاسبه شد.',
+      title: 'پیشنهاد تسویه آماده شد',
+      description: 'همدنگ ساده‌ترین مسیر پرداخت بین اعضای این گروه را محاسبه کرد.',
     });
   }
 
@@ -2062,8 +2088,8 @@ export function GroupDetailPage({
     if (!title.trim()) {
       notify({
         type: 'error',
-        title: 'عنوان لازم است',
-        description: 'برای گروه یک عنوان وارد کن.',
+        title: 'عنوان گروه را وارد کن',
+        description: 'برای اینکه گروه در لیستت مشخص باشد، یک عنوان بنویس.',
       });
       return;
     }
@@ -2083,14 +2109,14 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'ذخیره شد',
-        description: 'اطلاعات گروه بروزرسانی شد.',
+        title: 'تغییرات ذخیره شد',
+        description: 'اطلاعات گروه به‌روز شد.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'ذخیره ناموفق بود',
+        title: 'تغییرات ذخیره نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2100,8 +2126,8 @@ export function GroupDetailPage({
 
   async function handleArchive() {
     const confirmed = await confirm({
-      title: 'آرشیو گروه؟',
-      description: 'گروه از لیست فعال‌ها خارج می‌شود.',
+      title: 'این گروه آرشیو شود؟',
+      description: 'گروه از لیست فعال‌ها خارج می‌شود، اما اطلاعاتش حذف نمی‌شود.',
       confirmText: 'آرشیو کن',
       cancelText: 'انصراف',
       tone: 'warning',
@@ -2120,13 +2146,13 @@ export function GroupDetailPage({
       notify({
         type: 'success',
         title: 'گروه آرشیو شد',
-        description: 'گروه دیگر در لیست فعال‌ها نیست.',
+        description: 'این گروه دیگر در لیست گروه‌های فعال نمایش داده نمی‌شود.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'آرشیو ناموفق بود',
+        title: 'گروه آرشیو نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2136,8 +2162,8 @@ export function GroupDetailPage({
 
   async function handleRestore() {
     const confirmed = await confirm({
-      title: 'فعال‌سازی گروه؟',
-      description: 'گروه دوباره به لیست فعال‌ها برمی‌گردد.',
+      title: 'این گروه دوباره فعال شود؟',
+      description: 'بعد از فعال‌سازی، دوباره می‌توانی برای این گروه هزینه و تسویه ثبت کنی.',
       confirmText: 'فعال کن',
       cancelText: 'انصراف',
       tone: 'success',
@@ -2154,14 +2180,14 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'گروه فعال شد',
-        description: 'گروه دوباره قابل استفاده است.',
+        title: 'گروه دوباره فعال شد',
+        description: 'حالا می‌توانی دوباره از این گروه استفاده کنی.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'فعال‌سازی ناموفق بود',
+        title: 'گروه فعال نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2173,15 +2199,15 @@ export function GroupDetailPage({
     if (isOwner) {
       notify({
         type: 'info',
-        title: 'مالک نمی‌تواند خارج شود',
-        description: 'مالکیت را منتقل کن یا گروه را آرشیو کن.',
+        title: 'مالک گروه نمی‌تواند خارج شود',
+        description: 'اول مالکیت را به شخص دیگری بده یا گروه را آرشیو کن.',
       });
       return;
     }
 
     const confirmed = await confirm({
-      title: 'خروج از گروه؟',
-      description: 'این گروه از لیست تو حذف می‌شود.',
+      title: 'از این گروه خارج می‌شوی؟',
+      description: 'بعد از خروج، دیگر به هزینه‌ها و تسویه‌های این گروه دسترسی نداری.',
       confirmText: 'خارج شو',
       cancelText: 'انصراف',
       tone: 'danger',
@@ -2195,8 +2221,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'خارج شدی',
-        description: 'گروه از لیست تو حذف شد.',
+        title: 'از گروه خارج شدی',
+        description: 'این گروه دیگر در لیست گروه‌هایت نمایش داده نمی‌شود.',
       });
 
       onGroupRemoved(groupId);
@@ -2204,7 +2230,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'خروج ناموفق بود',
+        title: 'از گروه خارج نشدی',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2218,14 +2244,14 @@ export function GroupDetailPage({
     if (!memberId) {
       notify({
         type: 'error',
-        title: 'حذف عضو انجام نشد',
-        description: 'اطلاعات عضو کامل نیست.',
+        title: 'عضو حذف نشد',
+        description: 'اطلاعات این عضو کامل نیست. صفحه را تازه کن و دوباره امتحان کن.',
       });
       return;
     }
 
     const confirmed = await confirm({
-      title: 'حذف عضو؟',
+      title: 'این عضو حذف شود؟',
       description: `${getMemberName(member)} از گروه حذف شود؟`,
       confirmText: 'حذف کن',
       cancelText: 'انصراف',
@@ -2240,14 +2266,14 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'عضو حذف شد',
-        description: 'لیست اعضا بروزرسانی شد.',
+        title: 'عضو از گروه حذف شد',
+        description: 'لیست اعضای گروه به‌روز شد.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'حذف عضو ناموفق بود',
+        title: 'عضو حذف نشد',
         description: getBackendMessage(err),
       });
     }
@@ -2274,8 +2300,8 @@ export function GroupDetailPage({
     if (isArchived) {
       notify({
         type: 'error',
-        title: 'گروه آرشیو شده',
-        description: 'برای ثبت هزینه، اول گروه را فعال کن.',
+        title: 'این گروه آرشیو شده است',
+        description: 'برای ثبت هزینه جدید، اول گروه را دوباره فعال کن.',
       });
       return;
     }
@@ -2283,8 +2309,8 @@ export function GroupDetailPage({
     if (!expenseTitle.trim()) {
       notify({
         type: 'error',
-        title: 'عنوان هزینه لازم است',
-        description: 'مثلاً شام، تاکسی یا خرید.',
+        title: 'عنوان هزینه را وارد کن',
+        description: 'مثلاً بنویس شام، تاکسی یا خرید سوپرمارکت.',
       });
       return;
     }
@@ -2292,8 +2318,8 @@ export function GroupDetailPage({
     if (!baseAmountMinor || baseAmountMinor <= 0) {
       notify({
         type: 'error',
-        title: 'مبلغ درست نیست',
-        description: 'مبلغ هزینه را وارد کن.',
+        title: 'مبلغ را اصلاح کن',
+        description: 'مبلغ هزینه را وارد کن تا سهم هر نفر محاسبه شود.',
       });
       return;
     }
@@ -2301,8 +2327,8 @@ export function GroupDetailPage({
     if (!expensePayerId) {
       notify({
         type: 'error',
-        title: 'پرداخت‌کننده مشخص نیست',
-        description: 'یک نفر را به عنوان پرداخت‌کننده انتخاب کن.',
+        title: 'پرداخت‌کننده را انتخاب کن',
+        description: 'مشخص کن چه کسی این هزینه را پرداخت کرده است.',
       });
       return;
     }
@@ -2310,8 +2336,8 @@ export function GroupDetailPage({
     if (expenseParticipantIds.length === 0) {
       notify({
         type: 'error',
-        title: 'اعضا مشخص نیستند',
-        description: 'حداقل یک عضو را انتخاب کن.',
+        title: 'شرکت‌کننده‌ها را انتخاب کن',
+        description: 'حداقل یک نفر را انتخاب کن تا سهم هزینه برای او حساب شود.',
       });
       return;
     }
@@ -2327,8 +2353,8 @@ export function GroupDetailPage({
       if (hasInvalidShare) {
         notify({
           type: 'error',
-          title: 'سهم‌ها کامل نیستند',
-          description: 'برای همه اعضای انتخاب‌شده سهم وارد کن.',
+          title: 'سهم همه اعضا را وارد کن',
+          description: 'برای هر عضو انتخاب‌شده، سهمش از این هزینه را وارد کن.',
         });
         return;
       }
@@ -2336,7 +2362,7 @@ export function GroupDetailPage({
       if (customSharesTotalMinor !== baseAmountMinor) {
         notify({
           type: 'error',
-          title: 'جمع سهم‌ها درست نیست',
+          title: 'جمع سهم‌ها با مبلغ هزینه یکی نیست',
           description: `جمع سهم‌ها باید ${formatMoney(baseAmountMinor)} باشد.`,
         });
         return;
@@ -2412,7 +2438,7 @@ export function GroupDetailPage({
           console.error(reminderError);
           notify({
             type: 'info',
-            title: 'هزینه ثبت شد؛ یادآوری ذخیره نشد',
+            title: 'هزینه ثبت شد، اما یادآوری ذخیره نشد',
             description: getBackendMessage(reminderError),
           });
         }
@@ -2443,7 +2469,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'ثبت هزینه ناموفق بود',
+        title: 'هزینه ثبت نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2460,8 +2486,8 @@ export function GroupDetailPage({
     if (!source) {
       notify({
         type: 'info',
-        title: 'رسیدی ثبت نشده',
-        description: 'برای این هزینه هنوز فایل یا لینک رسید وجود ندارد.',
+        title: 'برای این هزینه رسیدی ثبت نشده است',
+        description: 'اگر رسید داری، آن را هنگام ثبت هزینه یا ویرایش هزینه اضافه کن.',
       });
       return;
     }
@@ -2548,7 +2574,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'دانلود فاکتور انجام نشد',
+        title: 'رسید دانلود نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2573,7 +2599,7 @@ export function GroupDetailPage({
       console.error(err);
       notify({
         type: 'error',
-        title: 'دانلود فاکتور انجام نشد',
+        title: 'رسید دانلود نشد',
         description: getBackendMessage(err),
       });
     } finally {
@@ -2595,17 +2621,17 @@ export function GroupDetailPage({
     if (hasPendingPayment) {
       notify({
         type: 'info',
-        title: 'پرداخت قبلی منتظر تأیید است',
-        description: 'بعد از تأیید دریافت‌کننده می‌توانید پرداخت دیگری برای این شخص ثبت کنید.',
+        title: 'پرداخت قبلی هنوز در انتظار تأیید است',
+        description: 'بعد از تأیید دریافت‌کننده، می‌توانی پرداخت جدیدی برای این بدهی ثبت کنی.',
       });
       return;
     }
 
     const expense = debt.source_expense_id ? expenseById.get(debt.source_expense_id) : undefined;
     const confirmed = await confirm({
-      title: 'ثبت پرداخت این بدهی؟',
+      title: 'این پرداخت دستی ثبت شود؟',
       description: `${formatMoney(debt.amount_minor)} به ${getDebtPartyName(receiverUserId, members)} پرداخت شود؟`,
-      confirmText: 'ثبت پرداخت',
+      confirmText: 'ثبت پرداخت دستی',
       cancelText: 'انصراف',
     });
 
@@ -2624,8 +2650,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'پرداخت ثبت شد',
-        description: 'بعد از تأیید دریافت‌کننده، این مبلغ از بدهی باز شما کم می‌شود.',
+        title: 'پرداخت دستی ثبت شد',
+        description: 'وقتی دریافت‌کننده پول را تأیید کند، این مبلغ از بدهی تو کم می‌شود.',
       });
     } catch (err) {
       console.error(err);
@@ -2656,8 +2682,8 @@ export function GroupDetailPage({
     if (isArchived) {
       notify({
         type: 'error',
-        title: 'گروه آرشیو شده',
-        description: 'برای ثبت پرداخت، اول گروه را فعال کن.',
+        title: 'این گروه آرشیو شده است',
+        description: 'برای ثبت پرداخت، اول این گروه را دوباره فعال کن.',
       });
       return;
     }
@@ -2665,7 +2691,7 @@ export function GroupDetailPage({
     if (!currentUserId) {
       notify({
         type: 'error',
-        title: 'کاربر مشخص نیست',
+        title: 'حساب کاربری مشخص نیست',
         description: 'یک بار از حساب خارج شو و دوباره وارد شو تا پرداخت به نام خودت ثبت شود.',
       });
       return;
@@ -2674,8 +2700,8 @@ export function GroupDetailPage({
     if (!targetReceiverId) {
       notify({
         type: 'error',
-        title: 'دریافت‌کننده مشخص نیست',
-        description: 'یک پرداخت یا یک عضو را انتخاب کن.',
+        title: 'دریافت‌کننده را انتخاب کن',
+        description: 'مشخص کن این مبلغ را به چه کسی پرداخت کرده‌ای.',
       });
       return;
     }
@@ -2683,8 +2709,8 @@ export function GroupDetailPage({
     if (!targetAmountMinor || targetAmountMinor <= 0) {
       notify({
         type: 'error',
-        title: 'مبلغ درست نیست',
-        description: 'مبلغ پرداخت را وارد کن.',
+        title: 'مبلغ را اصلاح کن',
+        description: 'مبلغی را که پرداخت کرده‌ای وارد کن.',
       });
       return;
     }
@@ -2692,7 +2718,7 @@ export function GroupDetailPage({
     if (selectedItem && targetAmountMinor > selectedItem.amount_minor) {
       notify({
         type: 'error',
-        title: 'مبلغ زیاد است',
+        title: 'مبلغ واردشده بیشتر از بدهی است',
         description: `حداکثر مبلغ این پرداخت ${formatMoney(selectedItem.amount_minor)} است.`,
       });
       return;
@@ -2701,7 +2727,7 @@ export function GroupDetailPage({
     if (!selectedItem && targetSuggestion && targetAmountMinor > targetSuggestion.amount_minor) {
       notify({
         type: 'info',
-        title: 'مبلغ بیشتر از پیشنهاد تسویه است',
+        title: 'مبلغ از پیشنهاد تسویه بیشتر است',
         description: `برای این عضو، مبلغ پیشنهادی ${formatMoney(targetSuggestion.amount_minor)} است. مبلغ را اصلاح کن یا از دکمه پیشنهاد استفاده کن.`,
       });
       return;
@@ -2737,7 +2763,7 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: isSelectedFullPayment ? 'پرداخت گزارش شد' : 'پرداخت ثبت شد',
+        title: isSelectedFullPayment ? 'پرداخت گزارش شد' : 'پرداخت دستی ثبت شد',
         description: isSelectedFullPayment
           ? 'در انتظار تأیید دریافت‌کننده است.'
           : 'بعد از تأیید دریافت‌کننده، مبلغ از بدهی باقی‌مانده کم می‌شود.',
@@ -2771,8 +2797,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'تسویه بروزرسانی شد',
-        description: 'وضعیت پرداخت تغییر کرد.',
+        title: 'وضعیت تسویه به‌روز شد',
+        description: 'وضعیت پرداخت در این گروه به‌روز شد.',
       });
     } catch (err) {
       console.error(err);
@@ -2783,6 +2809,160 @@ export function GroupDetailPage({
       });
     } finally {
       setSettlementSaving(false);
+    }
+  }
+
+  function isInsufficientWalletBalanceError(err: unknown) {
+    const message = getBackendMessage(err).toLowerCase();
+    const body = isApiError(err) && typeof err.body === 'object' && err.body ? err.body as Record<string, unknown> : null;
+    const errorObject = body && typeof body.error === 'object' && body.error ? body.error as Record<string, unknown> : null;
+    const code = String(errorObject?.code || '').toUpperCase();
+
+    return code.includes('INSUFFICIENT') || message.includes('insufficient') || message.includes('موجودی');
+  }
+
+  async function handleWalletSettlementPayment(item: SettlementPlanItem) {
+    if (!canReportPlanItem(item, settlementPlan)) return;
+
+    const confirmed = await confirm({
+      title: 'پرداخت از کیف پول انجام شود؟',
+      description: `${formatMoney(item.amount_minor)} از کیف پول شما به ${getPlanPartyName(item, 'receiver', members)} پرداخت می‌شود.`,
+      confirmText: walletAvailableMinor >= item.amount_minor ? 'پرداخت از کیف پول' : 'ادامه و شارژ کیف پول',
+      cancelText: 'انصراف',
+    });
+
+    if (!confirmed) return;
+
+    if (walletAvailableMinor < item.amount_minor) {
+      setWalletTopUpItem(item);
+      return;
+    }
+
+    try {
+      setWalletPaymentItemId(item.id);
+      await paySettlementItemWithWallet(item.id, createIdempotencyKey('wallet-settlement'));
+      await loadSettlementData();
+      refreshActivitiesAfterMutation();
+      void refreshSmartSettlement(false);
+
+      notify({
+        type: 'success',
+        title: 'پرداخت از کیف پول انجام شد',
+        description: 'مبلغ از کیف پول تو کم شد و به کیف پول دریافت‌کننده اضافه شد.',
+      });
+    } catch (err) {
+      console.error(err);
+
+      if (isInsufficientWalletBalanceError(err)) {
+        setWalletTopUpItem(item);
+        return;
+      }
+
+      notify({
+        type: 'error',
+        title: 'پرداخت از کیف پول انجام نشد',
+        description: getBackendMessage(err),
+      });
+    } finally {
+      setWalletPaymentItemId(null);
+    }
+  }
+
+  function findWalletPlanItemForDebt(debt: DebtItem, plan: SettlementPlan | null = settlementPlan) {
+    if (!currentUserId || debt.debtor_user_id !== currentUserId) return null;
+
+    const payableItems = (plan?.items || []).filter(
+      (item) =>
+        item.payer_user_id === currentUserId &&
+        item.receiver_user_id === debt.creditor_user_id &&
+        canReportPlanItem(item, plan),
+    );
+
+    return payableItems.find((item) => item.amount_minor === debt.amount_minor) || null;
+  }
+
+  async function handleWalletDetailedDebtPayment(debt: DebtItem) {
+    if (!currentUserId || debt.debtor_user_id !== currentUserId) return;
+
+    let payableItem = findWalletPlanItemForDebt(debt);
+
+    if (!payableItem) {
+      const refreshedPlan = await refreshSmartSettlement(false);
+      payableItem = findWalletPlanItemForDebt(debt, refreshedPlan);
+    }
+
+    if (!payableItem) {
+      notify({
+        type: 'info',
+        title: 'این بدهی از اینجا با کیف پول پرداخت نمی‌شود',
+        description: 'برای پرداخت این مورد با کیف پول، از تب «پیشنهاد تسویه» استفاده کن. اگر نمی‌خواهی از کیف پول پرداخت کنی، ثبت پرداخت دستی را بزن.',
+      });
+      return;
+    }
+
+    await handleWalletSettlementPayment(payableItem);
+  }
+
+  async function handleTopUpAndPaySettlementItem() {
+    if (!walletTopUpItem) return;
+
+    const shortageMinor = Math.max(walletTopUpItem.amount_minor - walletAvailableMinor, walletTopUpItem.amount_minor);
+    const walletPayIdempotencyKey = createIdempotencyKey('wallet-settlement-after-top-up');
+
+    try {
+      setWalletTopUpLoading(true);
+      const intent = await createPaymentIntent({
+        amountMinor: shortageMinor,
+        provider: walletTopUpProvider,
+        idempotencyKey: createIdempotencyKey('settlement-top-up'),
+      });
+
+      savePendingWalletPayment({
+        paymentIntentId: intent.payment_intent_id,
+        provider: intent.provider,
+        amountMinor: shortageMinor,
+        settlementPlanItemId: walletTopUpItem.id,
+        groupId,
+        walletPayIdempotencyKey,
+        createdAt: new Date().toISOString(),
+      });
+
+      if (walletTopUpProvider === 'FAKE') {
+        const verifyResult = await verifyPaymentIntent({
+          provider: 'FAKE',
+          paymentIntentId: intent.payment_intent_id,
+          providerReference: intent.provider_reference || intent.payment_intent_id,
+        });
+
+        if (String(verifyResult.status).toUpperCase() !== 'SUCCEEDED') {
+          throw new Error(verifyResult.failure_reason || 'شارژ آزمایشی کیف پول تأیید نشد.');
+        }
+
+        await paySettlementItemWithWallet(walletTopUpItem.id, walletPayIdempotencyKey);
+        setWalletTopUpItem(null);
+        await loadSettlementData();
+        await loadWalletBalance();
+        refreshActivitiesAfterMutation();
+        void refreshSmartSettlement(false);
+
+        notify({
+          type: 'success',
+          title: 'کیف پول شارژ شد و پرداخت انجام شد',
+          description: 'موجودی کیف پولت افزایش پیدا کرد و بدهی انتخاب‌شده پرداخت شد.',
+        });
+        return;
+      }
+
+      window.location.href = intent.payment_url;
+    } catch (err) {
+      console.error(err);
+      notify({
+        type: 'error',
+        title: 'شارژ یا پرداخت انجام نشد',
+        description: getBackendMessage(err),
+      });
+    } finally {
+      setWalletTopUpLoading(false);
     }
   }
 
@@ -2803,8 +2983,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'پرداخت بروزرسانی شد',
-        description: 'لیست پرداخت‌ها تازه شد.',
+        title: 'وضعیت پرداخت به‌روز شد',
+        description: 'لیست پرداخت‌ها به‌روز شد.',
       });
     } catch (err) {
       console.error(err);
@@ -2832,8 +3012,8 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'لینک ساخته شد',
-        description: 'لینک دعوت آماده کپی است.',
+        title: 'لینک دعوت ساخته شد',
+        description: 'حالا می‌توانی لینک را کپی کنی و برای دوستانت بفرستی.',
       });
     } catch (err) {
       console.error(err);
@@ -2842,7 +3022,7 @@ export function GroupDetailPage({
 
       notify({
         type: 'error',
-        title: permissionDenied ? 'اجازه ساخت لینک نداری' : 'ساخت لینک ناموفق بود',
+        title: permissionDenied ? 'اجازه ساخت لینک دعوت را نداری' : 'لینک دعوت ساخته نشد',
         description: permissionDenied ? 'فقط مدیر یا مالک می‌تواند لینک بسازد.' : getBackendMessage(err),
       });
     } finally {
@@ -2854,8 +3034,8 @@ export function GroupDetailPage({
     if (!canManageGroup) {
       notify({
         type: 'error',
-        title: 'اجازه دعوت عضو نداری',
-        description: 'فقط مالک یا مدیر گروه می‌تواند برای عضو جدید دعوت بفرستد.',
+        title: 'اجازه دعوت عضو جدید را نداری',
+        description: 'برای دعوت عضو جدید، باید مالک یا مدیر این گروه باشی.',
       });
       return;
     }
@@ -2863,8 +3043,8 @@ export function GroupDetailPage({
     if (memberUserIds.has(user.user_id)) {
       notify({
         type: 'info',
-        title: 'این کاربر عضو گروه است',
-        description: 'نیازی به ارسال دعوت جدید نیست.',
+        title: 'این کاربر از قبل عضو گروه است',
+        description: 'لازم نیست برای او دعوت جدید بفرستی.',
       });
       return;
     }
@@ -2895,7 +3075,7 @@ export function GroupDetailPage({
 
       notify({
         type: alreadyPending ? 'info' : 'error',
-        title: alreadyPending ? 'دعوت قبلاً ارسال شده' : 'ارسال دعوت ناموفق بود',
+        title: alreadyPending ? 'دعوت قبلاً ارسال شده است' : 'دعوت ارسال نشد',
         description: alreadyPending
           ? 'برای این کاربر هنوز یک دعوت فعال وجود دارد. باید همان دعوت را قبول یا رد کند.'
           : getBackendMessage(err),
@@ -2915,14 +3095,14 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'کپی شد',
-        description: 'لینک دعوت کپی شد.',
+        title: 'لینک کپی شد',
+        description: 'لینک دعوت لینک کپی شد.',
       });
     } catch {
       notify({
         type: 'error',
-        title: 'کپی نشد',
-        description: 'لینک را دستی کپی کن.',
+        title: 'لینک کپی نشد',
+        description: 'مرورگر اجازه کپی خودکار نداد؛ لینک را دستی انتخاب و کپی کن.',
       });
     }
   }
@@ -2935,15 +3115,15 @@ export function GroupDetailPage({
     if (!inviteId) {
       notify({
         type: 'error',
-        title: 'لغو انجام نشد',
-        description: 'اطلاعات لینک کامل نیست.',
+        title: 'لغو لینک انجام نشد',
+        description: 'اطلاعات این لینک کامل نیست. صفحه را تازه کن و دوباره امتحان کن.',
       });
       return;
     }
 
     const confirmed = await confirm({
-      title: 'لغو لینک دعوت؟',
-      description: 'این لینک دیگر قابل استفاده نخواهد بود.',
+      title: 'این لینک دعوت لغو شود؟',
+      description: 'بعد از لغو، کسی با این لینک نمی‌تواند وارد گروه شود.',
       confirmText: 'لغو کن',
       cancelText: 'انصراف',
       tone: 'danger',
@@ -2957,14 +3137,14 @@ export function GroupDetailPage({
 
       notify({
         type: 'success',
-        title: 'لینک لغو شد',
-        description: 'دعوت دیگر فعال نیست.',
+        title: 'لینک دعوت لغو شد',
+        description: 'این لینک دیگر برای عضویت در گروه قابل استفاده نیست.',
       });
     } catch (err) {
       console.error(err);
       notify({
         type: 'error',
-        title: 'لغو لینک ناموفق بود',
+        title: 'لینک دعوت لغو نشد',
         description: getBackendMessage(err),
       });
     }
@@ -2972,7 +3152,7 @@ export function GroupDetailPage({
 
   if (loading && !group) {
     return (
-      <main className="min-h-[70vh] px-4 py-8" dir="rtl">
+      <main className="app-page min-h-[70vh]" dir="rtl">
         <div className="dashboard-section-card mx-auto flex max-w-[1100px] items-center justify-center rounded-[24px] border border-emerald-100/80 bg-white/95 p-10 text-center shadow-[0_18px_44px_rgba(15,23,42,0.07)] backdrop-blur dark:border-emerald-500/20 dark:bg-slate-950/90">
           <InlineLoader label="در حال دریافت گروه..." />
         </div>
@@ -2981,8 +3161,8 @@ export function GroupDetailPage({
   }
 
   return (
-    <main className="relative min-h-screen overflow-x-hidden px-3 pb-10 pt-3 text-right sm:px-5 xl:px-8" dir="rtl">
-      <div className="mx-auto max-w-[1160px]">
+    <main className="app-page relative overflow-x-hidden text-right" dir="rtl">
+      <div className="app-container app-container-dashboard">
         <section className="overflow-visible rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:p-5 dark:border-emerald-500/15 dark:bg-slate-950/90 dark:shadow-[0_26px_70px_rgba(0,0,0,0.3)]">
           <header className="flex items-center justify-between gap-3 px-1 py-1 sm:px-2">
             <button
@@ -3257,7 +3437,7 @@ export function GroupDetailPage({
 
                   {activitiesError ? (
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[16px] border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
-                      <span>فعالیت‌ها دریافت نشدند. دوباره تلاش کنید.</span>
+                      <span>فعلاً فعالیت‌ها نمایش داده نمی‌شوند. چند لحظه بعد دوباره امتحان کن.</span>
                       <button type="button" onClick={() => void loadGroupActivities()} className="rounded-full px-3 py-1.5 font-black hover:bg-amber-100 dark:hover:bg-amber-500/10">تلاش دوباره</button>
                     </div>
                   ) : null}
@@ -3352,7 +3532,7 @@ export function GroupDetailPage({
                       {myDebtItems.map((item) => (
                         <div key={item.id} className="flex flex-col gap-3 rounded-[18px] border border-rose-100 bg-rose-50/45 p-3 sm:flex-row sm:items-center sm:justify-between dark:border-rose-500/20 dark:bg-rose-500/10">
                           <div><p className="text-sm font-black text-text dark:text-slate-100">باید به {getPlanPartyName(item, 'receiver', members)} پرداخت کنید</p><p className="mt-1 text-xs font-semibold text-muted dark:text-slate-400">{getSettlementStatusLabel(item.status)}</p></div>
-                          <div className="flex items-center gap-2"><span className="text-sm font-black text-rose-600 dark:text-rose-200">{formatMoney(item.amount_minor)}</span>{canReportPlanItem(item, settlementPlan) ? <Button onClick={() => openManualPaymentForItem(item)} className="min-h-9 px-3 text-xs">پرداخت</Button> : null}</div>
+                          <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-black text-rose-600 dark:text-rose-200">{formatMoney(item.amount_minor)}</span>{canReportPlanItem(item, settlementPlan) ? <><Button onClick={() => void handleWalletSettlementPayment(item)} disabled={walletPaymentItemId === item.id} className="min-h-9 px-3 text-xs">پرداخت با کیف پول</Button><Button tone="secondary" onClick={() => openManualPaymentForItem(item)} className="min-h-9 px-3 text-xs">دستی</Button></> : null}</div>
                         </div>
                       ))}
                       {fallbackPaymentSuggestions.map((suggestion) => (
@@ -3964,10 +4144,16 @@ export function GroupDetailPage({
                         </p>
 
                         {canReportPlanItem(item, settlementPlan) ? (
-                          <Button onClick={() => void handlePlanItemAction(item, 'paid')} disabled={settlementSaving} className="mt-3 h-12 w-full text-base">
-                            <Check className="h-5 w-5" />
-                            ثبت پرداخت و تسویه
-                          </Button>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <Button onClick={() => void handleWalletSettlementPayment(item)} disabled={settlementSaving || walletPaymentItemId === item.id} className="h-12 w-full text-base">
+                              {walletPaymentItemId === item.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <WalletCards className="h-5 w-5" />}
+                              پرداخت با کیف پول
+                            </Button>
+                            <Button tone="secondary" onClick={() => void handlePlanItemAction(item, 'paid')} disabled={settlementSaving || walletPaymentItemId === item.id} className="h-12 w-full text-base">
+                              <Check className="h-5 w-5" />
+                              ثبت پرداخت دستی
+                            </Button>
+                          </div>
                         ) : (
                           <div className="mt-3 rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3 text-center text-xs font-black text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
                             {getSettlementStatusLabel(item.status)}
@@ -4013,7 +4199,7 @@ export function GroupDetailPage({
                     <div key={`pending-${settlement.id}`} className="rounded-[22px] border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/25 dark:bg-amber-500/10">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="text-xs font-bold text-amber-700 dark:text-amber-200">پرداخت ثبت شده به</p>
+                          <p className="text-xs font-bold text-amber-700 dark:text-amber-200">پرداخت دستی ثبت شده به</p>
                           <p className="mt-1 text-base font-black text-text dark:text-slate-100">{getUserDisplayFromId(settlement.receiver_user_id, members)}</p>
                         </div>
                         <div className="sm:text-left">
@@ -4057,6 +4243,8 @@ export function GroupDetailPage({
                         item.receiver_user_id === counterpartyId &&
                         ['PENDING', 'PENDING_CONFIRMATION', 'REPORTED'].includes(item.status || 'PENDING_CONFIRMATION'),
                     );
+                    const walletPlanItem = isPayable ? findWalletPlanItemForDebt(debt) : null;
+                    const walletPaymentBusy = walletPlanItem ? walletPaymentItemId === walletPlanItem.id : false;
                     return (
                       <div key={debt.id} className={cn(
                         'rounded-[18px] border p-3',
@@ -4076,14 +4264,25 @@ export function GroupDetailPage({
                               {formatMoney(debt.amount_minor)}
                             </span>
                             {isPayable ? (
-                              <Button
-                                onClick={() => void handlePayDetailedDebt(debt)}
-                                disabled={settlementSaving || hasPendingPayment}
-                                className="min-h-9 px-3 text-xs"
-                              >
-                                <HandCoins className="h-4 w-4" />
-                                {hasPendingPayment ? 'منتظر تأیید' : 'پرداخت این بدهی'}
-                              </Button>
+                              <>
+                                <Button
+                                  onClick={() => void handleWalletDetailedDebtPayment(debt)}
+                                  disabled={settlementSaving || hasPendingPayment || walletPaymentBusy}
+                                  className="min-h-9 px-3 text-xs"
+                                >
+                                  {walletPaymentBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <WalletCards className="h-4 w-4" />}
+                                  {hasPendingPayment ? 'منتظر تأیید' : 'پرداخت با کیف پول'}
+                                </Button>
+                                <Button
+                                  tone="secondary"
+                                  onClick={() => void handlePayDetailedDebt(debt)}
+                                  disabled={settlementSaving || hasPendingPayment}
+                                  className="min-h-9 px-3 text-xs"
+                                >
+                                  <HandCoins className="h-4 w-4" />
+                                  ثبت پرداخت دستی
+                                </Button>
+                              </>
                             ) : null}
                           </div>
                         </div>
@@ -4421,9 +4620,15 @@ export function GroupDetailPage({
                             </span>
 
                             {isPayer && canReportPlanItem(item, settlementPlan) ? (
-                              <Button onClick={() => void handlePlanItemAction(item, 'paid')} disabled={settlementSaving} className="min-h-10 px-3 text-xs">
-                                پرداخت کردم
-                              </Button>
+                              <>
+                                <Button onClick={() => void handleWalletSettlementPayment(item)} disabled={settlementSaving || walletPaymentItemId === item.id} className="min-h-10 px-3 text-xs">
+                                  {walletPaymentItemId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <WalletCards className="h-4 w-4" />}
+                                  پرداخت با کیف پول
+                                </Button>
+                                <Button tone="secondary" onClick={() => void handlePlanItemAction(item, 'paid')} disabled={settlementSaving || walletPaymentItemId === item.id} className="min-h-10 px-3 text-xs">
+                                  دستی
+                                </Button>
+                              </>
                             ) : null}
 
                             {isReceiver && canReviewPlanItem(item) ? (
@@ -4671,7 +4876,7 @@ export function GroupDetailPage({
                 <div className="grid grid-cols-2 gap-2">
                   <Button tone="secondary" onClick={() => void handleCopyInvite()} disabled={!inviteUrl} className="h-10">
                     <Copy className="h-4 w-4" />
-                    {copied ? 'کپی شد' : 'کپی لینک'}
+                    {copied ? 'لینک کپی شد' : 'کپی لینک'}
                   </Button>
 
                   <Button tone="danger" onClick={() => void handleRevokeInvite()} className="h-10">
@@ -4837,6 +5042,66 @@ export function GroupDetailPage({
           ) : null}
         </div>
       </Modal>
+
+      {walletTopUpItem ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm">
+          <div className="w-full max-w-[480px] rounded-[28px] border border-emerald-100 bg-white p-5 text-right shadow-[0_30px_90px_rgba(15,23,42,0.24)] dark:border-emerald-500/20 dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setWalletTopUpItem(null)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                aria-label="بستن"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="text-right">
+                <h3 className="text-lg font-black text-text dark:text-slate-100">موجودی کیف پول کافی نیست</h3>
+                <p className="mt-2 text-sm font-semibold leading-7 text-muted dark:text-slate-400">
+                  برای پرداخت با کیف پول این بدهی، ابتدا کیف پول شارژ می‌شود و بعد همان آیتم تسویه از کیف پول پرداخت می‌شود.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[18px] border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900">
+                <p className="text-xs font-black text-slate-500 dark:text-slate-400">موجودی فعلی</p>
+                <p className="mt-2 text-base font-black text-text dark:text-slate-100">{formatMoney(walletAvailableMinor)}</p>
+              </div>
+              <div className="rounded-[18px] border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                <p className="text-xs font-black text-emerald-700 dark:text-emerald-200">مبلغ شارژ و پرداخت</p>
+                <p className="mt-2 text-base font-black text-emerald-700 dark:text-emerald-200">{formatMoney(walletTopUpItem.amount_minor)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="mb-2 block text-xs font-black text-slate-600 dark:text-slate-300">درگاه پرداخت</label>
+              <select
+                value={walletTopUpProvider}
+                onChange={(event) => setWalletTopUpProvider(event.target.value as PaymentProvider)}
+                className={inputClass}
+              >
+                <option value="FAKE">درگاه آزمایشی</option>
+                <option value="ZARINPAL">زرین‌پال</option>
+              </select>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <Button onClick={() => void handleTopUpAndPaySettlementItem()} disabled={walletTopUpLoading} className="h-12">
+                {walletTopUpLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <WalletCards className="h-4 w-4" />}
+                شارژ و پرداخت
+              </Button>
+              <Button tone="secondary" onClick={() => setWalletTopUpItem(null)} disabled={walletTopUpLoading} className="h-12">
+                انصراف
+              </Button>
+            </div>
+
+            <p className="mt-3 text-[11px] font-semibold leading-6 text-muted dark:text-slate-400">
+              درگاه آزمایشی بدون خروج از سایت پرداخت را شبیه‌سازی می‌کند. زرین‌پال تو را به صفحه پرداخت منتقل می‌کند.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
     </main>
   );

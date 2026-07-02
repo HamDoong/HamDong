@@ -110,15 +110,15 @@ function getSignUpErrorMessage(error: unknown) {
     }
 
     return getFriendlyApiErrorMessage(error, {
-      defaultMessage: 'ثبت‌نام انجام نشد. دوباره تلاش کن.',
+      defaultMessage: 'ثبت‌نام انجام نشد. اطلاعات را بررسی کن و دوباره امتحان کن.',
       invalidMessage: 'اطلاعات ثبت‌نام کامل یا درست نیست.',
-      unavailableMessage: 'فعلاً ثبت‌نام در دسترس نیست. کمی بعد دوباره تلاش کن.',
+      unavailableMessage: 'فعلاً ثبت‌نام در دسترس نیست. کمی بعد دوباره امتحان کن.',
       codeMap: {
-        INVALID_OTP: 'کد تایید اشتباه است.',
+        INVALID_OTP: 'کد تأیید اشتباه است.',
         OTP_EXPIRED: 'زمان این کد تمام شده است. یک کد جدید بگیر.',
         OTP_IN_COOLDOWN: 'برای دریافت کد جدید کمی صبر کن.',
-        OTP_RATE_LIMITED: 'درخواست‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
-        OTP_MAX_ATTEMPTS_EXCEEDED: 'تعداد تلاش‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
+        OTP_RATE_LIMITED: 'درخواست‌های زیادی فرستاده شده است. چند دقیقه صبر کن و دوباره امتحان کن.',
+        OTP_MAX_ATTEMPTS_EXCEEDED: 'تعداد تلاش‌ها زیاد شده است. چند دقیقه صبر کن و دوباره امتحان کن.',
         EMAIL_ALREADY_EXISTS: 'برای این ایمیل قبلاً حساب ساخته شده است. از صفحه ورود استفاده کن.',
         USER_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد.',
         ACCOUNT_DEACTIVATED: 'این حساب غیرفعال شده است.',
@@ -126,12 +126,12 @@ function getSignUpErrorMessage(error: unknown) {
         INVALID_ART_NAME: 'نام کاربری باید بین ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.',
         PASSWORD_ALREADY_SET: 'برای این ایمیل قبلاً رمز ثبت شده است. از صفحه ورود استفاده کن.',
         WEAK_PASSWORD: 'رمز عبور انتخابی خیلی ضعیف است.',
-        PASSWORD_CONFIRMATION_MISMATCH: 'رمز عبور و تکرار آن یکسان نیستند.',
+        PASSWORD_CONFIRMATION_MISMATCH: 'رمز عبور و تکرارش یکی نیستند.',
       },
     });
   }
 
-  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کن.';
+  return 'ارتباط برقرار نشد. اینترنتت را بررسی کن و دوباره امتحان کن.';
 }
 
 function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
@@ -166,22 +166,22 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
 
   function validateAccountFields() {
     if (!isValidEmail(normalizedEmail)) {
-      setFormError('ایمیل معتبر وارد کنید.');
+      setFormError('یک ایمیل معتبر وارد کن.');
       return false;
     }
 
     if (!password || !repeatPassword) {
-      setFormError('رمز عبور و تکرار آن را وارد کنید.');
+      setFormError('رمز عبور و تکرار آن را وارد کن.');
       return false;
     }
 
     if (password !== repeatPassword) {
-      setFormError('رمز عبور و تکرار آن یکسان نیستند.');
+      setFormError('رمز عبور و تکرارش یکی نیستند.');
       return false;
     }
 
     if (!passwordStrength.isStrong) {
-      setFormError('رمز عبور باید قوی باشد تا بتوانید ثبت‌نام را ادامه دهید.');
+      setFormError('برای ادامه ثبت‌نام، رمز عبور قوی‌تری انتخاب کن.');
       return false;
     }
 
@@ -192,7 +192,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     const cleanArtName = artName.trim();
 
     if (!artNamePattern.test(cleanArtName)) {
-      setFormError('نام کاربری باید ۳ تا ۳۲ کاراکتر و بدون فاصله باشد.');
+      setFormError('نام کاربری باید ۳ تا ۳۲ کاراکتر باشد و فاصله نداشته باشد.');
       return null;
     }
 
@@ -242,7 +242,7 @@ function SignUpForm({ onLogin, onSignUp }: SignUpPageProps) {
     if (!validateAccountFields()) return;
 
     if (!otpVerified && !/^\d{6}$/.test(normalizedOtpCode)) {
-      setFormError('کد تایید ۶ رقمی را وارد کنید.');
+      setFormError('کد تأیید ۶ رقمی را وارد کن.');
       return;
     }
 

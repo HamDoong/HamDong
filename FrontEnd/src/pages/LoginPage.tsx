@@ -107,32 +107,32 @@ function getLoginErrorMessage(error: unknown) {
     if (code === 'INVALID_CREDENTIALS') return 'نام کاربری یا رمز عبور درست نیست.';
     if (code === 'INVALID_EMAIL') return 'ایمیل را درست وارد کن.';
     if (code === 'USER_NOT_FOUND' || code === 'EMAIL_NOT_FOUND' || code === 'ACCOUNT_NOT_FOUND') {
-      return 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.';
+      return 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کن.';
     }
     if (code === 'INCOMPLETE_SIGNUP' || code === 'SIGNUP_INCOMPLETE') {
-      return 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کنید.';
+      return 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کن.';
     }
     if (code === 'INVALID_REQUEST' && body?.error?.details?.email) return 'ایمیل را درست وارد کن.';
 
     return getFriendlyApiErrorMessage(error, {
-      defaultMessage: 'ورود انجام نشد. دوباره تلاش کن.',
+      defaultMessage: 'ورود انجام نشد. اطلاعات حساب را بررسی کن و دوباره امتحان کن.',
       invalidMessage: 'اطلاعات ورود کامل یا درست نیست.',
-      unavailableMessage: 'فعلاً ورود در دسترس نیست. کمی بعد دوباره تلاش کن.',
+      unavailableMessage: 'فعلاً ورود در دسترس نیست. کمی بعد دوباره امتحان کن.',
       codeMap: {
-        INVALID_OTP: 'کد تایید اشتباه است.',
+        INVALID_OTP: 'کد تأیید اشتباه است.',
         OTP_EXPIRED: 'زمان این کد تمام شده است. یک کد جدید بگیر.',
         OTP_IN_COOLDOWN: 'برای دریافت کد جدید کمی صبر کن.',
-        OTP_RATE_LIMITED: 'درخواست‌ها زیاد شده است. کمی بعد دوباره تلاش کن.',
-        USER_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.',
-        EMAIL_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.',
-        ACCOUNT_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کنید.',
-        INCOMPLETE_SIGNUP: 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کنید.',
-        SIGNUP_INCOMPLETE: 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کنید.',
+        OTP_RATE_LIMITED: 'درخواست‌های زیادی فرستاده شده است. چند دقیقه صبر کن و دوباره امتحان کن.',
+        USER_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کن.',
+        EMAIL_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کن.',
+        ACCOUNT_NOT_FOUND: 'برای این ایمیل حسابی پیدا نشد. اول ثبت‌نام کن.',
+        INCOMPLETE_SIGNUP: 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کن.',
+        SIGNUP_INCOMPLETE: 'برای این ایمیل هنوز ثبت‌نام کامل نشده است. اول ثبت‌نام را کامل کن.',
       },
     });
   }
 
-  return 'ارتباط با سرور برقرار نشد. دوباره تلاش کن.';
+  return 'ارتباط برقرار نشد. اینترنتت را بررسی کن و دوباره امتحان کن.';
 }
 
 function BenefitList() {
@@ -208,7 +208,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
     const cleanArtName = artName.trim();
 
     if (!cleanArtName || !password) {
-      setErrorMessage('نام کاربری و رمز عبور را وارد کنید.');
+      setErrorMessage('نام کاربری و رمز عبورت را وارد کن.');
       return;
     }
 
@@ -227,7 +227,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
 
   async function handleRequestOtp() {
     if (!isValidEmail(normalizedEmail)) {
-      setErrorMessage('ایمیل معتبر وارد کنید.');
+      setErrorMessage('یک ایمیل معتبر وارد کن.');
       return;
     }
 
@@ -248,12 +248,12 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
 
   async function handleOtpLogin() {
     if (!isValidEmail(normalizedEmail)) {
-      setErrorMessage('ایمیل معتبر وارد کنید.');
+      setErrorMessage('یک ایمیل معتبر وارد کن.');
       return;
     }
 
     if (!/^\d{6}$/.test(normalizedOtpCode)) {
-      setErrorMessage('کد تایید ۶ رقمی را وارد کنید.');
+      setErrorMessage('کد تأیید ۶ رقمی را وارد کن.');
       return;
     }
 
@@ -268,7 +268,7 @@ function LoginForm({ onLogin, onSignUp }: LoginPageProps) {
       onLogin();
     } catch (error) {
       if (isIncompleteSignupError(error)) {
-        setErrorMessage('برای این ایمیل هنوز حسابی کامل نشده است. اول ثبت‌نام را کامل کنید.');
+        setErrorMessage('ثبت‌نام این ایمیل کامل نشده است. اول ثبت‌نام را کامل کن، بعد وارد شو.');
       } else {
         setErrorMessage(getLoginErrorMessage(error));
       }

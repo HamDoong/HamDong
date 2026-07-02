@@ -64,7 +64,7 @@ function getBackendErrorCode(error: unknown) {
 
 function getBackendMessage(error: unknown) {
   if (!isApiError(error)) {
-    return 'خطای غیرمنتظره‌ای رخ داد. لطفاً دوباره تلاش کنید.';
+    return 'اتفاق غیرمنتظره‌ای افتاد. چند لحظه بعد دوباره امتحان کن.';
   }
 
   const code = getBackendErrorCode(error);
@@ -81,7 +81,7 @@ function getBackendMessage(error: unknown) {
     code === 'INVITE_NOT_FOUND' ||
     code === 'INVALID_INVITE'
   ) {
-    return 'لینک دعوت معتبر نیست.';
+    return 'این لینک دعوت معتبر نیست یا منقضی شده است.';
   }
 
   if (error.status === 401) {
@@ -93,10 +93,10 @@ function getBackendMessage(error: unknown) {
   }
 
   if (error.status >= 500) {
-    return 'مشکلی در سرور رخ داده است. کمی بعد دوباره تلاش کنید.';
+    return 'فعلاً ارتباط با سرویس عضویت برقرار نیست. کمی بعد دوباره امتحان کن.';
   }
 
-  return 'عضویت انجام نشد. لطفاً دوباره تلاش کنید.';
+  return 'عضویت در گروه انجام نشد. لینک را بررسی کن یا دوباره امتحان کن.';
 }
 
 export function InviteJoinPage({
@@ -124,7 +124,7 @@ export function InviteJoinPage({
     const cleanToken = extractInviteToken(nextToken);
 
     if (!cleanToken) {
-      setError('لینک دعوت معتبر نیست.');
+      setError('این لینک دعوت معتبر نیست یا منقضی شده است.');
       return;
     }
 
@@ -152,7 +152,7 @@ export function InviteJoinPage({
       setToken(cleanToken);
       loadPreview(cleanToken);
     } else {
-      setError('لینک دعوت معتبر نیست.');
+      setError('این لینک دعوت معتبر نیست یا منقضی شده است.');
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,7 +162,7 @@ export function InviteJoinPage({
     const cleanToken = extractInviteToken(token);
 
     if (!cleanToken) {
-      setError('لینک دعوت معتبر نیست.');
+      setError('این لینک دعوت معتبر نیست یا منقضی شده است.');
       return;
     }
 
@@ -173,8 +173,8 @@ export function InviteJoinPage({
 
       notify({
         type: 'success',
-        title: 'عضویت انجام شد',
-        description: 'گروه به لیست گروه‌های شما اضافه شد.',
+        title: 'به گروه اضافه شدی',
+        description: 'این گروه به لیست گروه‌هایت اضافه شد.',
       });
 
       onAccepted();
@@ -199,8 +199,8 @@ export function InviteJoinPage({
   }
 
   return (
-    <main className="px-4 py-6 sm:px-6 xl:px-8">
-      <div className="mx-auto max-w-[860px] space-y-6">
+    <main className="app-page">
+      <div className="app-container app-container-narrow space-y-6">
         <div className="rounded-3xl border border-border bg-white p-6 text-right shadow-soft">
           <button
             type="button"

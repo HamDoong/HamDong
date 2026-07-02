@@ -648,12 +648,12 @@ export function GroupsPage({
     <>
       <main
         className={[
-          'groups-page lg:min-h-[calc(100vh-94px)]',
+          'app-page groups-page lg:min-h-[calc(100vh-94px)]',
           showBalanceSummary ? 'xl:grid xl:grid-cols-[minmax(0,1fr)_370px]' : '',
         ].join(' ')}
       >
-        <section className="min-w-0 px-4 py-4 sm:px-6 sm:py-5 xl:px-8">
-          <div className="mx-auto max-w-[1020px] space-y-4">
+        <section className="min-w-0">
+          <div className="app-container space-y-4">
             <div ref={listControlsRef} className="groups-list-controls scroll-mt-4 rounded-3xl border p-3">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="flex items-center justify-between gap-3 px-1">
@@ -893,7 +893,7 @@ export function GroupsPage({
 
         {showBalanceSummary ? (
           <aside
-            className="hidden px-4 pb-8 sm:px-6 xl:block xl:w-[370px] xl:px-8 xl:py-5"
+            className="hidden xl:block xl:w-[370px]"
             aria-label="خلاصه وضعیت مالی گروه‌ها"
           >
             <div className="sticky top-5 space-y-5">
