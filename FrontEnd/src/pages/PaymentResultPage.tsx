@@ -7,9 +7,10 @@ import {
   getPendingWalletPayment,
   paySettlementItemWithWallet,
   normalizePaymentProvider,
+  rememberPaidWalletSettlementItem,
   verifyPaymentIntent,
-  type PaymentProvider,
 } from '../lib/walletApi';
+import { createNotification } from '../lib/notificationApi';
 import { getFriendlyApiErrorMessage } from '../lib/userMessages';
 import { MoneyWithWords } from '../lib/money';
 
@@ -76,14 +77,38 @@ export function PaymentResultPage() {
             pending.settlementPlanItemId,
             pending.walletPayIdempotencyKey,
           );
+          rememberPaidWalletSettlementItem(pending.settlementPlanItemId, pending.groupId);
+
+          if (pending.settlementReceiverUserId) {
+            void createNotification({
+              recipient_user_id: pending.settlementReceiverUserId,
+              channel: 'IN_APP',
+              notification_type: 'SETTLEMENT',
+              priority: 'HIGH',
+              title: 'تأیید دریافت پرداخت کیف پول',
+              body: `${pending.settlementPayerName || 'یکی از اعضای گروه'} مبلغ ${new Intl.NumberFormat('fa-IR').format(Math.round((pending.amountMinor || 0) / 10))} تومان را از کیف پول پرداخت کرد. لطفاً دریافت پول را تأیید یا رد کن.`,
+              metadata: {
+                type: 'WALLET_SETTLEMENT_CONFIRMATION',
+                group_id: pending.groupId,
+                settlement_plan_item_id: pending.settlementPlanItemId,
+                payer_user_id: pending.settlementPayerUserId,
+                receiver_user_id: pending.settlementReceiverUserId,
+                amount_minor: pending.amountMinor,
+                currency: 'IRR',
+                action: 'CONFIRM_SETTLEMENT_PLAN_ITEM',
+              },
+            }).catch((error) => {
+              console.warn('Wallet settlement notification could not be created.', error);
+            });
+          }
         }
 
         clearPendingWalletPayment();
         setStatus('success');
-        setTitle(pending?.settlementPlanItemId ? 'پرداخت و تسویه انجام شد' : 'کیف پول شارژ شد');
+        setTitle(pending?.settlementPlanItemId ? 'پرداخت کیف پول ثبت شد' : 'کیف پول شارژ شد');
         setDescription(
           pending?.settlementPlanItemId
-            ? 'پرداخت در کیف پول ثبت شد و تسویه انتخاب‌شده هم انجام شد. الان به کیف پول منتقل می‌شوی.'
+            ? 'پرداخت در کیف پول ثبت شد و برای دریافت‌کننده اعلان تأیید ارسال می‌شود. الان به کیف پول منتقل می‌شوی.'
             : 'مبلغ پرداختی به کیف پولت اضافه شد. الان به کیف پول منتقل می‌شوی.',
         );
 

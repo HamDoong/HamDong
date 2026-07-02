@@ -9,6 +9,7 @@ import time
 import pika
 from django.conf import settings
 
+from apps.wallets.application.wallet_service import WalletService
 from apps.wallets.domain.models import (
     SettlementItemStatusChoices,
     SettlementPlanStatusChoices,
@@ -107,6 +108,10 @@ class WalletEventConsumer:
         elif event_type == "SettlementPlanItemRejected":
             SettlementItemProjectionRepository.update_item_status(
                 data.get("item_id"), SettlementItemStatusChoices.REJECTED, occurred_at
+            )
+            WalletService().refund_rejected_settlement_item(
+                data.get("item_id"),
+                reason=data.get("reason") or "receiver_rejected",
             )
 
     def _callback_identity(self, ch, method, properties, body):
