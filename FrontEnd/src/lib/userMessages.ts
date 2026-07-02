@@ -247,7 +247,7 @@ export function getFriendlyApiErrorMessage(
     invalidMessage = 'اطلاعاتی که وارد کردی کامل یا درست نیست. بخش‌های مشخص‌شده را بررسی کن.',
     authMessage = 'نشستت تمام شده؛ برای ادامه دوباره وارد حساب شو.',
     forbiddenMessage = 'برای انجام این کار دسترسی لازم را نداری.',
-    notFoundMessage = 'این مورد پیدا نشد یا دیگر در دسترس نیست.',
+    notFoundMessage = 'این ایمیل پیدا نشد یا دیگر در دسترس نیست. ثبت نام کنید.',
     unavailableMessage = 'فعلاً ارتباط با سرویس برقرار نیست. چند لحظه بعد دوباره امتحان کن.',
     codeMap = {},
   }: FriendlyErrorOptions = {},

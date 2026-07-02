@@ -291,9 +291,9 @@ function planItemToSuggestion(
   if (currentUserId && !isPayer && !isReceiver) return null;
 
   const description = isPayer
-    ? `پرداخت به ${receiverName} در گروه «${group.name}»`
+    ? `دریافت از ${receiverName} در گروه «${group.name}»`
     : isReceiver
-      ? `دریافت از ${payerName} در گروه «${group.name}»`
+      ? `پرداخت به ${payerName} در گروه «${group.name}»`
       : `تسویه پیشنهادی گروه «${group.name}»`;
 
   return {
@@ -599,8 +599,8 @@ function SettlementRow({
     : 'bg-emerald-50 text-emerald-600 ring-emerald-100';
   const ActionIcon = isDebt ? ArrowUp : ArrowDown;
   const title = isDebt
-    ? `در گروه «${item.groupName}» باید پول بدهید`
-    : `در گروه «${item.groupName}» باید پول بگیرید`;
+    ? `در گروه «${item.groupName}» باید پول بگیرید`
+    : `در گروه «${item.groupName}» باید پول بدهید`;
   const primaryLabel = isDebt ? 'تسویه' : canConfirmReceipt ? 'پول را گرفتم' : 'مشاهده وضعیت';
   const ageTimestamp = getDateTimestamp(item.referenceDate);
   const ageInDays = ageTimestamp ? Math.floor((Date.now() - ageTimestamp) / (24 * 60 * 60 * 1000)) : 0;
