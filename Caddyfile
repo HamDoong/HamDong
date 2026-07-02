@@ -1,0 +1,5 @@
+{$HAMDONG_DOMAIN} {
+    encode gzip zstd
+
+    reverse_proxy frontend:80
+}

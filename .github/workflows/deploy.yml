@@ -1,0 +1,45 @@
+name: Deploy HamDong
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: hamdong-production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.LIARA_SSH_KEY }}" | tr -d '\r' > ~/.ssh/liara_key
+          chmod 600 ~/.ssh/liara_key
+          ssh-keyscan -p "${{ secrets.LIARA_PORT }}" -H "${{ secrets.LIARA_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy to Liara VPS
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/liara_key -p "${{ secrets.LIARA_PORT }}" "${{ secrets.LIARA_USER }}@${{ secrets.LIARA_HOST }}" 'bash -s' <<'EOF'
+          set -euo pipefail
+
+          cd /root/hamdong
+
+          LOCKFILE=/var/lock/hamdong-deploy.lock
+          exec 9>"$LOCKFILE"
+          flock -w 300 9
+
+          rm -f .git/index.lock .git/packed-refs.lock .git/refs/remotes/origin/*.lock .git/refs/heads/*.lock 2>/dev/null || true
+
+          git fetch --prune origin
+          git reset --hard origin/main
+          git clean -fd
+
+          docker compose -f docker-compose.production.yml --env-file .env up -d --build --remove-orphans
+          docker compose -f docker-compose.production.yml --env-file .env ps
+          EOF
