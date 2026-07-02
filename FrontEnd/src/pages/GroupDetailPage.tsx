@@ -39,9 +39,12 @@ import { isApiError } from '../lib/api';
 import {
   createIdempotencyKey,
   createPaymentIntent,
+  DEFAULT_WALLET_PAYMENT_PROVIDER,
+  getPaymentRedirectUrl,
   getMyWallet,
   paySettlementItemWithWallet,
   savePendingWalletPayment,
+  normalizePaymentProvider,
   verifyPaymentIntent,
   type PaymentProvider,
 } from '../lib/walletApi';
@@ -1380,7 +1383,7 @@ export function GroupDetailPage({
   const [walletAvailableMinor, setWalletAvailableMinor] = useState(0);
   const [walletPaymentItemId, setWalletPaymentItemId] = useState<string | null>(null);
   const [walletTopUpItem, setWalletTopUpItem] = useState<SettlementPlanItem | null>(null);
-  const [walletTopUpProvider, setWalletTopUpProvider] = useState<PaymentProvider>('FAKE');
+  const [walletTopUpProvider, setWalletTopUpProvider] = useState<PaymentProvider>(DEFAULT_WALLET_PAYMENT_PROVIDER);
   const [walletTopUpLoading, setWalletTopUpLoading] = useState(false);
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
@@ -2995,22 +2998,24 @@ export function GroupDetailPage({
   }
 
   async function handleTopUpAndPaySettlementItem() {
-    if (!walletTopUpItem) return;
+    if (!walletTopUpItem || walletTopUpLoading) return;
 
     const shortageMinor = Math.max(walletTopUpItem.amount_minor - walletAvailableMinor, walletTopUpItem.amount_minor);
     const walletPayIdempotencyKey = createIdempotencyKey('wallet-settlement-after-top-up');
 
     try {
       setWalletTopUpLoading(true);
+      const selectedProvider = normalizePaymentProvider(walletTopUpProvider);
       const intent = await createPaymentIntent({
         amountMinor: shortageMinor,
-        provider: walletTopUpProvider,
+        provider: selectedProvider,
         idempotencyKey: createIdempotencyKey('settlement-top-up'),
       });
+      const intentProvider = normalizePaymentProvider(intent.provider || selectedProvider);
 
       savePendingWalletPayment({
         paymentIntentId: intent.payment_intent_id,
-        provider: intent.provider,
+        provider: intentProvider,
         amountMinor: shortageMinor,
         settlementPlanItemId: walletTopUpItem.id,
         groupId,
@@ -3018,7 +3023,7 @@ export function GroupDetailPage({
         createdAt: new Date().toISOString(),
       });
 
-      if (walletTopUpProvider === 'FAKE') {
+      if (intentProvider === 'FAKE') {
         const verifyResult = await verifyPaymentIntent({
           provider: 'FAKE',
           paymentIntentId: intent.payment_intent_id,
@@ -3044,7 +3049,13 @@ export function GroupDetailPage({
         return;
       }
 
-      window.location.href = intent.payment_url;
+      const redirectUrl = getPaymentRedirectUrl(intent);
+
+      if (!redirectUrl) {
+        throw new Error('لینک درگاه پرداخت از سرویس کیف پول دریافت نشد.');
+      }
+
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error(err);
       notify({
@@ -5172,8 +5183,7 @@ export function GroupDetailPage({
                 onChange={(event) => setWalletTopUpProvider(event.target.value as PaymentProvider)}
                 className={inputClass}
               >
-                <option value="FAKE">درگاه آزمایشی</option>
-                <option value="ZARINPAL">زرین‌پال</option>
+                <option value="ZARINPAL">زرین‌پال آزمایشی</option>
               </select>
             </div>
 
@@ -5188,7 +5198,7 @@ export function GroupDetailPage({
             </div>
 
             <p className="mt-3 text-[11px] font-semibold leading-6 text-muted dark:text-slate-400">
-              درگاه آزمایشی بدون خروج از سایت پرداخت را شبیه‌سازی می‌کند. زرین‌پال تو را به صفحه پرداخت منتقل می‌کند.
+              زرین‌پال تو را به صفحه پرداخت آزمایشی منتقل می‌کند و بعد از برگشت، کیف پول و آیتم تسویه بررسی می‌شود.
             </p>
           </div>
         </div>

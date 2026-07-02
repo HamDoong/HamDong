@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Loader2, WalletCards, XCircle } from 'lucide-react';
 import {
   clearPendingWalletPayment,
+  DEFAULT_WALLET_PAYMENT_PROVIDER,
   getPendingWalletPayment,
   paySettlementItemWithWallet,
+  normalizePaymentProvider,
   verifyPaymentIntent,
   type PaymentProvider,
 } from '../lib/walletApi';
@@ -16,14 +18,19 @@ function getProviderReference(params: URLSearchParams) {
     params.get('provider_reference') ||
     params.get('Authority') ||
     params.get('authority') ||
+    params.get('RefID') ||
+    params.get('ref_id') ||
     params.get('ref') ||
     params.get('reference') ||
+    params.get('token') ||
+    params.get('transaction_id') ||
     undefined
   );
 }
 
 export function PaymentResultPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const [status, setStatus] = useState<'loading' | 'success' | 'failed'>('loading');
   const [title, setTitle] = useState('در حال بررسی پرداخت');
@@ -36,7 +43,7 @@ export function PaymentResultPage() {
     async function verifyPayment() {
       const pending = getPendingWalletPayment();
       const paymentIntentId = params.get('payment_intent_id') || params.get('intent_id') || pending?.paymentIntentId;
-      const provider = (params.get('provider') || pending?.provider || 'FAKE').toUpperCase() as PaymentProvider;
+      const provider = normalizePaymentProvider(params.get('provider') || pending?.provider || DEFAULT_WALLET_PAYMENT_PROVIDER);
       const providerReference = getProviderReference(params) || pending?.paymentIntentId;
 
       if (!paymentIntentId) {
@@ -76,9 +83,15 @@ export function PaymentResultPage() {
         setTitle(pending?.settlementPlanItemId ? 'پرداخت و تسویه انجام شد' : 'کیف پول شارژ شد');
         setDescription(
           pending?.settlementPlanItemId
-            ? 'پرداخت در کیف پول ثبت شد و تسویه انتخاب‌شده هم انجام شد.'
-            : 'مبلغ پرداختی به کیف پولت اضافه شد.',
+            ? 'پرداخت در کیف پول ثبت شد و تسویه انتخاب‌شده هم انجام شد. الان به کیف پول منتقل می‌شوی.'
+            : 'مبلغ پرداختی به کیف پولت اضافه شد. الان به کیف پول منتقل می‌شوی.',
         );
+
+        window.setTimeout(() => {
+          if (mounted) {
+            navigate('/Dashboard#wallet', { replace: true });
+          }
+        }, 1200);
       } catch (error) {
         if (!mounted) return;
         setStatus('failed');
@@ -92,7 +105,7 @@ export function PaymentResultPage() {
     return () => {
       mounted = false;
     };
-  }, [params]);
+  }, [navigate, params]);
 
   const isLoading = status === 'loading';
   const isSuccess = status === 'success';

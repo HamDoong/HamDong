@@ -16,9 +16,12 @@ import { useFeedback } from '../components/feedback/FeedbackProvider';
 import {
   clearPendingWalletPayment,
   createIdempotencyKey,
+  DEFAULT_WALLET_PAYMENT_PROVIDER,
   createPaymentIntent,
+  getPaymentRedirectUrl,
   getWalletSummary,
   savePendingWalletPayment,
+  normalizePaymentProvider,
   verifyPaymentIntent,
   type PaymentProvider,
   type WalletSummaryResponse,
@@ -156,7 +159,7 @@ export function WalletPage({ onOpenGroups }: WalletPageProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState('');
-  const [topUpProvider, setTopUpProvider] = useState<PaymentProvider>('FAKE');
+  const [topUpProvider, setTopUpProvider] = useState<PaymentProvider>(DEFAULT_WALLET_PAYMENT_PROVIDER);
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
 
@@ -176,6 +179,8 @@ export function WalletPage({ onOpenGroups }: WalletPageProps) {
   }
 
   async function handleTopUpWallet() {
+    if (topUpLoading) return;
+
     const amountMinor = parseAmountToMinor(topUpAmount);
 
     if (amountMinor <= 0) {
@@ -189,20 +194,22 @@ export function WalletPage({ onOpenGroups }: WalletPageProps) {
 
     try {
       setTopUpLoading(true);
+      const selectedProvider = normalizePaymentProvider(topUpProvider);
       const intent = await createPaymentIntent({
         amountMinor,
-        provider: topUpProvider,
+        provider: selectedProvider,
         idempotencyKey: createIdempotencyKey('wallet-top-up'),
       });
+      const intentProvider = normalizePaymentProvider(intent.provider || selectedProvider);
 
       savePendingWalletPayment({
         paymentIntentId: intent.payment_intent_id,
-        provider: intent.provider,
+        provider: intentProvider,
         amountMinor,
         createdAt: new Date().toISOString(),
       });
 
-      if (topUpProvider === 'FAKE') {
+      if (intentProvider === 'FAKE') {
         const verifyResult = await verifyPaymentIntent({
           provider: 'FAKE',
           paymentIntentId: intent.payment_intent_id,
@@ -225,7 +232,13 @@ export function WalletPage({ onOpenGroups }: WalletPageProps) {
         return;
       }
 
-      window.location.href = intent.payment_url;
+      const redirectUrl = getPaymentRedirectUrl(intent);
+
+      if (!redirectUrl) {
+        throw new Error('لینک درگاه پرداخت از سرویس کیف پول دریافت نشد.');
+      }
+
+      window.location.href = redirectUrl;
     } catch (topUpError) {
       console.error(topUpError);
       notify({
@@ -370,8 +383,7 @@ export function WalletPage({ onOpenGroups }: WalletPageProps) {
                   onChange={(event) => setTopUpProvider(event.target.value as PaymentProvider)}
                   className="h-12 rounded-[16px] border border-emerald-200 bg-white px-3 text-sm font-black outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 dark:border-emerald-500/20 dark:bg-slate-900 dark:text-slate-100"
                 >
-                  <option value="FAKE">درگاه آزمایشی</option>
-                  <option value="ZARINPAL">زرین‌پال</option>
+                  <option value="ZARINPAL">زرین‌پال آزمایشی</option>
                 </select>
               </label>
             </div>

@@ -1,7 +1,10 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from django.conf import settings
+from django.http import HttpResponseRedirect
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -47,6 +50,59 @@ from apps.wallets.infrastructure.jwt_authentication import JWTAuthentication
 
 def _error_response(exc: WalletServiceError):
     return Response({"error": {"code": exc.code, "message": exc.message}}, status=exc.status_code)
+
+
+def _is_browser_payment_callback(request) -> bool:
+    """Real payment gateways return the customer through a top-level browser navigation.
+
+    Keep API clients and tests on the JSON contract, but send browser callbacks back
+    to the React app so users do not get stuck on DRF's browsable API page.
+    """
+    accept = request.META.get("HTTP_ACCEPT", "")
+    sec_fetch_mode = request.META.get("HTTP_SEC_FETCH_MODE", "")
+    sec_fetch_dest = request.META.get("HTTP_SEC_FETCH_DEST", "")
+
+    return (
+        sec_fetch_mode == "navigate"
+        or sec_fetch_dest == "document"
+        or ("text/html" in accept and "application/json" not in accept)
+    )
+
+
+def _frontend_payment_result_url(provider: str, payload: dict, *, callback_state: str = "received") -> str:
+    explicit_url = str(getattr(settings, "FRONTEND_PAYMENT_RESULT_URL", "")).strip()
+
+    if explicit_url:
+        base_url = explicit_url
+    else:
+        frontend_base_url = str(getattr(settings, "FRONTEND_BASE_URL", "http://localhost:5173")).rstrip("/")
+        base_url = f"{frontend_base_url}/payment-result"
+
+    query = {
+        "provider": provider,
+        "callback_state": callback_state,
+    }
+
+    passthrough_keys = [
+        "payment_intent_id",
+        "intent_id",
+        "provider_reference",
+        "Authority",
+        "authority",
+        "Status",
+        "status",
+        "amount_minor",
+        "currency",
+        "result",
+    ]
+
+    for key in passthrough_keys:
+        value = payload.get(key)
+        if value not in (None, ""):
+            query[key] = str(value)
+
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}{urlencode(query)}"
 
 
 class HealthView(APIView):
@@ -311,12 +367,32 @@ class PaymentGatewayCallbackView(APIView):
     )
     def get(self, request, provider, *args, **kwargs):
         serializer = PaymentGatewayCallbackSerializer(data=request.query_params)
+        should_redirect = _is_browser_payment_callback(request)
+
         if not serializer.is_valid():
+            if should_redirect:
+                redirect_payload = dict(request.query_params.items())
+                redirect_payload["error"] = "invalid_callback"
+                return HttpResponseRedirect(
+                    _frontend_payment_result_url(provider, redirect_payload, callback_state="invalid")
+                )
             return Response({"error": {"code": "INVALID_REQUEST", "message": "Invalid request data.", "details": serializer.errors}}, status=400)
         try:
             payload = HandleGatewayCallbackUseCase().execute(provider, serializer.validated_data, method="GET")
         except WalletServiceError as exc:
+            if should_redirect:
+                redirect_payload = dict(serializer.validated_data)
+                redirect_payload["error"] = exc.code
+                return HttpResponseRedirect(
+                    _frontend_payment_result_url(provider, redirect_payload, callback_state="error")
+                )
             return _error_response(exc)
+
+        if should_redirect:
+            return HttpResponseRedirect(
+                _frontend_payment_result_url(provider, dict(serializer.validated_data), callback_state="received")
+            )
+
         return Response(payload)
 
     @extend_schema(

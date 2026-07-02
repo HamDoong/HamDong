@@ -1,6 +1,50 @@
-import { apiRequest } from './api';
+import { apiRequest, isApiError } from './api';
 
 export type PaymentProvider = 'FAKE' | 'ZARINPAL';
+
+// Backend contract: PaymentProviderChoices only accepts `FAKE` and `ZARINPAL`.
+// The sandbox gateway URL returned by the backend is `https://sandbox.zarinpal.com/pg/StartPay/...`.
+export const DEFAULT_WALLET_PAYMENT_PROVIDER: PaymentProvider = 'ZARINPAL';
+
+export function normalizePaymentProvider(provider?: string | null): PaymentProvider {
+  const normalized = String(provider || DEFAULT_WALLET_PAYMENT_PROVIDER)
+    .trim()
+    .toUpperCase()
+    .replace(/[-\s]/g, '_');
+
+  if (normalized === 'FAKE') return 'FAKE';
+
+  // Accept older/typo values coming from old localStorage, URLs, or previous UI builds,
+  // but always send the exact enum expected by wallet-service.
+  if (['ZARINPAL', 'ZARIN_BAL', 'ZARINBAL', 'ZARIN_PAL'].includes(normalized)) {
+    return 'ZARINPAL';
+  }
+
+  return DEFAULT_WALLET_PAYMENT_PROVIDER;
+}
+
+export function paymentProviderToApiValue(provider?: string | null) {
+  return normalizePaymentProvider(provider);
+}
+
+export function getPaymentProviderApiValues(provider?: string | null) {
+  return [paymentProviderToApiValue(provider)];
+}
+
+export function getPaymentRedirectUrl(intent: Partial<PaymentIntentResponse>) {
+  return intent.payment_url || intent.redirect_url || intent.gateway_url || intent.url || '';
+}
+
+
+function uniquePayloads(payloads: Record<string, unknown>[]) {
+  const seen = new Set<string>();
+  return payloads.filter((payload) => {
+    const key = JSON.stringify(payload);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 export type PaymentIntentStatus = 'REDIRECT_REQUIRED' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED' | 'RETRYABLE' | string;
 
 export interface WalletInfo {
@@ -64,7 +108,10 @@ export interface PaymentIntentResponse {
   currency: string;
   provider: PaymentProvider;
   status: PaymentIntentStatus;
-  payment_url: string;
+  payment_url?: string | null;
+  redirect_url?: string | null;
+  gateway_url?: string | null;
+  url?: string | null;
   expires_at?: string;
   provider_reference?: string | null;
   created_at?: string;
@@ -157,19 +204,22 @@ export function listWalletTransactions(options: { pageSize?: number; cursor?: st
   return apiRequest<WalletTransactionListResponse>(`/wallets/me/transactions/${query ? `?${query}` : ''}`);
 }
 
-export function createPaymentIntent(input: {
+export async function createPaymentIntent(input: {
   amountMinor: number;
   provider?: PaymentProvider;
   idempotencyKey?: string;
 }) {
+  const provider = normalizePaymentProvider(input.provider);
+  const idempotencyKey = input.idempotencyKey || createIdempotencyKey('top-up');
+
   return apiRequest<PaymentIntentResponse>('/payments/intents/', {
     method: 'POST',
     body: JSON.stringify({
       purpose: 'WALLET_TOP_UP',
       amount_minor: input.amountMinor,
       currency: 'IRR',
-      provider: input.provider || 'FAKE',
-      idempotency_key: input.idempotencyKey || createIdempotencyKey('top-up'),
+      provider,
+      idempotency_key: idempotencyKey,
     }),
   });
 }
@@ -178,18 +228,53 @@ export function getPaymentIntent(paymentIntentId: string) {
   return apiRequest<PaymentIntentResponse>(`/payments/intents/${paymentIntentId}/`);
 }
 
-export function verifyPaymentIntent(input: {
+export async function verifyPaymentIntent(input: {
   provider?: PaymentProvider;
   paymentIntentId: string;
   providerReference?: string | null;
 }) {
-  return apiRequest<PaymentIntentVerifyResponse>(`/payments/gateway/${input.provider || 'FAKE'}/verify/`, {
-    method: 'POST',
-    body: JSON.stringify({
-      payment_intent_id: input.paymentIntentId,
-      ...(input.providerReference ? { provider_reference: input.providerReference } : {}),
-    }),
-  });
+  const provider = normalizePaymentProvider(input.provider);
+  const providerApiValues = getPaymentProviderApiValues(provider);
+  const reference = input.providerReference || undefined;
+  const basePayload = { payment_intent_id: input.paymentIntentId };
+
+  const payloads = uniquePayloads([
+    {
+      ...basePayload,
+      ...(reference ? { provider_reference: reference, authority: reference } : {}),
+    },
+    {
+      ...basePayload,
+      ...(reference ? { provider_reference: reference } : {}),
+    },
+    {
+      ...basePayload,
+      ...(reference ? { authority: reference } : {}),
+    },
+    basePayload,
+  ]);
+
+  const providerPathValues = providerApiValues;
+  let lastError: unknown;
+
+  for (const providerPathValue of providerPathValues) {
+    for (const body of payloads) {
+      try {
+        return await apiRequest<PaymentIntentVerifyResponse>(`/payments/gateway/${providerPathValue}/verify/`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+      } catch (error) {
+        lastError = error;
+
+        if (!isApiError(error) || ![400, 404].includes(error.status)) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 export function paySettlementItemWithWallet(itemId: string, idempotencyKey = createIdempotencyKey('settlement-wallet-pay')) {
